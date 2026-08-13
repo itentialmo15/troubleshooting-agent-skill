@@ -1,0 +1,21 @@
+
+## 2026-08-13T13:27:59Z — synced from d8c6d5006a50 (main)
+- 18 file(s) changed upstream:
+  - AGENTS.md
+  - helpers/assets/itential-platform-data-manipulation.json
+  - helpers/assets/vendor-netbox.json
+  - helpers/assets/vendor-arista-eos.json
+  - helpers/assets/itential-platform-email.json
+  - helpers/assets/vendor-infoblox-nios-ddi.json
+  - helpers/assets/itential-platform-configuration-management.json
+  - helpers/assets/lcm/lcm-port-turn-up.json
+  - helpers/assets/lcm/lcm-vxlan-fabric-services-project.json
+  - helpers/assets/lcm/lcm-ip-blocking-service.json
+  - helpers/assets/lcm/lcm-interface-service-provisioning.json
+  - helpers/assets/lcm/lcm-fan-device-lifecycle-management.json
+  - helpers/assets/lcm/lcm-vxlan-fabric-management.json
+  - helpers/assets/vendor-cisco-ios.json
+  - helpers/assets/itential-platform-regex-operations.json
+  - helpers/assets/vendor-juniper-junos.json
+  - helpers/assets/vendor-servicenow.json
+  - helpers/create/create-workflow.json

@@ -1,0 +1,8 @@
+{
+  "source_repo": "https://github.com/itential/builder-skills.git",
+  "branch": "main",
+  "synced_commit": "d8c6d5006a500b4e807bd977a7b040b0cd096268",
+  "synced_commit_date": "2026-08-12T14:16:53-04:00",
+  "synced_at": "2026-08-13T13:27:58Z",
+  "files": ["/AGENTS.md", "/helpers/create/create-workflow.json", "/helpers/assets/itential-platform-configuration-management.json", "/helpers/assets/itential-platform-data-manipulation.json", "/helpers/assets/itential-platform-email.json", "/helpers/assets/itential-platform-regex-operations.json", "/helpers/assets/vendor-arista-eos.json", "/helpers/assets/vendor-cisco-ios.json", "/helpers/assets/vendor-infoblox-nios-ddi.json", "/helpers/assets/vendor-juniper-junos.json", "/helpers/assets/vendor-netbox.json", "/helpers/assets/vendor-servicenow.json", "/helpers/assets/lcm/lcm-fan-device-lifecycle-management.json", "/helpers/assets/lcm/lcm-interface-service-provisioning.json", "/helpers/assets/lcm/lcm-ip-blocking-service.json", "/helpers/assets/lcm/lcm-port-turn-up.json", "/helpers/assets/lcm/lcm-vxlan-fabric-management.json", "/helpers/assets/lcm/lcm-vxlan-fabric-services-project.json"]
+}
