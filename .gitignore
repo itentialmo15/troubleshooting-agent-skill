@@ -1,0 +1,19 @@
+# Credentials / secrets — never commit
+.env
+*.env
+.auth.json
+*.pem
+*.key
+*credentials*
+*secret*
+*token*.json
+
+# Office lock files
+~$*
+
+# OS
+.DS_Store
+
+# Local scratch
+/tmp/
+*.tmp
