@@ -1,0 +1,1359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Troubleshooting Agent — Complete Guide</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:        #06071a;
+      --surface:   #10122c;
+      --card:      #14173a;
+      --border:    #24274a;
+      --pink:      #ec1e7f;
+      --pink-soft: #f26bac;
+      --logo-blue: #4ea8f5;
+      --orange:    #f27a1e;
+      --text:      #e9eaf2;
+      --muted:     #8b8fa8;
+      --radius:    10px;
+      --c-purple-fill:  #331250; --c-purple-border:  #9b4de8;
+      --c-magenta-fill: #501236; --c-magenta-border: #e84d9b;
+      --c-orange-fill:  #503012; --c-orange-border:  #e09b3d;
+      --c-olive-fill:   #404612; --c-olive-border:   #b8c22e;
+      --c-blue-fill:    #0e2c50; --c-blue-border:    #3d9be8;
+      --c-red-fill:     #501212; --c-red-border:     #e84d4d;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    /* ── Header ── */
+    header {
+      max-width: 100%;
+      padding: 20px 40px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .logo-mark { width: 38px; height: 38px; flex-shrink: 0; object-fit: contain; }
+    header h1 {
+      font-family: 'Oswald', sans-serif;
+      font-size: 18px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .4px;
+    }
+    header p { font-size: 11px; color: var(--pink-soft); font-weight: 600; margin-top: 2px; }
+    .badge {
+      margin-left: auto;
+      border: 1.25px solid var(--pink);
+      color: var(--pink-soft);
+      font-size: 10px; font-weight: 700; letter-spacing: .5px;
+      padding: 4px 11px; border-radius: 20px; text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    /* ── Tab Navigation ── */
+    .tab-nav {
+      display: flex;
+      gap: 0;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 40px;
+      position: sticky;
+      top: 79px;
+      z-index: 99;
+    }
+    .tab-btn {
+      padding: 14px 24px;
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      color: var(--muted);
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: color .15s, border-color .15s;
+      white-space: nowrap;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--pink-soft); border-bottom-color: var(--pink); }
+
+    /* ── Tab Content ── */
+    .tab-content { display: none; padding: 40px; max-width: 1100px; margin: 0 auto; }
+    .tab-content.active { display: block; }
+
+    /* ── Section ── */
+    .section { margin-bottom: 56px; }
+    .section-label {
+      font-size: 10px; font-weight: 700; letter-spacing: 1.4px;
+      text-transform: uppercase; color: var(--pink);
+      margin-bottom: 10px;
+    }
+    h2 {
+      font-family: 'Oswald', sans-serif;
+      font-size: 20px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .3px;
+      margin-bottom: 6px;
+    }
+    h3 {
+      font-size: 14px; font-weight: 700;
+      color: var(--text); margin-bottom: 8px;
+    }
+    .desc {
+      font-size: 13px; color: var(--muted);
+      margin-bottom: 24px; max-width: 760px; line-height: 1.7;
+    }
+
+    /* ── Stat Row ── */
+    .stat-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 14px;
+      margin-bottom: 32px;
+    }
+    .stat-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 18px;
+      text-align: center;
+    }
+    .stat-card .num {
+      font-family: 'Oswald', sans-serif;
+      font-size: 36px; font-weight: 700;
+      color: var(--pink-soft);
+      line-height: 1;
+    }
+    .stat-card .lbl { font-size: 11px; color: var(--muted); margin-top: 6px; font-weight: 500; }
+
+    /* ── Cards ── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+    }
+    .card.t-purple  { border-color: var(--c-purple-border); }
+    .card.t-magenta { border-color: var(--c-magenta-border); }
+    .card.t-orange  { border-color: var(--c-orange-border); }
+    .card.t-olive   { border-color: var(--c-olive-border); }
+    .card.t-blue    { border-color: var(--c-blue-border); }
+    .card.t-red     { border-color: var(--c-red-border); }
+    .card .icon {
+      width: 28px; height: 28px; border-radius: 50%;
+      border: 1.5px solid currentColor;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; margin-bottom: 10px; font-weight: 700;
+    }
+    .card.t-purple  .icon { color: var(--c-purple-border); }
+    .card.t-magenta .icon { color: var(--c-magenta-border); }
+    .card.t-orange  .icon { color: var(--c-orange-border); }
+    .card.t-olive   .icon { color: var(--c-olive-border); }
+    .card.t-blue    .icon { color: var(--c-blue-border); }
+    .card.t-red     .icon { color: var(--c-red-border); }
+    .card h3 { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+    .card p { font-size: 12px; color: var(--muted); line-height: 1.55; }
+    .tag {
+      display: inline-block;
+      font-size: 10px; font-weight: 600;
+      background: color-mix(in srgb, var(--pink) 12%, transparent);
+      color: var(--pink-soft); border-radius: 20px;
+      padding: 3px 9px; margin: 8px 4px 0 0;
+    }
+    .tag-blue {
+      display: inline-block;
+      font-size: 10px; font-weight: 600;
+      background: color-mix(in srgb, var(--logo-blue) 12%, transparent);
+      color: var(--logo-blue); border-radius: 20px;
+      padding: 3px 9px; margin: 4px 4px 0 0;
+    }
+    .tag-orange {
+      display: inline-block;
+      font-size: 10px; font-weight: 600;
+      background: color-mix(in srgb, var(--orange) 12%, transparent);
+      color: var(--orange); border-radius: 20px;
+      padding: 3px 9px; margin: 4px 4px 0 0;
+    }
+
+    /* ── Phase Steps ── */
+    .phases {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+    }
+    .phase-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      position: relative;
+    }
+    .phase-num {
+      font-family: 'Oswald', sans-serif;
+      font-size: 28px; font-weight: 700;
+      color: var(--border);
+      position: absolute; top: 12px; right: 14px;
+    }
+    .phase-card .phase-label {
+      font-size: 9px; font-weight: 700; letter-spacing: 1px;
+      text-transform: uppercase; color: var(--pink);
+      margin-bottom: 6px;
+    }
+    .phase-card h3 { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+    .phase-card p { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+    /* ── Rules / Checklist ── */
+    .rules { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    @media (max-width: 700px) { .rules { grid-template-columns: 1fr; } }
+    .rule {
+      display: flex; gap: 10px;
+      background: var(--surface);
+      border-left: 3px solid var(--border);
+      border-radius: 6px;
+      padding: 12px 14px;
+    }
+    .rule:nth-child(6n+1) { border-left-color: var(--c-purple-border); }
+    .rule:nth-child(6n+2) { border-left-color: var(--c-magenta-border); }
+    .rule:nth-child(6n+3) { border-left-color: var(--c-orange-border); }
+    .rule:nth-child(6n+4) { border-left-color: var(--c-olive-border); }
+    .rule:nth-child(6n+5) { border-left-color: var(--c-blue-border); }
+    .rule:nth-child(6n) { border-left-color: var(--c-red-border); }
+    .rule-text { font-size: 12px; color: var(--muted); line-height: 1.55; }
+    .rule-text strong { color: var(--text); display: block; margin-bottom: 2px; }
+
+    /* ── Tables ── */
+    .table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    thead tr { background: var(--surface); }
+    thead th {
+      padding: 12px 14px; text-align: left;
+      font-size: 10px; font-weight: 700; letter-spacing: .8px;
+      text-transform: uppercase; color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+    tbody tr { border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: color-mix(in srgb, var(--surface) 60%, transparent); }
+    td { padding: 11px 14px; color: var(--text); vertical-align: top; line-height: 1.5; }
+    td code { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--pink-soft); }
+    td strong { color: var(--text); font-weight: 600; }
+    td .muted { color: var(--muted); }
+
+    /* ── Code blocks ── */
+    .code-block {
+      background: #0a0b1e;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      overflow-x: auto;
+      margin: 16px 0;
+    }
+    .code-block pre {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px; line-height: 1.7;
+      color: var(--text);
+    }
+    .code-block .comment { color: var(--muted); }
+    .code-block .key { color: var(--logo-blue); }
+    .code-block .val { color: var(--c-olive-border); }
+    .code-block .cmd { color: var(--pink-soft); }
+    .code-block .section-hdr { color: var(--orange); font-weight: 600; }
+    .code-block .prompt { color: var(--muted); user-select: none; }
+
+    .inline-code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      background: color-mix(in srgb, var(--card) 80%, transparent);
+      color: var(--pink-soft);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 6px;
+    }
+
+    /* ── Note / Warning boxes ── */
+    .note {
+      background: color-mix(in srgb, var(--logo-blue) 8%, transparent);
+      border-left: 3px solid var(--logo-blue);
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin: 16px 0;
+      font-size: 12.5px;
+      color: var(--text);
+    }
+    .note strong { color: var(--logo-blue); }
+    .warning {
+      background: color-mix(in srgb, var(--orange) 8%, transparent);
+      border-left: 3px solid var(--orange);
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin: 16px 0;
+      font-size: 12.5px;
+    }
+    .warning strong { color: var(--orange); }
+    .danger {
+      background: color-mix(in srgb, var(--c-red-border) 8%, transparent);
+      border-left: 3px solid var(--c-red-border);
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin: 16px 0;
+      font-size: 12.5px;
+    }
+    .danger strong { color: var(--c-red-border); }
+
+    /* ── Diagram card ── */
+    .diagram-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+    }
+
+    /* ── Sub-skill routing table ── */
+    .routing-row {
+      display: grid;
+      grid-template-columns: 1fr 160px 1fr;
+      gap: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 8px;
+      overflow: hidden;
+    }
+    .routing-row .symptom, .routing-row .subskill, .routing-row .what {
+      padding: 12px 14px;
+      font-size: 12px;
+    }
+    .routing-row .symptom { border-right: 1px solid var(--border); }
+    .routing-row .subskill {
+      background: color-mix(in srgb, var(--pink) 8%, transparent);
+      border-right: 1px solid var(--border);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px; color: var(--pink-soft);
+      font-weight: 600; text-align: center;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .routing-row .what { color: var(--muted); }
+    .routing-header {
+      display: grid;
+      grid-template-columns: 1fr 160px 1fr;
+      gap: 0;
+      margin-bottom: 4px;
+    }
+    .routing-header span {
+      padding: 6px 14px;
+      font-size: 9.5px; font-weight: 700; letter-spacing: .8px;
+      text-transform: uppercase; color: var(--muted);
+    }
+
+    /* ── File tree ── */
+    .file-tree {
+      background: #0a0b1e;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      line-height: 1.9;
+    }
+    .file-tree .dir { color: var(--logo-blue); font-weight: 600; }
+    .file-tree .file { color: var(--text); }
+    .file-tree .comment { color: var(--muted); margin-left: 6px; }
+    .file-tree .indent-1 { padding-left: 20px; }
+    .file-tree .indent-2 { padding-left: 40px; }
+    .file-tree .indent-3 { padding-left: 60px; }
+
+    /* ── Section divider ── */
+    .section-divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 40px 0;
+    }
+
+    /* ── Pill label ── */
+    .pill {
+      display: inline-block;
+      font-size: 10px; font-weight: 700;
+      border-radius: 20px; padding: 3px 10px;
+    }
+    .pill-req { background: color-mix(in srgb, var(--c-red-border) 15%, transparent); color: var(--c-red-border); }
+    .pill-opt { background: color-mix(in srgb, var(--c-olive-border) 15%, transparent); color: var(--c-olive-border); }
+    .pill-cond { background: color-mix(in srgb, var(--logo-blue) 15%, transparent); color: var(--logo-blue); }
+
+    /* ── Footer ── */
+    footer {
+      max-width: 100%;
+      padding: 20px 40px;
+      margin-top: 40px;
+      border-top: 1px solid var(--border);
+      font-size: 11px; color: var(--muted);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    footer .brand { display: flex; align-items: center; gap: 8px; }
+    footer .brand img { height: 18px; width: auto; }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ────────────────────────────────────────────────── -->
+<header>
+  <img class="logo-mark" src="data:image/png;base64,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" alt="Itential" />
+  <div>
+    <h1>Troubleshooting Agent</h1>
+    <p>User Guide · Admin Guide · Architecture &amp; Overview</p>
+  </div>
+  <span class="badge">Internal · Support Engineering</span>
+</header>
+
+<!-- ── Tab Navigation ─────────────────────────────────────────── -->
+<div class="tab-nav">
+  <button class="tab-btn active" onclick="showTab('overview')">&#9642; Overview &amp; Architecture</button>
+  <button class="tab-btn" onclick="showTab('user')">&#9642; User Guide</button>
+  <button class="tab-btn" onclick="showTab('admin')">&#9642; Admin Guide</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     TAB 1: OVERVIEW & ARCHITECTURE
+     ══════════════════════════════════════════════════════════════ -->
+<div id="tab-overview" class="tab-content active">
+
+  <!-- What It Is -->
+  <div class="section">
+    <div class="section-label">Overview</div>
+    <h2>What Is the Troubleshooting Agent?</h2>
+    <p class="desc">
+      The Troubleshooting Agent is an AI-powered Product Support Engineering skill that automates the full investigation lifecycle for Itential Service Desk tickets. A support engineer invokes it with a single command — <span class="inline-code">/troubleshoot ISD-9261</span> — and it reads the ticket, cross-references known issues, authenticates to the customer environment, runs targeted platform diagnostics via specialist sub-skills, and produces structured findings ready for action. All Jira writes require explicit engineer approval before execution.
+    </p>
+    <div class="stat-row">
+      <div class="stat-card"><div class="num">8</div><div class="lbl">Investigation Phases</div></div>
+      <div class="stat-card"><div class="num">6</div><div class="lbl">Specialist Sub-Skills</div></div>
+      <div class="stat-card"><div class="num">150+</div><div class="lbl">Min Saved Per Ticket</div></div>
+      <div class="stat-card"><div class="num">12+</div><div class="lbl">Known Resolution Patterns</div></div>
+      <div class="stat-card"><div class="num">0</div><div class="lbl">Unauthorized Jira Writes</div></div>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- 8-Phase Lifecycle -->
+  <div class="section">
+    <div class="section-label">Lifecycle</div>
+    <h2>8-Phase Investigation Lifecycle</h2>
+    <p class="desc">Every investigation follows the same eight phases in sequence. Each phase feeds the next. Phases 6, 7, and 8 trigger only when conditions are met (confirmed bug, confirmed resolution, escalation trigger).</p>
+
+    <div class="phases">
+      <div class="phase-card">
+        <div class="phase-num">0</div>
+        <div class="phase-label">Entry Point</div>
+        <h3>Ticket Intake</h3>
+        <p>Reads full ISD ticket. Extracts structured context. Mines ISD + ENG Jira for similar cases. Searches Confluence for runbooks. Detects priority mismatches. Produces pre-investigation summary.</p>
+      </div>
+      <div class="phase-card">
+        <div class="phase-num">1</div>
+        <div class="phase-label">Platform Connect</div>
+        <h3>Auth &amp; Snapshot</h3>
+        <p>Authenticates via <span class="inline-code">.env</span> (OAuth or password). Caches token 50 min. Collects IAP version, app health, adapter health. Lists all OFFLINE adapters. Categorizes issue.</p>
+      </div>
+      <div class="phase-card">
+        <div class="phase-num">2</div>
+        <div class="phase-label">Customer Dialog</div>
+        <h3>Investigation Protocol</h3>
+        <p>Eight-section standardized questionnaire: symptoms, timeline, reproduction, scope, business impact, resolution, incident end, data collection. Posts unanswered questions to ticket (with approval).</p>
+      </div>
+      <div class="phase-card">
+        <div class="phase-num">3</div>
+        <div class="phase-label">Diagnostics</div>
+        <h3>Platform Investigation</h3>
+        <p>Routes to specialist sub-skills based on symptom. Runs sub-skills in parallel when issue spans multiple components. Inline diagnostics for IAG, UI performance, and Kafka.</p>
+      </div>
+      <div class="phase-card">
+        <div class="phase-num">4</div>
+        <div class="phase-label">Validation</div>
+        <h3>Reproduce</h3>
+        <p>Scaffolds a version-matched Docker environment. Writes step-by-step reproduction doc with expected vs actual results. Saved to <span class="inline-code">repro/{ISD_KEY}/</span>.</p>
+      </div>
+      <div class="phase-card">
+        <div class="phase-num">5</div>
+        <div class="phase-label">Deliverable</div>
+        <h3>Diagnostic Report</h3>
+        <p>Structured report: environment snapshot, investigation checklist, ranked root-cause hypotheses with evidence, next steps with owners, access gaps table.</p>
+      </div>
+      <div class="phase-card">
+        <div class="phase-num">6</div>
+        <div class="phase-label">Engineering</div>
+        <h3>ENG Escalation Pack</h3>
+        <p><em>When a platform bug is confirmed.</em> Drafts ENG bug report. Creates or updates ENG Jira ticket. Links ENG to ISD. All writes require explicit engineer approval.</p>
+      </div>
+      <div class="phase-card">
+        <div class="phase-num">7</div>
+        <div class="phase-label">Closeout</div>
+        <h3>Resolution Learning</h3>
+        <p><em>When fix is confirmed.</em> Records symptom-to-fix pattern in <span class="inline-code">known-resolutions.md</span>. Posts resolution comment to ISD. Transitions ticket. Updates routing table.</p>
+      </div>
+      <div class="phase-card">
+        <div class="phase-num">8</div>
+        <div class="phase-label">Escalation</div>
+        <h3>Manager Escalation</h3>
+        <p><em>On SLA breach, priority mismatch, or S1/S2 events.</em> Detects low-priority tickets with blocking descriptions. Drafts Slack escalation to senior management. Upgrades priority with approval.</p>
+      </div>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Architecture Diagram -->
+  <div class="section">
+    <div class="section-label">Architecture</div>
+    <h2>Skill Architecture</h2>
+    <p class="desc">The primary <span class="inline-code">/troubleshoot</span> skill acts as the orchestrator. It delegates targeted platform diagnostics to six specialist sub-skills. Sub-skills run in parallel when an issue spans multiple components. The primary skill synthesizes all sub-skill output into the diagnostic report.</p>
+
+    <div class="diagram-card">
+      <div class="mermaid">
+flowchart TD
+    ENG["Support Engineer"] -->|"/troubleshoot ISD-XXXX"| MAIN["<b>/troubleshoot</b><br/>Primary Orchestrator<br/>8-Phase Lifecycle"]
+
+    MAIN -->|"Phase 0"| JIRA["Jira / Atlassian MCP<br/>ISD + ENG tickets<br/>Confluence pages"]
+    MAIN -->|"Phase 1"| IAP["IAP Platform<br/>Health, adapters,<br/>apps, version"]
+
+    MAIN -->|"Phase 3 — routes by symptom"| SS["Sub-Skills"]
+
+    SS --> WF["/troubleshoot-workflows<br/>Job errors, JST,<br/>import failures"]
+    SS --> AD["/troubleshoot-adapters<br/>OFFLINE, auth,<br/>debug mode"]
+    SS --> JB["/troubleshoot-jobs<br/>Stuck, slow,<br/>errored jobs"]
+    SS --> DB["/troubleshoot-databases<br/>MongoDB, Redis,<br/>Bull queues"]
+    SS --> IF["/troubleshoot-infra<br/>CPU, memory,<br/>disk, EKS"]
+    SS --> LG["/troubleshoot-logs<br/>Docker, SSH,<br/>K8s, CloudWatch"]
+
+    MAIN -->|"Phase 5"| RPT["diagnostic_report.md<br/>ticket_context.md<br/>known_issues.md"]
+    MAIN -->|"Phase 7"| RES["known-resolutions.md<br/>Resolution Library"]
+
+    style ENG fill:#1a1d3e,stroke:#ec1e7f,color:#e9eaf2
+    style MAIN fill:#14173a,stroke:#ec1e7f,color:#e9eaf2
+    style JIRA fill:#1a1d3e,stroke:#3d9be8,color:#e9eaf2
+    style IAP fill:#1a1d3e,stroke:#3d9be8,color:#e9eaf2
+    style SS fill:#10122c,stroke:#24274a,color:#8b8fa8
+    style WF fill:#1a0a2e,stroke:#9b4de8,color:#e9eaf2
+    style AD fill:#1a0e1e,stroke:#e84d9b,color:#e9eaf2
+    style JB fill:#1a1208,stroke:#e09b3d,color:#e9eaf2
+    style DB fill:#0e1a1a,stroke:#b8c22e,color:#e9eaf2
+    style IF fill:#081422,stroke:#3d9be8,color:#e9eaf2
+    style LG fill:#1a0808,stroke:#e84d4d,color:#e9eaf2
+    style RPT fill:#0a1a0a,stroke:#b8c22e,color:#e9eaf2
+    style RES fill:#0a1a0a,stroke:#b8c22e,color:#e9eaf2
+      </div>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Sub-Skill Capabilities -->
+  <div class="section">
+    <div class="section-label">Sub-Skills</div>
+    <h2>Specialist Sub-Skills</h2>
+    <p class="desc">Each sub-skill owns a specific diagnostic domain. They are invoked by the primary skill based on symptom classification, or can be run directly by a support engineer for targeted investigations.</p>
+    <div class="cards">
+      <div class="card t-purple">
+        <div class="icon">WF</div>
+        <h3>/troubleshoot-workflows</h3>
+        <p>Job error analysis, task output inspection, JST script debugging, workflow import validation, childJob chain traversal, missing error transition detection.</p>
+        <span class="tag">Job errors</span><span class="tag">JST</span><span class="tag">Import</span>
+      </div>
+      <div class="card t-magenta">
+        <div class="icon">AD</div>
+        <h3>/troubleshoot-adapters</h3>
+        <p>Adapter settings collection vs sampleProperties, auth method analysis, debug mode cycle (auth_logging + console_level), live log capture, cleanup after debug.</p>
+        <span class="tag">OFFLINE</span><span class="tag">Auth failure</span><span class="tag">Stub mode</span>
+      </div>
+      <div class="card t-orange">
+        <div class="icon">JB</div>
+        <h3>/troubleshoot-jobs</h3>
+        <p>Slow job historical baseline comparison, concurrency/contention analysis, WFE worker health, Bull queue depth, parent-child error chain traversal, true-stall verification, cross-component log correlation.</p>
+        <span class="tag">Stuck jobs</span><span class="tag">Slow jobs</span><span class="tag">WFE</span>
+      </div>
+      <div class="card t-olive">
+        <div class="icon">DB</div>
+        <h3>/troubleshoot-databases</h3>
+        <p>MongoDB connections, slow queries, COLLSCAN detection, replica set health, index analysis. Redis eviction, Bull queue depth, blocked clients, ElastiCache CloudWatch metrics.</p>
+        <span class="tag">MongoDB</span><span class="tag">Redis</span><span class="tag">ElastiCache</span>
+      </div>
+      <div class="card t-blue">
+        <div class="icon">IF</div>
+        <h3>/troubleshoot-infra</h3>
+        <p>Container crash detection, OOMKilled detection, CPU &amp; memory analysis, disk pressure, file descriptor exhaustion, network connectivity between components, EKS pod health, ElastiCache status.</p>
+        <span class="tag">OOMKilled</span><span class="tag">Disk full</span><span class="tag">EKS</span>
+      </div>
+      <div class="card t-red">
+        <div class="icon">LG</div>
+        <h3>/troubleshoot-logs</h3>
+        <p>Log collection from IAP, IAG, MongoDB, Redis, and load balancers across Docker, SSH/VM, Kubernetes/EKS, and AWS CloudWatch. Filters by incident window. Masks sensitive values. Cross-component correlation.</p>
+        <span class="tag">Docker</span><span class="tag">SSH</span><span class="tag">CloudWatch</span>
+      </div>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- External Integrations -->
+  <div class="section">
+    <div class="section-label">Integrations</div>
+    <h2>External Platform Integrations</h2>
+    <p class="desc">The agent connects to multiple external systems through MCP tools and direct API calls. All credentials are read from <span class="inline-code">.env</span> — never entered manually.</p>
+    <div class="cards">
+      <div class="card t-blue">
+        <div class="icon">J</div>
+        <h3>Jira (ISD + ENG)</h3>
+        <p>Reads tickets, searches past cases, extracts resolution comments as hypotheses, posts questionnaire comments (internal only), creates/links ENG bug tickets. Writes require explicit approval.</p>
+        <span class="tag-blue">Read</span><span class="tag">Write w/ approval</span>
+      </div>
+      <div class="card t-blue">
+        <div class="icon">C</div>
+        <h3>Confluence</h3>
+        <p>Searches KB articles, runbooks, post-mortems, and known-issue pages matching the ticket's error string and component. Fetches and extracts relevant page content as diagnostic guidance.</p>
+        <span class="tag-blue">Read only</span>
+      </div>
+      <div class="card t-magenta">
+        <div class="icon">I</div>
+        <h3>IAP Platform API</h3>
+        <p>Authenticates via OAuth or password. Reads health endpoints, adapter settings, job details, workflow definitions, application properties. All platform calls are GET-only.</p>
+        <span class="tag-blue">Read only</span>
+      </div>
+      <div class="card t-olive">
+        <div class="icon">M</div>
+        <h3>MongoDB</h3>
+        <p>Runs read-only diagnostic queries on jobs, workflows, operations, adapters collections. Checks indexes, slow ops, replica set status, collection sizes. Never writes.</p>
+        <span class="tag-blue">Read only</span>
+      </div>
+      <div class="card t-orange">
+        <div class="icon">R</div>
+        <h3>Redis</h3>
+        <p>Checks memory, eviction, Bull queue depth (wait/active/failed/delayed), blocked clients, persistence state. SCAN only — never KEYS on production. Never writes.</p>
+        <span class="tag-blue">Read only</span>
+      </div>
+      <div class="card t-purple">
+        <div class="icon">S</div>
+        <h3>Slack</h3>
+        <p>Sends escalation messages to support channel and manager escalation channel. Used in Phase 8 for priority mismatch detection and SLA breach notification. Requires Slack MCP.</p>
+        <span class="tag">Write w/ approval</span>
+      </div>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Output Files -->
+  <div class="section">
+    <div class="section-label">Outputs</div>
+    <h2>Output File Structure</h2>
+    <p class="desc">All investigation artifacts are written to the project directory under <span class="inline-code">data/{TIMESTAMP}/</span>. The resolution library grows cumulatively across all investigations.</p>
+
+    <div class="file-tree">
+      <div><span class="dir">troubleshooting-agent/</span></div>
+      <div class="indent-1"><span class="dir">data/</span></div>
+      <div class="indent-2"><span class="dir">2026-08-13T10-30-00/</span> <span class="comment">← TIMESTAMP per investigation</span></div>
+      <div class="indent-3"><span class="file">ticket_context.md</span> <span class="comment">← structured ticket context (Phase 0b)</span></div>
+      <div class="indent-3"><span class="file">known_issues.md</span> <span class="comment">← ISD + ENG similar ticket findings (Phase 0c)</span></div>
+      <div class="indent-3"><span class="file">confluence_references.md</span> <span class="comment">← KB / runbook excerpts (Phase 0d)</span></div>
+      <div class="indent-3"><span class="file">pre_investigation_summary.md</span> <span class="comment">← hypothesis + plan (Phase 0e)</span></div>
+      <div class="indent-3"><span class="file">diagnostic_report.md</span> <span class="comment">← full report with findings (Phase 5)</span></div>
+      <div class="indent-3"><span class="file">eng_bug_report.md</span> <span class="comment">← ENG bug report draft (Phase 6, if bug confirmed)</span></div>
+      <div class="indent-3"><span class="dir">adapters/</span> <span class="comment">← per-adapter gather/log files from /troubleshoot-adapters</span></div>
+      <div class="indent-3"><span class="file">job_analysis.md</span> <span class="comment">← job profiling report from /troubleshoot-jobs</span></div>
+      <div class="indent-3"><span class="file">database_report.md</span> <span class="comment">← MongoDB + Redis report from /troubleshoot-databases</span></div>
+      <div class="indent-3"><span class="file">log_report.md</span> <span class="comment">← cross-component log analysis from /troubleshoot-logs</span></div>
+      <div class="indent-2"><span class="file">known-resolutions.md</span> <span class="comment">← cumulative resolution library (grows across all tickets)</span></div>
+      <div class="indent-1"><span class="dir">repro/</span></div>
+      <div class="indent-2"><span class="dir">ISD-XXXX/</span></div>
+      <div class="indent-3"><span class="file">repro_steps.md</span> <span class="comment">← reproduction steps + evidence (Phase 4)</span></div>
+      <div class="indent-3"><span class="file">docker-compose.yml</span> <span class="comment">← version-matched stack (Phase 4)</span></div>
+      <div class="indent-1"><span class="file">.env</span> <span class="comment">← credentials (never committed to git)</span></div>
+      <div class="indent-1"><span class="file">.auth.json</span> <span class="comment">← cached auth token (50 min TTL)</span></div>
+    </div>
+  </div>
+
+</div><!-- /tab-overview -->
+
+
+<!-- ══════════════════════════════════════════════════════════════
+     TAB 2: USER GUIDE
+     ══════════════════════════════════════════════════════════════ -->
+<div id="tab-user" class="tab-content">
+
+  <!-- Quick Start -->
+  <div class="section">
+    <div class="section-label">Getting Started</div>
+    <h2>Quick Start</h2>
+    <p class="desc">Invoke the troubleshooting agent with a ticket key or a brief description. The agent reads your <span class="inline-code">.env</span> file for all credentials and handles the rest.</p>
+
+    <div class="code-block"><pre><span class="comment"># Invoke with an ISD ticket key</span>
+<span class="cmd">/troubleshoot ISD-9261</span>
+
+<span class="comment"># Invoke with a description when you don't have a ticket yet</span>
+<span class="cmd">/troubleshoot "adapter automation_gateway shows OFFLINE"</span>
+<span class="cmd">/troubleshoot "jobs are stuck after last deployment"</span>
+<span class="cmd">/troubleshoot "MongoDB slow queries causing job timeouts"</span></pre></div>
+
+    <div class="note"><strong>Tip:</strong> Always run <span class="inline-code">/troubleshoot</span> from your project directory where <span class="inline-code">.env</span> lives. The agent reads credentials automatically — you never need to paste tokens or passwords.</div>
+
+    <h3 style="margin-top:24px; margin-bottom:12px;">What happens when you run it</h3>
+    <div class="rules">
+      <div class="rule"><div class="rule-text"><strong>Immediately</strong> — Reads the ISD ticket, extracts all context fields (version, deployment, error message, adapter, job ID), detects SLA status.</div></div>
+      <div class="rule"><div class="rule-text"><strong>~1 min</strong> — Searches ISD + ENG Jira for similar past cases. Uses their resolution comments as diagnostic hypotheses.</div></div>
+      <div class="rule"><div class="rule-text"><strong>~2 min</strong> — Searches Confluence for KB articles, runbooks, and post-mortems matching the error string.</div></div>
+      <div class="rule"><div class="rule-text"><strong>~3 min</strong> — Presents a pre-investigation summary: hypothesis, known issue match, investigation plan, escalation risk.</div></div>
+      <div class="rule"><div class="rule-text"><strong>~5 min</strong> — Authenticates to the platform, collects health snapshot, routes to the right sub-skill(s).</div></div>
+      <div class="rule"><div class="rule-text"><strong>~10-30 min</strong> — Sub-skills run their diagnostics. May run in parallel if multiple components are suspect.</div></div>
+    </div>
+
+    <div class="warning" style="margin-top:20px;"><strong>Priority Mismatch Detection:</strong> If the agent detects that a low-priority ticket (P3/P4) contains language indicating a production outage, blocked team, or time-critical deadline — it escalates to senior management <em>before</em> investigation begins, not after. This is intentional and by design.</div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Sub-skill routing reference -->
+  <div class="section">
+    <div class="section-label">Routing Reference</div>
+    <h2>Symptom → Sub-Skill Routing</h2>
+    <p class="desc">The agent classifies the issue in Phase 1 and routes to the appropriate sub-skill(s). You can also invoke sub-skills directly for targeted investigations without running the full lifecycle.</p>
+
+    <div class="routing-header">
+      <span>Symptom</span><span>Sub-Skill</span><span>What It Checks</span>
+    </div>
+    <div class="routing-row">
+      <div class="symptom">Job errored, task failed, wrong output, JST error, workflow won't import, validation errors</div>
+      <div class="subskill">/troubleshoot-workflows</div>
+      <div class="what">job.error array, task outputs, IAPerror.source, workflow validation errors, JST scripts, childJob chain, error transitions</div>
+    </div>
+    <div class="routing-row">
+      <div class="symptom">Adapter shows OFFLINE or DEAD, auth failure, wrong data from adapter, <code>IAPerror.source: adapter</code></div>
+      <div class="subskill">/troubleshoot-adapters</div>
+      <div class="what">live settings vs sampleProperties, auth_method, host/port, stub mode, token_timeout, debug mode (auth_logging)</div>
+    </div>
+    <div class="routing-row">
+      <div class="symptom">Job stuck in running with no progress, job errored (unknown cause), jobs running slower than usual, high queue depth</div>
+      <div class="subskill">/troubleshoot-jobs</div>
+      <div class="what">WFE health, Bull queue depth, MongoDB COLLSCAN, historical baseline comparison, parent-child error chain, true-stall verification</div>
+    </div>
+    <div class="routing-row">
+      <div class="symptom">MongoDB slow queries, connection errors, Redis eviction, job state writes failing, database-layer latency</div>
+      <div class="subskill">/troubleshoot-databases</div>
+      <div class="what">MongoDB connections, slow ops, indexes, replica set. Redis memory, eviction, Bull queue, ElastiCache metrics</div>
+    </div>
+    <div class="routing-row">
+      <div class="symptom">Container restarting, OOMKilled, disk full, high CPU/memory, network unreachable between components, EKS pod evicted</div>
+      <div class="subskill">/troubleshoot-infra</div>
+      <div class="what">Container status, resource usage, disk, FDs, load averages, multi-host SSH diagnostics, EKS node health</div>
+    </div>
+    <div class="routing-row">
+      <div class="symptom">Need log evidence for any incident — slow requests, auth storm, crash context, escalation artifact</div>
+      <div class="subskill">/troubleshoot-logs</div>
+      <div class="what">IAP application logs, webserver access log, IAG logs, mongod.log, Redis logs, LB logs — across Docker/SSH/K8s/CloudWatch</div>
+    </div>
+    <div class="routing-row">
+      <div class="symptom">IAG adapter OFFLINE or GatewayManager task fails</div>
+      <div class="subskill">/troubleshoot-adapters + inline</div>
+      <div class="what">token_timeout=-1 check, IAG /api/v2.0/poll, service list, job list, IAP-to-IAG connectivity</div>
+    </div>
+    <div class="routing-row">
+      <div class="symptom">IAP UI slow, API timeouts, response times degraded</div>
+      <div class="subskill">Phase 3h (inline)</div>
+      <div class="what">3-sample endpoint timing (health, apps, adapters, jobs, workflows), TTFB breakdown, webserver.log slow requests</div>
+    </div>
+    <div class="routing-row">
+      <div class="symptom">Kafka adapter OFFLINE, consumer lag growing</div>
+      <div class="subskill">Phase 3i (inline)</div>
+      <div class="what">Kafka adapter health, broker connectivity, consumer group lag, topic partition details</div>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Reading the diagnostic report -->
+  <div class="section">
+    <div class="section-label">Output Interpretation</div>
+    <h2>Reading Your Diagnostic Report</h2>
+    <p class="desc">The diagnostic report (<span class="inline-code">data/{TIMESTAMP}/diagnostic_report.md</span>) is the primary deliverable from Phase 5. Here's how to interpret each section.</p>
+
+    <div class="cards" style="margin-bottom:20px;">
+      <div class="card t-blue">
+        <h3>Environment Snapshot</h3>
+        <p>Versions and states of every component at investigation time. Cross-check IAP version against the ticket — customers sometimes report the install version, not what's actually running.</p>
+      </div>
+      <div class="card t-purple">
+        <h3>Findings</h3>
+        <p>Each finding has: <strong>What</strong> (what was observed), <strong>Evidence</strong> (the specific log line, metric, or API response that confirms it), <strong>Relevance</strong> (why it matters to the symptom).</p>
+      </div>
+      <div class="card t-orange">
+        <h3>Root Cause Hypotheses</h3>
+        <p>Ranked by likelihood. The top hypothesis has the most supporting evidence. Lower-ranked ones are kept if the top hypothesis doesn't hold after testing. Never skip to a fix without validating the top hypothesis.</p>
+      </div>
+      <div class="card t-olive">
+        <h3>Access Gaps</h3>
+        <p>Variables missing from <span class="inline-code">.env</span> that would unlock deeper investigation. Each gap lists exactly what investigation it blocks. Add the variables and re-run to go deeper.</p>
+      </div>
+    </div>
+
+    <div class="note"><strong>job.error is an array:</strong> Always iterate all entries — never just check the first. A job can accumulate multiple errors across retries and branches. <strong>status: complete doesn't mean success</strong> — always check <span class="inline-code">job.error</span> on complete jobs too.</div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- IAPerror Source Reference -->
+  <div class="section">
+    <div class="section-label">Error Reference</div>
+    <h2>IAPerror.source Routing Guide</h2>
+    <p class="desc">When a job errors, the <span class="inline-code">IAPerror.source</span> field tells you which component is responsible. Use this table to route your investigation immediately.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>IAPerror.source</th><th>Root Cause</th><th>Next Step</th></tr></thead>
+        <tbody>
+          <tr><td><code>adapter</code></td><td>Adapter misconfiguration, connectivity, or auth failure</td><td>Run <span class="inline-code">/troubleshoot-adapters {adapter_name}</span></td></tr>
+          <tr><td><code>automation-studio</code></td><td>Workflow validation error or missing task definition</td><td>Check workflow <span class="inline-code">errors[]</span> array — Phase 3 of /troubleshoot-workflows</td></tr>
+          <tr><td><code>operations-manager</code></td><td>OM worker crash or job timeout</td><td>Run <span class="inline-code">/troubleshoot-jobs</span></td></tr>
+          <tr><td><code>WorkFlowEngine</code></td><td>WFE execution error — task stuck or WFE itself degraded</td><td>Run <span class="inline-code">/troubleshoot-jobs</span></td></tr>
+          <tr><td><code>jst</code></td><td>JavaScript Transformation script error</td><td>Phase 4 of /troubleshoot-workflows — check missing <code>return</code>, async code, null input</td></tr>
+          <tr><td><code>{task name}</code></td><td>Task-specific error — check that task's output</td><td>Phase 2b of /troubleshoot-workflows — read the task's <code>output</code> and <code>error</code> fields</td></tr>
+          <tr><td><code>GatewayManager</code></td><td>IAG adapter or IAG service issue</td><td>Run <span class="inline-code">/troubleshoot-adapters {IAG_adapter_name}</span> + inline Phase 3d</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Known Resolution Patterns -->
+  <div class="section">
+    <div class="section-label">Resolution Library</div>
+    <h2>Known Resolution Patterns — Quick Reference</h2>
+    <p class="desc">These are confirmed root causes with proven fixes. When a ticket matches one of these patterns, skip straight to the resolution and verify. Add new patterns after every resolved ticket (Phase 7).</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Error / Symptom</th><th>Root Cause</th><th>Resolution</th><th>Verify</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>token_timeout: -1</code> + IAG adapter OFFLINE after first auth</td>
+            <td>Adapter never refreshes IAG token — authenticates once on startup then never again</td>
+            <td>Set <code>token_timeout: 3600000</code> (1 hour in ms) in adapter settings</td>
+            <td>Adapter stays ONLINE through a full token refresh cycle</td>
+          </tr>
+          <tr>
+            <td><code>No config found for Adapter: {name}</code></td>
+            <td><code>app</code> field uses adapter instance name, not adapter type name from <code>apps.json</code></td>
+            <td>Set <code>app</code> and <code>locationType</code> to the type name (e.g., <code>EmailOpensource</code>). Instance name goes in <code>adapter_id</code> only.</td>
+            <td>Job runs without "No config found" error</td>
+          </tr>
+          <tr>
+            <td><code>Job has no available transitions</code> — job stuck in running after task failure</td>
+            <td>No <code>"state": "error"</code> transition on adapter or external task</td>
+            <td>Add error transition to every adapter/external task in the workflow</td>
+            <td>Failed task routes to error handler instead of stalling</td>
+          </tr>
+          <tr>
+            <td>Adapter returns empty/fake data; no real API calls in logs</td>
+            <td><code>stub: true</code> in adapter settings — stub mode silently bypasses all API calls</td>
+            <td>Set <code>stub: false</code> in adapter settings and restart adapter</td>
+            <td>Logs show real HTTP requests to target system</td>
+          </tr>
+          <tr>
+            <td>Jobs slower than expected; WFE log file very large (&gt;500MB)</td>
+            <td><code>console_level: spam</code> in WFE settings — generates extreme I/O that degrades throughput</td>
+            <td>Set <code>console_level: error</code> in WFE app settings. No restart needed.</td>
+            <td>Log file stops growing; job throughput returns to baseline</td>
+          </tr>
+          <tr>
+            <td>Jobs COLLSCAN in MongoDB explain plan; slow at scale with large jobs collection</td>
+            <td>Missing <code>{status: 1}</code> index on jobs collection — every job query does a full collection scan</td>
+            <td><code>db.jobs.createIndex({status: 1})</code> — with DBA consent</td>
+            <td><code>explain()</code> shows IXSCAN; slow query log clears</td>
+          </tr>
+          <tr>
+            <td>Container exits unexpectedly; <code>docker inspect</code> shows <code>OOMKilled: true</code></td>
+            <td>Container memory limit set too low for the workload</td>
+            <td>Increase Docker memory limit for affected container; or Kubernetes resource limit</td>
+            <td>Container runs without OOMKilled; <span class="inline-code">docker stats</span> shows healthy margin</td>
+          </tr>
+          <tr>
+            <td>AWS adapter OFFLINE; access key starts with <code>ASIA</code></td>
+            <td>STS temporary credentials — expire in 1-12h; not suitable for long-running adapters</td>
+            <td>Replace with long-lived IAM access key (<code>AKIA</code> prefix)</td>
+            <td>Adapter stays ONLINE after STS would have expired</td>
+          </tr>
+          <tr>
+            <td><code>$var.{taskId}.{variable}</code> resolves to <code>undefined</code> at runtime</td>
+            <td>Task ID contains non-hex characters (e.g., <code>apush</code>). WFE classifies non-hex IDs as static values and never resolves them.</td>
+            <td>Rename task ID to a valid hex string (<code>[0-9a-f]{1,4}</code>)</td>
+            <td>Variable resolves correctly in job output</td>
+          </tr>
+          <tr>
+            <td>childJob fails with <code>Cannot find workflow: {name}</code> at runtime</td>
+            <td>childJob references plain workflow name but asset is project-scoped (added to a project)</td>
+            <td>Update <code>workflow</code> field to <code>@{projectId}: {name}</code> format</td>
+            <td>childJob resolves and executes the correct workflow</td>
+          </tr>
+          <tr>
+            <td>Enable query toggle crashes on looped childJob task — browser console shows <code>childJobLoopIndex TypeError</code></td>
+            <td>Platform 6.4.0 UI bug (ISD-9261) — enable query handler sets <code>taskConfig.childJobLoopIndex</code> before <code>taskConfig</code> is instantiated</td>
+            <td>Do not use enable query on childJob task inputs. Pre-extract the array before the childJob using <code>makeData</code>, <code>merge</code>, or a <code>newVariable</code> task.</td>
+            <td>Workflow runs using flat variable reference; no browser console error</td>
+          </tr>
+          <tr>
+            <td>SNMP <code>itenProngAppDown</code> traps never sent when platform stops or crashes</td>
+            <td>Platform 6.4.0 bug (ENG-24868) — <code>Shutdown.js</code> 3s timeout exits without emitting AppDown traps</td>
+            <td>Add <code>ExecStopPost</code> snmptrap command to systemd unit as workaround. Permanent fix in ENG-24868.</td>
+            <td><code>tcpdump -i lo udp port 162</code> captures s=7 trap on <code>systemctl stop</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- FAQ -->
+  <div class="section">
+    <div class="section-label">FAQ</div>
+    <h2>Frequently Asked Questions</h2>
+
+    <div class="rules" style="grid-template-columns: 1fr;">
+      <div class="rule"><div class="rule-text">
+        <strong>Can the agent post comments to ISD tickets automatically?</strong>
+        No. The agent always presents the draft comment first and waits for your explicit approval before posting anything. This applies to questionnaire posts, resolution comments, and escalation notices.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Can the agent restart services or adapters?</strong>
+        No — not without your explicit consent in the conversation. It will always ask: "I will restart the {ADAPTER_NAME} adapter. Proceed?" You must confirm before any restart happens.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>The agent says it can't investigate MongoDB — why?</strong>
+        <code>MONGO_URL</code> is missing from your <code>.env</code>. The diagnostic report's "Access Gaps" table lists exactly which variables are missing and what each one unlocks. Add them and re-run.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Can I run sub-skills without running the full /troubleshoot?</strong>
+        Yes. All sub-skills are independently invocable: <code>/troubleshoot-adapters my-adapter</code>, <code>/troubleshoot-jobs job-id</code>, etc. They read the same <code>.env</code> credentials and produce their own output files.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>A job shows status:complete but the agent says to check job.error — why?</strong>
+        <code>status: complete</code> means the workflow reached <code>workflow_end</code>. It does NOT mean no errors occurred. A workflow can route through an error handler and still complete. Always check <code>job.error[]</code> on complete jobs.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Why does the agent ask about adapter "type name" vs "instance name"?</strong>
+        The <code>app</code> field in a workflow task must be the adapter type name from <code>apps.json</code> (e.g., <code>ServiceNow</code>). The adapter instance name (e.g., <code>servicenow-prod</code>) belongs in <code>adapter_id</code> only. Using the instance name in <code>app</code> causes "No config found for Adapter" at runtime — every time.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>When should I invoke /troubleshoot-logs vs letting /troubleshoot do it?</strong>
+        Run <code>/troubleshoot-logs</code> directly when: (1) you need to collect logs as an artifact for a customer or ENG ticket, (2) you're investigating a specific incident time without a full investigation, or (3) the primary skill already ran and you need deeper log evidence. The primary skill calls it automatically in Phase 3 when log evidence is needed to confirm a finding.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>How does the agent handle IAG vs adapter OFFLINE differently?</strong>
+        IAG OFFLINE is almost always <code>token_timeout: -1</code>. The agent checks this first (Phase 3d inline). Adapter OFFLINE could be network, credentials, wrong host, or stub mode — the adapter sub-skill runs a full gather → debug → cleanup cycle with your approval at each step.
+      </div></div>
+    </div>
+  </div>
+
+</div><!-- /tab-user -->
+
+
+<!-- ══════════════════════════════════════════════════════════════
+     TAB 3: ADMIN GUIDE
+     ══════════════════════════════════════════════════════════════ -->
+<div id="tab-admin" class="tab-content">
+
+  <!-- .env Reference -->
+  <div class="section">
+    <div class="section-label">Configuration</div>
+    <h2>.env — Complete Credential Reference</h2>
+    <p class="desc">Create <span class="inline-code">.env</span> in your working project directory. The agent reads it automatically. Missing variable groups are reported as access gaps — the investigation proceeds with whatever is available.</p>
+
+    <div class="code-block"><pre><span class="section-hdr"># ── IAP Platform ──────────────────────────────────────────────</span>
+<span class="key">PLATFORM_URL</span>=<span class="val">https://your-instance.itential.io</span>
+<span class="key">AUTH_METHOD</span>=<span class="val">password</span>          <span class="comment"># "password" or "oauth"</span>
+<span class="key">USERNAME</span>=<span class="val">admin@pronghorn</span>
+<span class="key">PASSWORD</span>=<span class="val">admin</span>
+<span class="key">CLIENT_ID</span>=                    <span class="comment"># OAuth only</span>
+<span class="key">CLIENT_SECRET</span>=                <span class="comment"># OAuth only</span>
+
+<span class="section-hdr"># ── MongoDB ────────────────────────────────────────────────────</span>
+<span class="key">MONGO_URL</span>=<span class="val">mongodb://user:pass@host:27017/itential?authSource=admin</span>
+
+<span class="section-hdr"># ── Redis ──────────────────────────────────────────────────────</span>
+<span class="key">REDIS_HOST</span>=<span class="val">localhost</span>
+<span class="key">REDIS_PORT</span>=<span class="val">6379</span>
+<span class="key">REDIS_PASSWORD</span>=
+
+<span class="section-hdr"># ── SSH Targets (repeat N=1,2,3... for multiple hosts) ─────────</span>
+<span class="key">SSH_HOST_1</span>=<span class="val">10.0.1.50</span>
+<span class="key">SSH_USER_1</span>=<span class="val">ec2-user</span>
+<span class="key">SSH_KEY_PATH_1</span>=<span class="val">~/.ssh/id_rsa</span>
+<span class="key">SSH_PORT_1</span>=<span class="val">22</span>
+<span class="key">SSH_ROLE_1</span>=<span class="val">iap</span>               <span class="comment"># iap | mongodb | redis | iag | kafka | lb | generic</span>
+<span class="key">SSH_LABEL_1</span>=<span class="val">iap-node-1</span>       <span class="comment"># human-readable label for output files</span>
+
+<span class="section-hdr"># ── Kubernetes / EKS ──────────────────────────────────────────</span>
+<span class="key">AWS_REGION</span>=<span class="val">us-east-1</span>
+<span class="key">AWS_ACCESS_KEY_ID</span>=
+<span class="key">AWS_SECRET_ACCESS_KEY</span>=
+<span class="key">KUBE_NAMESPACE</span>=<span class="val">itential</span>
+<span class="key">KUBE_POD_PATTERN</span>=<span class="val">iap-</span>
+
+<span class="section-hdr"># ── IAG ────────────────────────────────────────────────────────</span>
+<span class="key">IAG_URL</span>=<span class="val">http://localhost:8083</span>
+<span class="key">IAG_USERNAME</span>=<span class="val">admin</span>
+<span class="key">IAG_PASSWORD</span>=<span class="val">admin</span>
+<span class="key">IAG_VERSION</span>=<span class="val">4</span>                 <span class="comment"># "4" or "5"</span>
+
+<span class="section-hdr"># ── Observability ─────────────────────────────────────────────</span>
+<span class="key">PROMETHEUS_URL</span>=<span class="val">http://monitor:9090</span>
+<span class="key">GRAFANA_URL</span>=<span class="val">http://monitor:3000</span>
+<span class="key">GRAFANA_API_KEY</span>=
+
+<span class="section-hdr"># ── Jira ──────────────────────────────────────────────────────</span>
+<span class="key">JIRA_URL</span>=<span class="val">https://itential.atlassian.net</span>
+<span class="key">JIRA_USER</span>=<span class="val">you@itential.com</span>
+<span class="key">JIRA_API_TOKEN</span>=               <span class="comment"># id.atlassian.net → Security → API tokens</span>
+<span class="key">JIRA_PROJECTS</span>=<span class="val">ENG,ISD</span>
+
+<span class="section-hdr"># ── Slack ─────────────────────────────────────────────────────</span>
+<span class="key">SLACK_SUPPORT_CHANNEL</span>=<span class="val">#isd-support</span>
+<span class="key">SLACK_ESCALATION_CHANNEL</span>=<span class="val">#support-escalations</span>
+<span class="key">SLACK_MANAGER</span>=<span class="val">@manager-handle</span>
+
+<span class="section-hdr"># ── Log Paths ─────────────────────────────────────────────────</span>
+<span class="key">WEBSERVER_LOG_PATH</span>=<span class="val">/var/log/itential/webserver.log</span>
+<span class="key">MONGO_LOG_PATH</span>=<span class="val">/var/log/mongodb/mongod.log</span>
+<span class="key">MONGO_LOG_CONTAINER</span>=<span class="val">mongodb</span>
+<span class="key">REDIS_LOG_CONTAINER</span>=<span class="val">redis</span>
+<span class="key">LB_TYPE</span>=<span class="val">nginx</span>
+<span class="key">LB_LOG_PATH</span>=<span class="val">/var/log/nginx/access.log</span>
+
+<span class="section-hdr"># ── Kafka ─────────────────────────────────────────────────────</span>
+<span class="key">KAFKA_BOOTSTRAP</span>=<span class="val">localhost:9092</span>
+<span class="key">KAFKA_CONSUMER_GROUP</span>=<span class="val">iap-consumer-group</span>
+<span class="key">KAFKA_TOPIC</span>=<span class="val">iap-topic</span></pre></div>
+
+    <div class="table-wrap" style="margin-top:20px;">
+      <table>
+        <thead><tr><th>Variable Group</th><th>Required</th><th>What It Unlocks</th></tr></thead>
+        <tbody>
+          <tr><td><code>PLATFORM_URL</code> + auth</td><td><span class="pill pill-req">Required</span></td><td>All platform API calls — health, adapters, jobs, workflows, authentication</td></tr>
+          <tr><td><code>JIRA_URL</code> + <code>JIRA_USER</code> + <code>JIRA_API_TOKEN</code></td><td><span class="pill pill-req">Required</span></td><td>Ticket reading, past case mining, questionnaire posting, ENG ticket creation</td></tr>
+          <tr><td><code>MONGO_URL</code></td><td><span class="pill pill-opt">Optional</span></td><td>MongoDB index analysis, slow queries, collection sizes, job document queries, replica set health</td></tr>
+          <tr><td><code>REDIS_HOST</code> + port</td><td><span class="pill pill-opt">Optional</span></td><td>Bull queue depth, eviction status, blocked clients, Redis memory analysis</td></tr>
+          <tr><td><code>SSH_HOST_N</code> blocks</td><td><span class="pill pill-opt">Optional</span></td><td>OS-level diagnostics, log collection from VMs, <code>journalctl</code>, disk/FD analysis on each host</td></tr>
+          <tr><td><code>KUBE_NAMESPACE</code></td><td><span class="pill pill-opt">Optional</span></td><td>kubectl pod status, EKS node health, container log collection via kubectl/stern</td></tr>
+          <tr><td><code>AWS_ACCESS_KEY_ID</code></td><td><span class="pill pill-cond">Conditional</span></td><td>CloudWatch log access, ALB log access from S3, ElastiCache metrics — needed for AWS deployments</td></tr>
+          <tr><td><code>IAG_URL</code> + credentials</td><td><span class="pill pill-cond">Conditional</span></td><td>IAG direct health check, service list, job history — needed for IAG-related issues</td></tr>
+          <tr><td><code>PROMETHEUS_URL</code></td><td><span class="pill pill-opt">Optional</span></td><td>WFE CPU, heap, event loop lag, GC overhead metrics — unlocks Phase 6 of /troubleshoot-jobs</td></tr>
+          <tr><td><code>SLACK_ESCALATION_CHANNEL</code></td><td><span class="pill pill-opt">Optional</span></td><td>Manager escalation messages in Phase 8</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- SSH Multi-Host -->
+  <div class="section">
+    <div class="section-label">SSH Configuration</div>
+    <h2>SSH Multi-Host Configuration</h2>
+    <p class="desc">Define one block per host using the <span class="inline-code">SSH_HOST_N</span> pattern. The agent collects OS diagnostics from all hosts in parallel and labels output files by role and label. Supports up to 20 hosts.</p>
+
+    <div class="table-wrap" style="margin-bottom:20px;">
+      <table>
+        <thead><tr><th>Variable</th><th>Description</th><th>Example</th></tr></thead>
+        <tbody>
+          <tr><td><code>SSH_HOST_N</code></td><td>IP or hostname of the target</td><td><code>10.0.1.50</code></td></tr>
+          <tr><td><code>SSH_USER_N</code></td><td>SSH username (default: ec2-user)</td><td><code>ec2-user</code></td></tr>
+          <tr><td><code>SSH_KEY_PATH_N</code></td><td>Path to SSH private key</td><td><code>~/.ssh/id_rsa</code></td></tr>
+          <tr><td><code>SSH_PORT_N</code></td><td>SSH port (default: 22)</td><td><code>22</code></td></tr>
+          <tr><td><code>SSH_ROLE_N</code></td><td>Role — drives role-specific diagnostics</td><td><code>iap</code> | <code>mongodb</code> | <code>redis</code> | <code>iag</code> | <code>kafka</code> | <code>lb</code> | <code>generic</code></td></tr>
+          <tr><td><code>SSH_LABEL_N</code></td><td>Human-readable label for output file names</td><td><code>iap-primary</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="code-block"><pre><span class="comment"># Example: 3-node cluster with IAP primary, MongoDB replica, Redis</span>
+<span class="key">SSH_HOST_1</span>=<span class="val">10.0.1.10</span>
+<span class="key">SSH_USER_1</span>=<span class="val">ec2-user</span>
+<span class="key">SSH_KEY_PATH_1</span>=<span class="val">~/.ssh/prod-key.pem</span>
+<span class="key">SSH_PORT_1</span>=<span class="val">22</span>
+<span class="key">SSH_ROLE_1</span>=<span class="val">iap</span>
+<span class="key">SSH_LABEL_1</span>=<span class="val">iap-primary</span>
+
+<span class="key">SSH_HOST_2</span>=<span class="val">10.0.2.10</span>
+<span class="key">SSH_USER_2</span>=<span class="val">ec2-user</span>
+<span class="key">SSH_KEY_PATH_2</span>=<span class="val">~/.ssh/prod-key.pem</span>
+<span class="key">SSH_ROLE_2</span>=<span class="val">mongodb</span>
+<span class="key">SSH_LABEL_2</span>=<span class="val">mongo-primary</span>
+
+<span class="key">SSH_HOST_3</span>=<span class="val">10.0.3.10</span>
+<span class="key">SSH_USER_3</span>=<span class="val">ec2-user</span>
+<span class="key">SSH_KEY_PATH_3</span>=<span class="val">~/.ssh/prod-key.pem</span>
+<span class="key">SSH_ROLE_3</span>=<span class="val">redis</span>
+<span class="key">SSH_LABEL_3</span>=<span class="val">redis-sentinel</span></pre></div>
+
+    <div class="note"><strong>Output:</strong> OS diagnostics are saved to <span class="inline-code">data/{TIMESTAMP}/os_{ROLE}_{LABEL}.txt</span> for each host. All hosts run in parallel — total collection time matches the slowest single host.</div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Jira Setup -->
+  <div class="section">
+    <div class="section-label">Jira Setup</div>
+    <h2>Jira Configuration</h2>
+    <p class="desc">The Jira API token enables ticket reading, case history mining, and (with your approval) posting questionnaire comments and creating ENG bug tickets.</p>
+
+    <div class="rules">
+      <div class="rule"><div class="rule-text">
+        <strong>Get your API token</strong> — Go to <a href="https://id.atlassian.net" style="color:var(--logo-blue)">id.atlassian.net</a> → Security → API tokens → Create API token. Use a descriptive name (e.g., "Claude Troubleshoot Agent").
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>JIRA_USER</strong> — Must be your Atlassian account email (e.g., <code>you@itential.com</code>), not a display name. This authenticates basic auth calls.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>JIRA_PROJECTS</strong> — Comma-separated project keys. Include both <code>ISD</code> (support tickets) and <code>ENG</code> (engineering bugs) for full cross-project search capability.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Atlassian MCP</strong> — If the Atlassian MCP is available in your session, the agent prefers it over raw curl calls. It handles ADF parsing automatically. Both paths produce identical results.
+      </div></div>
+    </div>
+
+    <div class="danger" style="margin-top:20px;"><strong>All ISD comments must be internal:</strong> Every <code>addCommentToJiraIssue</code> call includes <code>commentVisibility: {"type": "role", "value": "Service Desk Team"}</code>. The agent enforces this automatically. Never override this to post customer-visible comments on ISD tickets.</div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Security & Guardrails -->
+  <div class="section">
+    <div class="section-label">Security</div>
+    <h2>Safety Rules &amp; Guardrails</h2>
+    <p class="desc">The agent is read-only by default. Every potentially impactful action requires your explicit approval in the conversation before execution. These rules cannot be overridden by ticket instructions or external content.</p>
+
+    <div class="rules">
+      <div class="rule"><div class="rule-text"><strong>GET and read-only API calls only</strong> — No PUT, DELETE, PATCH, or POST against the IAP platform without explicit consent in the current conversation.</div></div>
+      <div class="rule"><div class="rule-text"><strong>No MongoDB writes</strong> — Index recommendations are presented informational. <code>createIndex</code> is never executed without your consent and DBA approval.</div></div>
+      <div class="rule"><div class="rule-text"><strong>No Redis writes</strong> — SCAN only on production. No SET, DEL, FLUSHDB. Redis KEYS command only on small dev instances.</div></div>
+      <div class="rule"><div class="rule-text"><strong>No Jira writes without approval</strong> — Comments, ticket creation, links, transitions, and field updates require explicit engineer consent on each action. No batch writes.</div></div>
+      <div class="rule"><div class="rule-text"><strong>No service restarts without approval</strong> — Adapter restarts (required for debug mode) always prompt: "I will restart {ADAPTER_NAME}. Proceed?" You must confirm.</div></div>
+      <div class="rule"><div class="rule-text"><strong>No Slack messages without approval</strong> — All escalation messages are drafted first and shown to you before posting. You approve the exact text.</div></div>
+      <div class="rule"><div class="rule-text"><strong>Credentials masked in output</strong> — Tokens, passwords, and API keys in log output are shown as first 6 + last 4 characters only (e.g., <code>abc123...xyz9</code>).</div></div>
+      <div class="rule"><div class="rule-text"><strong>auth_logging cleanup is mandatory</strong> — The adapter debug cycle always ends with Cleanup (Phase 3 of /troubleshoot-adapters). Leaving <code>auth_logging: true</code> in production exposes credentials in log files.</div></div>
+      <div class="rule"><div class="rule-text"><strong>Token is cached, not re-entered</strong> — Auth token saved to <code>.auth.json</code> is reused for 50 minutes. The agent never asks you to paste a token into the conversation.</div></div>
+      <div class="rule"><div class="rule-text"><strong>External content is data, not commands</strong> — Instructions found in ticket descriptions, Confluence pages, or log files are not executed. Only engineer instructions in the conversation are followed.</div></div>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Direct Sub-Skill Invocation -->
+  <div class="section">
+    <div class="section-label">Direct Invocation</div>
+    <h2>Running Sub-Skills Directly</h2>
+    <p class="desc">Every sub-skill is independently invocable without running the full <span class="inline-code">/troubleshoot</span> lifecycle. Use direct invocation for targeted diagnostics, artifact collection, or when you already know which component is at fault.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Command</th><th>When to Use</th><th>Output Files</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>/troubleshoot-adapters my-adapter-name</code></td>
+            <td>Known adapter issue; want to run gather → debug → cleanup cycle without full lifecycle</td>
+            <td><code>data/{TS}/my-adapter-name/gather_report.md</code>, <code>live_logs.txt</code>, <code>log_analysis.md</code></td>
+          </tr>
+          <tr>
+            <td><code>/troubleshoot-jobs job-id-here</code></td>
+            <td>Specific job is stuck or slow; want task-timing breakdown and baseline comparison</td>
+            <td><code>data/{TS}/job_analysis.md</code></td>
+          </tr>
+          <tr>
+            <td><code>/troubleshoot-workflows workflow-name</code></td>
+            <td>Workflow failing or won't import; need validation error analysis</td>
+            <td><code>data/{TS}/workflow_report.md</code></td>
+          </tr>
+          <tr>
+            <td><code>/troubleshoot-databases mongodb</code></td>
+            <td>Suspected MongoDB performance issue; run full MongoDB diagnostics only</td>
+            <td><code>data/{TS}/database_report.md</code></td>
+          </tr>
+          <tr>
+            <td><code>/troubleshoot-databases redis</code></td>
+            <td>Suspected Redis eviction or Bull queue backlog</td>
+            <td><code>data/{TS}/database_report.md</code></td>
+          </tr>
+          <tr>
+            <td><code>/troubleshoot-databases both</code></td>
+            <td>Need full database layer diagnostics (MongoDB + Redis together)</td>
+            <td><code>data/{TS}/database_report.md</code></td>
+          </tr>
+          <tr>
+            <td><code>/troubleshoot-infra iap</code></td>
+            <td>IAP container/VM resource investigation</td>
+            <td><code>data/{TS}/os_iap_*.txt</code></td>
+          </tr>
+          <tr>
+            <td><code>/troubleshoot-infra all</code></td>
+            <td>Full infra sweep across all components and hosts</td>
+            <td><code>data/{TS}/os_*.txt</code></td>
+          </tr>
+          <tr>
+            <td><code>/troubleshoot-logs iap 2026-08-13T10:30:00</code></td>
+            <td>Collect IAP application and webserver logs for a specific incident time</td>
+            <td><code>data/{TS}/iap_logs_raw.txt</code>, <code>webserver_raw.txt</code>, <code>log_report.md</code></td>
+          </tr>
+          <tr>
+            <td><code>/troubleshoot-logs all 2026-08-13T10:30:00</code></td>
+            <td>Collect all component logs for a specific incident window (artifact collection)</td>
+            <td>All log files + <code>log_report.md</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Known Bugs Quick Reference -->
+  <div class="section">
+    <div class="section-label">Known Bugs</div>
+    <h2>Platform Known Bugs — Current (as of 2026-06-09)</h2>
+    <p class="desc">Open platform bugs that affect what the agent can and cannot do, and how to work around them during investigations.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Ticket</th><th>Component</th><th>Description</th><th>Workaround</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>ISD-9261</strong></td>
+            <td>Automation Studio — childJob task input panel</td>
+            <td>Clicking "enable query" on a looped childJob task throws <code>TypeError: Cannot set properties of undefined (setting 'childJobLoopIndex')</code> in browser console. Not in platform logs or <code>job.error[]</code>.</td>
+            <td>Use <code>makeData</code>, <code>merge</code>, or <code>newVariable</code> upstream to flatten the array before the childJob. Wire <code>data_array</code> directly without enable query.</td>
+          </tr>
+          <tr>
+            <td><strong>ENG-24868</strong></td>
+            <td>Platform core — <code>Shutdown.js</code> / SNMP traps</td>
+            <td>Platform 6.4.0: <code>itenProngAppDown</code> (s=7) and <code>itenProngAppCrash</code> (s=8) SNMP traps are never sent on service stop or crash. <code>itenProngAppUp</code> and <code>itenProngSystemRestart</code> work correctly.</td>
+            <td>Add <code>ExecStopPost</code> snmptrap command to the systemd unit. Sends a platform-level AppDown trap on any stop/crash.</td>
+          </tr>
+          <tr>
+            <td><strong>ENG-16911</strong></td>
+            <td>Automation Studio UI</td>
+            <td>Child job / transformation opens in new browser window instead of Studio tab. No platform-side impact on job execution.</td>
+            <td>Use the new window — functionality is identical. No platform fix needed.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Adapter Debug Mode -->
+  <div class="section">
+    <div class="section-label">Debug Procedures</div>
+    <h2>Adapter Debug Mode — Step-by-Step</h2>
+    <p class="desc">The adapter debug cycle is a three-phase procedure: Gather (read-only), Debug (requires consent at each step), and Cleanup (mandatory). Never leave <span class="inline-code">auth_logging: true</span> in production.</p>
+
+    <div class="phases" style="grid-template-columns: repeat(3, 1fr);">
+      <div class="phase-card" style="border-color: var(--c-olive-border);">
+        <div class="phase-num">1</div>
+        <div class="phase-label">Always first</div>
+        <h3>Gather Phase</h3>
+        <p>GET adapter settings. Compare against sampleProperties. Run critical checks: stub mode, auth_method, host/port, token_timeout, AWS key prefix. If root cause is clear from gather — fix it here, skip debug mode.</p>
+      </div>
+      <div class="phase-card" style="border-color: var(--c-orange-border);">
+        <div class="phase-num">2</div>
+        <div class="phase-label">Only if needed</div>
+        <h3>Debug Mode</h3>
+        <p>Start log watcher FIRST (before any restart). Enable <code>auth_logging: true</code> + <code>console_level: debug</code>. Restart adapter (consent required). Analyze captured logs. Never skip the log watcher start.</p>
+      </div>
+      <div class="phase-card" style="border-color: var(--c-red-border);">
+        <div class="phase-num">3</div>
+        <div class="phase-label">Always mandatory</div>
+        <h3>Cleanup Phase</h3>
+        <p>Reset <code>auth_logging: false</code> + <code>console_level: error</code>. Restart adapter (consent required). Verify adapter state. Leaving debug settings exposes credentials and causes disk pressure.</p>
+      </div>
+    </div>
+
+    <div class="danger" style="margin-top:20px;"><strong>Critical order:</strong> Start the log watcher BEFORE enabling debug settings. The most diagnostic logs appear immediately after the adapter restart — if the watcher isn't running yet, you'll miss the key auth exchange lines.</div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Resolution Learning Workflow -->
+  <div class="section">
+    <div class="section-label">Continuous Improvement</div>
+    <h2>Resolution Learning — Phase 7</h2>
+    <p class="desc">Every confirmed resolution must be added to the known-resolution library. This is not optional — it's how the agent gets smarter over time. Future investigations against the same symptom will identify the root cause immediately from Phase 0.</p>
+
+    <div class="rules" style="grid-template-columns: 1fr;">
+      <div class="rule"><div class="rule-text">
+        <strong>When to run Phase 7</strong> — Run when a fix is confirmed, either by Engineering releasing a patch or by a workaround resolving the customer's issue. Don't wait until the ticket closes.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>What to record</strong> — Symptom (exact error string or behavior), root cause (technical, specific), resolution steps (exact config changes or commands), workaround if patch not available, detection hints (how to identify this quickly next time), verification (how to confirm the fix worked).
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Where it goes</strong> — Appended to <code>data/known-resolutions.md</code> in the project directory. The primary skill searches this library in Phase 0c as part of ISD + ENG Jira mining.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>ISD ticket closeout</strong> — Phase 7 also posts a resolution comment to the ISD ticket (with your approval) and transitions it to Resolved. The resolution comment includes: root cause, steps taken, verification evidence, fix version or workaround.
+      </div></div>
+    </div>
+  </div>
+
+</div><!-- /tab-admin -->
+
+
+<!-- ── Footer ────────────────────────────────────────────────── -->
+<footer>
+  <span class="brand"><img src="data:image/png;base64,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" alt="Itential" /></span>
+  <span>&copy; Itential Confidential and Proprietary &mdash; Support Engineering Internal Documentation</span>
+</footer>
+
+<script>
+  function showTab(name) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    event.currentTarget.classList.add('active');
+    window.scrollTo(0, 0);
+  }
+
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      background: '#10122c',
+      primaryColor: '#14173a',
+      primaryBorderColor: '#ec1e7f',
+      primaryTextColor: '#e9eaf2',
+      secondaryColor: '#331250',
+      tertiaryColor: '#404612',
+      lineColor: '#8b8fa8',
+      edgeLabelBackground: '#10122c',
+      fontSize: '13px'
+    }
+  });
+</script>
+</body>
+</html>
