@@ -247,6 +247,63 @@ Save to `{project_path}/data/{TIMESTAMP}/{ADAPTER_NAME}/gather_report.md`:
 
 If the gather report shows a clear misconfiguration (stub=true, wrong host, wrong auth_method), **present findings and ask the user if they want to fix it** before proceeding to debug mode.
 
+**Fix path — apply corrective settings (with engineer approval):**
+
+When root cause is identified from Phase 1 gather and the engineer approves the fix:
+
+```bash
+# Use the already-fetched settings as the base (avoid a redundant GET)
+# Only modify the identified misconfigured fields — never touch other fields
+python3 << 'EOF'
+import json
+
+with open('/tmp/{ADAPTER_NAME}_settings.json') as f:
+    settings = json.load(f)
+
+# Apply targeted fixes — only the fields identified in the gather report:
+# Examples (uncomment the applicable one(s)):
+# settings['stub'] = False                    # stub=true disabling
+# settings['token_timeout'] = 3600000         # -1 means never refresh
+# settings['ssl'] = {**settings.get('ssl',{}), 'enabled': True}
+# settings['host'] = '{CORRECT_HOST}'
+# settings['port'] = {CORRECT_PORT}
+
+with open('/tmp/{ADAPTER_NAME}_fixed.json', 'w') as f:
+    json.dump(settings, f)
+print("Fixed settings written — confirm fields before PUT:")
+for k in ['stub', 'host', 'port', 'ssl', 'auth_method', 'token_timeout']:
+    if k in settings:
+        print(f"  {k}: {settings[k]}")
+EOF
+
+# PUT the corrected settings (full replacement — confirm with engineer first)
+curl -sk -X PUT "{PLATFORM_URL}/adapters/{ADAPTER_NAME}?token={TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d @/tmp/{ADAPTER_NAME}_fixed.json \
+  | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+status = d.get('status', d.get('data', {}).get('status', '?'))
+print('Adapter status after PUT:', status)
+"
+
+# Restart adapter (requires explicit consent — prompt before running)
+curl -sk -X PUT "{PLATFORM_URL}/adapter-manager/adapters/{ADAPTER_NAME}/restart?token={TOKEN}" \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print('Restart:', d.get('message','?'))"
+
+# Verify ONLINE after restart (poll up to 30s)
+for i in $(seq 1 6); do
+  STATUS=$(curl -sk "{PLATFORM_URL}/adapter-manager/adapters/{ADAPTER_NAME}?token={TOKEN}" \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','?'))")
+  echo "[$i] Adapter status: $STATUS"
+  [ "$STATUS" = "ONLINE" ] && break || sleep 5
+done
+```
+
+> **Safe fields to fix without extra caution:** `stub`, `token_timeout`, `ssl.enabled`, `protocol`, `base_path`
+>
+> **Fields requiring extra confirmation:** `host`, `port`, `auth_method`, `credentials`, `ssl.ca` — pause and confirm each before applying
+
 ---
 
 ## Phase 2: Debug Mode — Live Log Capture
@@ -382,6 +439,46 @@ grep -i "error\|Error\|ERROR" \
 | `token expired` / `jwt expired` | Token refresh issue — check `token_timeout` |
 
 Save analysis to: `{project_path}/data/{TIMESTAMP}/{ADAPTER_NAME}/log_analysis.md`
+
+**Fix path — apply confirmed root cause fix before cleanup (with engineer approval):**
+
+When log analysis confirms a specific root cause, offer to apply the fix immediately — before Phase 3 cleanup — so the adapter comes back ONLINE in the same session:
+
+```bash
+# Determine fix by log pattern:
+
+# ── 401 / token expired ──────────────────────────────────────────────────────
+# Update credentials or fix token_timeout: GET → modify → PUT
+curl -sk "{PLATFORM_URL}/adapters/{ADAPTER_NAME}?token={TOKEN}" \
+  | python3 -c "
+import sys, json
+s = json.load(sys.stdin)
+# Fix: update auth credentials or set token_timeout to 3600000
+s['token_timeout'] = 3600000   # or update s['credentials'] fields
+print(json.dumps(s))
+" | curl -sk -X PUT "{PLATFORM_URL}/adapters/{ADAPTER_NAME}?token={TOKEN}" \
+  -H "Content-Type: application/json" -d @-
+
+# ── ECONNREFUSED / EHOSTUNREACH ───────────────────────────────────────────────
+# Verify host/port, update if wrong
+curl -sk "{PLATFORM_URL}/adapters/{ADAPTER_NAME}?token={TOKEN}" \
+  | python3 -c "
+import sys, json
+s = json.load(sys.stdin)
+s['host'] = '{CORRECT_HOST}'
+s['port'] = {CORRECT_PORT}
+print(json.dumps(s))
+" | curl -sk -X PUT "{PLATFORM_URL}/adapters/{ADAPTER_NAME}?token={TOKEN}" \
+  -H "Content-Type: application/json" -d @-
+
+# After fix PUT: restart adapter (with consent) and verify ONLINE
+curl -sk -X PUT "{PLATFORM_URL}/adapter-manager/adapters/{ADAPTER_NAME}/restart?token={TOKEN}"
+sleep 10
+curl -sk "{PLATFORM_URL}/adapter-manager/adapters/{ADAPTER_NAME}?token={TOKEN}" \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print('Status:', d.get('status','?'))"
+```
+
+> Apply only the single field confirmed by the log. Then proceed to **Phase 3 Cleanup** as normal — it will reset `auth_logging` and `console_level` regardless of whether a fix was applied here.
 
 ---
 

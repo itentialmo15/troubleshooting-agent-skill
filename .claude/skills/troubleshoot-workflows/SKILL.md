@@ -201,6 +201,39 @@ for tid, t in tasks.items():
 "
 ```
 
+**Fix path — missing error transition (with engineer approval):**
+
+When `⚠️ Task {name}: no error transition` is detected, offer to apply the fix via `/builder-agent`:
+
+```bash
+# GET current workflow definition
+curl -sk "{PLATFORM_URL}/workflow_builder/workflows/{WORKFLOW_ID}?token={TOKEN}" \
+  | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin), indent=2))" \
+  > /tmp/workflow_fix.json
+
+# Apply fix: add {"state": "error", "to": "workflow_end"} to identified task's transitions
+# (or route to a named error-handler task if one exists in the workflow)
+python3 << 'EOF'
+import json
+with open('/tmp/workflow_fix.json') as f:
+    wf = json.load(f)
+tasks = wf.get('tasks', {})
+TASK_ID = "{TASK_ID}"  # from detection above
+if TASK_ID in tasks:
+    tasks[TASK_ID].setdefault('transitions', {})['error'] = [{'to': 'workflow_end', 'condition': ''}]
+    print(f"Added error transition to task {TASK_ID}")
+with open('/tmp/workflow_fixed.json', 'w') as f:
+    json.dump(wf, f)
+EOF
+
+# PUT the corrected workflow (full replacement — confirm with engineer first)
+curl -sk -X PUT "{PLATFORM_URL}/workflow_builder/workflows/{WORKFLOW_ID}?token={TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d @/tmp/workflow_fixed.json | python3 -c "import sys,json; d=json.load(sys.stdin); print('Updated:', d.get('name','?'))"
+```
+
+> **Invoke `/builder-agent`** for complex workflows where multiple tasks need error transitions or where an explicit error-handler path (not just `workflow_end`) should be wired.
+
 ### Step 3c — Common Validation Error Patterns
 
 | Error | Root Cause | Fix |
@@ -211,6 +244,53 @@ for tid, t in tasks.items():
 | `No config found for Adapter: {name}` | `app` field set to instance name (not type name) | Set `app` = adapter type from `apps.json`, not instance name |
 | `$var reference unresolvable` | Variable name not defined in upstream task | Check source task output schema and variable name |
 | `Task ID contains non-hex characters` | Task ID like `apush` instead of hex | Regenerate task with valid hex ID |
+
+**Fix path — wrong `app` field (with engineer approval):**
+
+When `No config found for Adapter: {name}` is detected and the root cause is an instance name in the `app` field:
+
+```bash
+# Look up the correct type name from the platform
+curl -sk "{PLATFORM_URL}/adapter-manager/adapters?token={TOKEN}" \
+  | python3 -c "
+import sys, json
+adapters = json.load(sys.stdin)
+items = adapters.get('items', adapters) if isinstance(adapters, dict) else adapters
+for a in items:
+    print(a.get('id','?'), '→ type:', a.get('type','?'), '  instance:', a.get('name','?'))
+" 2>/dev/null | grep -i '{ADAPTER_NAME}'
+
+# GET workflow, fix app field in all affected tasks, PUT back
+curl -sk "{PLATFORM_URL}/workflow_builder/workflows/{WORKFLOW_ID}?token={TOKEN}" \
+  | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin), indent=2))" \
+  > /tmp/workflow_appfix.json
+
+python3 << 'EOF'
+import json
+with open('/tmp/workflow_appfix.json') as f:
+    wf = json.load(f)
+WRONG_APP = "{INSTANCE_NAME}"   # what's currently in the workflow
+CORRECT_APP = "{TYPE_NAME}"     # what it should be (from adapter type above)
+fixed = 0
+for tid, t in wf.get('tasks', {}).items():
+    actor = t.get('actor', {})
+    if actor.get('app') == WRONG_APP:
+        actor['app'] = CORRECT_APP
+        fixed += 1
+        print(f"  Fixed task {tid}: app {WRONG_APP!r} → {CORRECT_APP!r}")
+with open('/tmp/workflow_appfixed.json', 'w') as f:
+    json.dump(wf, f)
+print(f"Fixed {fixed} task(s). Wrote /tmp/workflow_appfixed.json")
+EOF
+
+# PUT corrected workflow (confirm with engineer first)
+curl -sk -X PUT "{PLATFORM_URL}/workflow_builder/workflows/{WORKFLOW_ID}?token={TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d @/tmp/workflow_appfixed.json \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print('Updated:', d.get('name','?'))"
+```
+
+> **Invoke `/builder-agent`** when multiple adapter types need fixing in the same workflow, or when the correct type name isn't obvious from the adapter list (Rule 3/23: `app` = type name, `adapter_id` = instance name).
 
 ---
 
@@ -271,6 +351,37 @@ const incoming = {/* paste from job task output */};
 "
 ```
 
+**Fix path — JST script correction (with engineer approval):**
+
+When the local `node -e` test confirms the corrected script works:
+
+```bash
+# GET current JST to confirm latest version
+curl -sk "{PLATFORM_URL}/transformations/{JST_ID}?token={TOKEN}" \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps(d.get('data',d), indent=2))" \
+  > /tmp/jst_current.json
+
+# Apply the corrected script (modify incoming_script or outgoing_script in place)
+python3 << 'EOF'
+import json
+with open('/tmp/jst_current.json') as f:
+    jst = json.load(f)
+# Replace with corrected script body:
+jst['incoming_script'] = """{CORRECTED_INCOMING_SCRIPT}"""
+with open('/tmp/jst_fixed.json', 'w') as f:
+    json.dump(jst, f)
+print("Script updated in /tmp/jst_fixed.json")
+EOF
+
+# PUT the corrected JST (confirm with engineer before executing)
+curl -sk -X PUT "{PLATFORM_URL}/transformations/{JST_ID}?token={TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d @/tmp/jst_fixed.json \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print('Updated JST:', d.get('name', d.get('data',{}).get('name','?')))"
+```
+
+> **Invoke `/builder-agent`** when the JST fix is more than a single-line correction — e.g., restructuring the transformation logic, handling multiple script sections, or when the fix needs to be applied alongside a workflow change.
+
 ---
 
 ## Phase 5: Workflow Import Failures
@@ -303,6 +414,58 @@ except json.JSONDecodeError as e:
 | Circular childJob references | Import succeeds but job hangs | Trace all childJob task `workflow` references |
 | Version conflict | `Workflow already exists` | Bump `version` field or delete existing |
 | Task IDs with non-hex characters | Workflow validates but `$var` refs silently fail | Ensure all task IDs are `[0-9a-f]{1,4}` |
+
+**Fix path — non-hex task ID repair (with engineer approval):**
+
+```bash
+# Detect and fix non-hex task IDs in a workflow file
+python3 << 'EOF'
+import json, re, random
+
+with open('{WORKFLOW_FILE}') as f:
+    wf = json.load(f)
+
+tasks = wf.get('tasks', {})
+non_hex = {tid: t for tid, t in tasks.items() if not re.fullmatch(r'[0-9a-f]{1,4}', tid)}
+if not non_hex:
+    print("All task IDs are valid hex — no fix needed")
+    exit(0)
+
+print(f"Found {len(non_hex)} non-hex task ID(s): {list(non_hex.keys())}")
+
+# Generate new hex IDs (4-char, unique within the workflow)
+existing_ids = set(tasks.keys())
+id_map = {}
+for old_id in non_hex:
+    new_id = format(random.randint(0, 0xFFFF), '04x')
+    while new_id in existing_ids:
+        new_id = format(random.randint(0, 0xFFFF), '04x')
+    id_map[old_id] = new_id
+    existing_ids.add(new_id)
+
+# Rebuild tasks dict with new IDs
+new_tasks = {}
+for tid, t in tasks.items():
+    new_tid = id_map.get(tid, tid)
+    new_tasks[new_tid] = t
+
+# Rewrite all $var.tasks.{old_id} references in transitions and variable_maps
+wf_str = json.dumps(wf)
+for old_id, new_id in id_map.items():
+    wf_str = wf_str.replace(f'"tasks.{old_id}"', f'"tasks.{new_id}"')
+    wf_str = wf_str.replace(f'tasks.{old_id}.', f'tasks.{new_id}.')
+wf = json.loads(wf_str)
+wf['tasks'] = new_tasks
+
+with open('/tmp/workflow_hex_fixed.json', 'w') as f:
+    json.dump(wf, f, indent=2)
+
+print(f"Renamed {len(id_map)} task ID(s): {id_map}")
+print("Fixed workflow written to /tmp/workflow_hex_fixed.json — retry import")
+EOF
+```
+
+> **Invoke `/builder-agent`** when the workflow has many tasks or complex variable wiring — it validates all `$var.tasks.{id}` references across transition conditions, variable_map entries, and childJob configs in a single pass.
 
 ### Step 5c — Check if Workflow Already Exists
 
@@ -423,3 +586,116 @@ Save to `{project_path}/data/{TIMESTAMP}/workflow_report.md`:
 | JST output is `null` | Missing `return` statement | Add `return result` to outgoing/incoming script |
 | ChildJob never completes | Parent job variable wiring issue | Check childJob task `variables` array format |
 | `Job has no available transitions` | No error transition on failed adapter task | Add `"state": "error"` transition to the task |
+| JSON Form dropdown not populating | REST binding endpoint or result path wrong | Run Phase 8 → invoke `/itential-json-forms` |
+| MOP `<!var!>` not rendering in output | Variable name mismatch or wrong template type | Run Phase 9 → invoke `/itential-mop` |
+| LCM action not updating instance state | Missing `instance` variable output or wrong model | Run Phase 10 → invoke `/itential-lcm` |
+
+---
+
+## Phase 8: JSON Form Issues
+
+Route here when the ticket involves a JSON Form asset — schema structure errors, REST-bound dropdowns not populating, trigger variable mismatches, or import failures on `jsonForm`-type components.
+
+### Step 8a — Identify the JSON Form
+
+```bash
+# List JSON forms by name
+curl -sk "{PLATFORM_URL}/form-builder/forms?name={FORM_NAME}&token={TOKEN}" \
+  | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+for f in d.get('items', []):
+    print(f.get('_id','?'), f.get('name','?'), '— schema keys:', list(f.get('schema',{}).get('properties',{}).keys())[:5])
+"
+```
+
+### Step 8b — Common JSON Form Failure Patterns
+
+| Symptom | Root Cause | Action |
+|---------|-----------|--------|
+| Form renders blank / no fields | `form[]` array out of sync with `schema.properties` | Reconcile form array vs schema |
+| Dropdown not loading options | REST binding `endpoint` wrong or `resultPath` doesn't match response | Verify endpoint with a direct curl |
+| Trigger variable not passed to workflow | `triggerVariable` name mismatch with workflow input | Match `triggerVariable` to workflow's first task `incoming` field |
+| Import rejected | `jsonForm` component missing required metadata fields | Check `_id`, `name`, `schema`, `form` fields present |
+
+### Step 8c — Invoke `/itential-json-forms`
+
+```
+/itential-json-forms
+```
+
+Provide: the exported form JSON, the specific error or symptom, and the target workflow's input schema. The skill will diagnose schema/binding issues and generate a corrected form definition.
+
+---
+
+## Phase 9: MOP Command Template Issues
+
+Route here when the ticket involves MOP (Method of Procedure) command templates — `<!var!>` variables not rendering, analytic template type mismatch, validation rule regex errors, or import failures on `mopCommandTemplate`/`mopAnalyticTemplate` components.
+
+### Step 9a — Identify the Template
+
+```bash
+# List MOP command templates
+curl -sk "{PLATFORM_URL}/mop-manager/command-templates?name={TEMPLATE_NAME}&token={TOKEN}" \
+  | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+for t in d.get('items', []):
+    print(t.get('_id','?'), t.get('name','?'), '— type:', t.get('type','?'))
+"
+```
+
+### Step 9b — Common MOP Template Failure Patterns
+
+| Symptom | Root Cause | Action |
+|---------|-----------|--------|
+| `<!var!>` appears literally in rendered output | Variable name mismatch or wrong delimiter | Verify `<!varName!>` exactly matches workflow variable name |
+| Analytic template not matching device output | `type` field wrong (`textfsm` vs `regex`) or pattern mismatch | Verify template type and pattern against real device output |
+| Validation rule rejects valid input | Regex error in `validationRule` field | Test regex independently with `node -e` |
+| Import rejected | Missing `type`, `content`, or `name` fields | Check all required MOP fields present |
+
+### Step 9c — Invoke `/itential-mop`
+
+```
+/itential-mop
+```
+
+Provide: the exported command template JSON, a sample of the device output (for analytic templates), and the specific rendering or validation error. The skill will diagnose and generate a corrected template.
+
+---
+
+## Phase 10: LCM Action Workflow Issues
+
+Route here when the ticket involves LCM (Lifecycle Management) — action workflows not updating instance state, resource model import failures, action workflows not correctly wired to the resource model, or missing `instance` variable pattern.
+
+### Step 10a — Identify the Resource Model
+
+```bash
+# List LCM resource models
+curl -sk "{PLATFORM_URL}/lifecycle-manager/resource-models?token={TOKEN}" \
+  | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+for m in d.get('items', []):
+    print(m.get('_id','?'), m.get('name','?'), '— actions:', [a.get('name') for a in m.get('actions',[])])
+"
+```
+
+### Step 10b — Common LCM Failure Patterns
+
+| Symptom | Root Cause | Action |
+|---------|-----------|--------|
+| Instance state not updating after action | Action workflow missing `instance` variable output | Add `instance` to workflow output, wired from input |
+| Action workflow not appearing in LCM UI | Workflow not wired to resource model action | Link workflow to action in resource model definition |
+| Resource model import rejected | Missing required `states`, `actions`, or `instanceSchema` fields | Verify against the canonical LCM project in `vendor/builder-skills/helpers/assets/lcm/` |
+| LCM action stuck in `running` | Action workflow has no error transition on external task | Apply Gap E fix path or invoke `/itential-lcm` |
+
+Reference: `vendor/builder-skills/helpers/assets/lcm/lcm-vxlan-fabric-services-project.json` — canonical example of correct `instance` variable pattern across 6 action workflows.
+
+### Step 10c — Invoke `/itential-lcm`
+
+```
+/itential-lcm
+```
+
+Provide: the resource model export, the action workflow export, the specific error or symptom, and the instance schema. The skill will diagnose wiring issues and generate corrected definitions.

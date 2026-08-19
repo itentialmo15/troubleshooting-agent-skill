@@ -1101,6 +1101,24 @@ docker exec apache-kafka kafka-topics.sh \
 
 ---
 
+## Constructive Fix Path — After Phase 3 Root Cause Confirmed
+
+When Phase 3 diagnosis confirms a root cause that is a **fixable asset issue** — not a platform bug requiring ENG escalation — offer to construct the fix using the appropriate builder-skill. Present the proposed fix to the engineer and wait for explicit approval before invoking.
+
+| Root cause type | builder-skill to invoke | Notes |
+|---|---|---|
+| Workflow structural issue (missing error transition, wrong `app` field, non-hex task IDs, broken childJob refs, bad variable wiring) | `/builder-agent` | Most common — covers 80%+ of workflow fixes |
+| JST script error (missing `return`, type mismatch, async code, null input) | `/builder-agent` | PUT corrected script after `node -e` test passes |
+| Jinja2 / TextFSM template syntax error | `/builder-agent` | Use `helpers/create/create-template-jinja2.json` or `create-template-textfsm.json` as scaffold |
+| JSON Form schema error or REST-bound dropdown issue | `/itential-json-forms` | Use `helpers/update/update-json-form.json` for full-replacement PUT |
+| MOP command template `<!var!>` resolution or analytic mismatch | `/itential-mop` | Use `helpers/create/create-command-template.json` and `helpers/update/update-command-template.json` |
+| LCM action workflow missing `instance` variable or unwired action | `/itential-lcm` | Reference `vendor/builder-skills/helpers/assets/lcm/lcm-vxlan-fabric-services-project.json` for the mandatory `instance` pattern |
+| IAG service definition failure (Python/Ansible/OpenTofu) | `/iag` | IAG 5 only — for IAG 4 issues escalate to ENG |
+
+**Safety rules still apply:** all platform writes (PUT, PATCH, POST to customer environment) require explicit engineer approval before execution. The builder-skill invocation does not bypass the troubleshooting agent's read-only-by-default rules. For production environments, always confirm the change is safe to apply before proceeding.
+
+---
+
 ## Phase 4: Reproduce the Issue
 
 Build a local environment that matches the customer's version and configuration to confirm the root cause.
@@ -1178,6 +1196,70 @@ until curl -sk http://localhost:3000/health 2>/dev/null | python3 -c "import sys
 done
 echo "Platform ready."
 ```
+
+### Step 4b.5 — Select and Import Reproduction Assets from builder-skills
+
+Before writing the repro steps, populate the Docker stack with the matching builder-skills template. Fetch directly from GitHub (always latest) — fall back to `vendor/builder-skills/` if offline.
+
+**Template selection by ticket context:**
+
+| Ticket type / adapter | GitHub path |
+|---|---|
+| Cisco IOS — Port Turn-Up, Upgrade, Compliance | `helpers/assets/vendor-cisco-ios.json` |
+| Juniper JunOS | `helpers/assets/vendor-juniper-junos.json` |
+| Arista EOS | `helpers/assets/vendor-arista-eos.json` |
+| NetBox integration | `helpers/assets/vendor-netbox.json` |
+| ServiceNow ITSM | `helpers/assets/vendor-servicenow.json` |
+| Infoblox NIOS DDI | `helpers/assets/vendor-infoblox-nios-ddi.json` |
+| Config management (backup/push/diff) | `helpers/assets/itential-platform-configuration-management.json` |
+| Data manipulation / JST | `helpers/assets/itential-platform-data-manipulation.json` |
+| Email adapter / notification | `helpers/assets/itential-platform-email.json` |
+| LCM action workflow | `helpers/assets/lcm/lcm-{domain}.json` |
+| No matching template | `helpers/create/create-workflow.json` (bare scaffold) |
+
+```bash
+# Fetch the matching template from upstream — always latest
+TEMPLATE_FILE="helpers/assets/{SELECTED_FILE}"
+BUILDER_SKILLS_RAW="https://raw.githubusercontent.com/itential/builder-skills/main"
+
+curl -sL "${BUILDER_SKILLS_RAW}/${TEMPLATE_FILE}" -o /tmp/repro-template.json 2>/dev/null
+if [ $? -ne 0 ] || [ ! -s /tmp/repro-template.json ]; then
+  echo "GitHub fetch failed — falling back to local vendor copy"
+  cp "vendor/builder-skills/${TEMPLATE_FILE}" /tmp/repro-template.json
+fi
+
+# Authenticate to the local Docker stack
+TOKEN=$(curl -sk -X POST "http://localhost:3000/login" \
+  -H "Content-Type: application/json" \
+  -d '{"user":{"username":"admin@pronghorn","password":"admin"}}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin).get('token',''))")
+
+# Import the template project into the Docker stack
+IMPORT_RESULT=$(curl -sk -X POST "http://localhost:3000/automation-studio/projects/import" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "{\"project\": $(cat /tmp/repro-template.json)}")
+
+PROJECT_ID=$(echo "${IMPORT_RESULT}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('_id',''))")
+echo "Imported project: ${PROJECT_ID}"
+
+# Patch project membership to allow engineer access (Rule 11a — mandatory after every import)
+# Get engineer's account ID first:
+ENGINEER_ID=$(curl -sk "http://localhost:3000/users?username=admin@pronghorn&token=${TOKEN}" \
+  | python3 -c "import sys,json; items=json.load(sys.stdin).get('users',[]); print(items[0]['_id'] if items else '')")
+
+curl -sk -X PATCH "http://localhost:3000/automation-studio/projects/${PROJECT_ID}" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "{\"members\": [{\"id\": \"${ENGINEER_ID}\", \"role\": \"admin\"}]}"
+echo "Membership patched."
+```
+
+If the failing scenario requires a **workflow repair or custom build** beyond the imported template, invoke `/builder-agent` with the ticket's root cause and the imported project as context. The builder-agent has full knowledge of task schemas, variable wiring rules, and import patterns.
+
+If the asset type is a **JSON Form, MOP command template, or LCM action workflow**, invoke the matching specialist skill (`/itential-json-forms`, `/itential-mop`, `/itential-lcm`) to construct or repair it within the Docker environment.
+
+---
 
 ### Step 4c — Reproduce the Specific Scenario
 
@@ -1583,16 +1665,18 @@ After each confirmed resolution, update the known-pattern routing table in Phase
 
 **Known Resolution Library** (grows over time):
 
-| Error / Symptom | Root Cause | Resolution | IAP Versions |
-|----------------|-----------|------------|-------------|
-| `token_timeout: -1` + IAG OFFLINE after first auth | Adapter never refreshes IAG token | Set `token_timeout` to `3600000` ms in adapter settings | All |
-| `No config found for Adapter: {name}` | `app` field in workflow task set to instance name, not type name | Fix `app` field to adapter type from `apps.json` | All |
-| `Job has no available transitions` | No error transition on adapter/external task | Add `"state": "error"` transition to task | All |
-| `stub: true` | Adapter in stub mode — no real API calls | Set `stub: false` in adapter settings | All |
-| WFE log > 500MB + slow jobs | `console_level: spam` generating excessive I/O | Set `console_level: error` in WFE app settings | All |
-| Jobs COLLSCAN + slow at scale | Missing `{status: 1}` index on jobs collection | Add index (with DBA consent): `db.jobs.createIndex({status:1})` | All |
-| `OOMKilled` container | Container memory limit too low for workload | Increase Docker memory limit for `platform` container | All |
-| `ASIA*` AWS key prefix + adapter OFFLINE | STS temporary credentials expired | Replace with long-lived IAM key (`AKIA` prefix) | All |
+| Error / Symptom | Root Cause | Resolution | builder-skill fix | IAP Versions |
+|----------------|-----------|------------|-------------------|-------------|
+| `token_timeout: -1` + IAG OFFLINE after first auth | Adapter never refreshes IAG token | Set `token_timeout` to `3600000` ms in adapter settings | `/troubleshoot-adapters` fix path (Gap I) — GET settings → set field → PUT | All |
+| `No config found for Adapter: {name}` | `app` field in workflow task set to instance name, not type name | Fix `app` field to adapter type from `apps.json` | `/builder-agent` — GET workflow → look up type name from apps.json → fix all tasks → PUT | All |
+| `Job has no available transitions` | No error transition on adapter/external task | Add `"state": "error"` transition to task | `/builder-agent` — GET workflow → add error transition to identified task → PUT | All |
+| `stub: true` | Adapter in stub mode — no real API calls | Set `stub: false` in adapter settings | `/troubleshoot-adapters` fix path (Gap I) — GET settings → set stub=false → PUT → restart | All |
+| `$var.tasks.{id}` resolves to `undefined` | Non-hex task ID on referenced task | Rename task ID to hex `[0-9a-f]{1,4}` | `/builder-agent` — GET workflow → regenerate hex IDs → rewrite all `$var.tasks.{old_id}` refs → PUT | All |
+| `childJob: Cannot find workflow: X` | childJob `workflow` field uses plain name; asset is project-scoped | Update to `@{projectId}: {name}` format | `/builder-agent` — GET parent workflow → fix childJob task `workflow` field → PUT | All |
+| WFE log > 500MB + slow jobs | `console_level: spam` generating excessive I/O | Set `console_level: error` in WFE app settings | Manual via platform admin settings | All |
+| Jobs COLLSCAN + slow at scale | Missing `{status: 1}` index on jobs collection | Add index (with DBA consent): `db.jobs.createIndex({status:1})` | `/troubleshoot-databases` — present index recommendation | All |
+| `OOMKilled` container | Container memory limit too low for workload | Increase Docker memory limit for `platform` container | `/troubleshoot-infra` — detect and report; manual config change | All |
+| `ASIA*` AWS key prefix + adapter OFFLINE | STS temporary credentials expired | Replace with long-lived IAM key (`AKIA` prefix) | `/troubleshoot-adapters` fix path — settings update | All |
 
 ---
 

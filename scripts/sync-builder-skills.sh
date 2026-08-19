@@ -47,17 +47,40 @@ CHANGELOG="${VENDOR_DIR}/SYNC_CHANGELOG.md"
 # entirely — this is the exact drift risk this script exists to catch.
 SPARSE_PATHS=(
   "/AGENTS.md"
+
+  # Workflow scaffold and project helpers
   "/helpers/create/create-workflow.json"
+  "/helpers/create/create-command-template.json"
+  "/helpers/create/create-template-jinja2.json"
+  "/helpers/create/create-template-textfsm.json"
+  "/helpers/create/create-json-form.json"
+  "/helpers/create/import-project.json"
+  "/helpers/create/create-lcm-resource-model.json"
+
+  # Update helpers (full-replacement PUT bodies)
+  "/helpers/update/update-command-template.json"
+  "/helpers/update/update-json-form.json"
+  "/helpers/update/update-node-config.json"
+
+  # Operation helpers
+  "/helpers/operations/add-components-to-project.json"
+  "/helpers/operations/run-compliance-plan.json"
+
+  # Platform core asset bundles
   "/helpers/assets/itential-platform-configuration-management.json"
   "/helpers/assets/itential-platform-data-manipulation.json"
   "/helpers/assets/itential-platform-email.json"
   "/helpers/assets/itential-platform-regex-operations.json"
+
+  # Vendor integration bundles
   "/helpers/assets/vendor-arista-eos.json"
   "/helpers/assets/vendor-cisco-ios.json"
   "/helpers/assets/vendor-infoblox-nios-ddi.json"
   "/helpers/assets/vendor-juniper-junos.json"
   "/helpers/assets/vendor-netbox.json"
   "/helpers/assets/vendor-servicenow.json"
+
+  # LCM resource models and backing workflow projects
   "/helpers/assets/lcm/lcm-fan-device-lifecycle-management.json"
   "/helpers/assets/lcm/lcm-interface-service-provisioning.json"
   "/helpers/assets/lcm/lcm-ip-blocking-service.json"
