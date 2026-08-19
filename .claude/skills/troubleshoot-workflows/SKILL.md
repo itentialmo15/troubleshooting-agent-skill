@@ -13,9 +13,10 @@ argument-hint: "[workflow name or job ID]"
 
 ## CRITICAL SAFETY RULES
 
-- **GET requests only** — no PUT, PATCH, POST, DELETE
+- **GET requests only** — no PUT, PATCH, POST, DELETE without explicit engineer approval
 - **Read `.env` for credentials** — never ask the user for credentials already in `.env`
 - **Never modify workflow definitions** without explicit user consent
+- **builder-skill invocations also use `.env`** — when invoking `/builder-agent` or other builder-skills for fixes or workarounds, the same `.env` is the credential source. Source it before invoking so the skill knows which platform to target.
 
 ---
 

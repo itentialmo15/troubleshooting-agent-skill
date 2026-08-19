@@ -17,6 +17,7 @@ argument-hint: "[adapter name]"
 - **Debug phase and Cleanup: PUT/restart require explicit user consent before each action**
 - **Always run Cleanup (Phase 3) after Debug (Phase 2)** — leaving `auth_logging: true` exposes credentials in logs
 - **Read `.env` for credentials** — never ask the user for credentials already in `.env`
+- **builder-skill invocations also use `.env`** — when invoking builder-skills for fixes or workarounds (after Phase 1 or Phase 2 confirms root cause), source `.env` before invoking so the skill targets the correct platform with the correct credentials
 
 ---
 

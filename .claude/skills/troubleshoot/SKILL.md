@@ -1117,6 +1117,39 @@ When Phase 3 diagnosis confirms a root cause that is a **fixable asset issue** �
 
 **Safety rules still apply:** all platform writes (PUT, PATCH, POST to customer environment) require explicit engineer approval before execution. The builder-skill invocation does not bypass the troubleshooting agent's read-only-by-default rules. For production environments, always confirm the change is safe to apply before proceeding.
 
+### Auth Context for builder-skill Invocations
+
+**Every builder-skill invocation — whether for a live customer fix or a workaround built on a reproduction environment — must use credentials sourced from `.env`.** Never hardcode credentials or pass credentials not already in `.env`.
+
+**Load the credentials block before invoking any builder-skill:**
+
+```bash
+# Source the project .env — this is the single source of truth for all platform auth
+set -a; source {project_path}/.env; set +a
+
+# Confirm which environment the builder-skill will target
+echo "Target: ${PLATFORM_URL}"
+echo "Auth:   ${AUTH_METHOD}"
+```
+
+**Two credential contexts — know which one to use:**
+
+| Context | `.env` to source | PLATFORM_URL |
+|---|---|---|
+| **Live customer fix** (Constructive Fix Path, Gaps D-J) | `{project_path}/.env` | Customer instance — e.g. `https://customer.itential.io` |
+| **Reproduction / workaround build** (Phase 4) | `{project_path}/repro/{ISD_TICKET_KEY}/.env` | Docker local — `http://localhost:3000` |
+
+When invoking a builder-skill, include this context in the invocation message so the skill knows which platform to target:
+
+```
+Target platform: ${PLATFORM_URL}
+Auth method: ${AUTH_METHOD}
+Credentials: from .env (CLIENT_ID/CLIENT_SECRET for OAuth, USERNAME/PASSWORD for local)
+Reuse session token if already authenticated (cached in .auth.json, valid for 50 min)
+```
+
+**If the fix requires a workaround first (before applying to customer):** use Phase 4 to build and validate the workaround against the reproduction Docker environment using the reproduction `.env`, then apply the validated fix to the customer environment using the customer `.env`. Do not apply an untested fix directly to production.
+
 ---
 
 ## Phase 4: Reproduce the Issue
@@ -1125,25 +1158,31 @@ Build a local environment that matches the customer's version and configuration 
 
 ### Step 4a — Scaffold Reproduction Environment
 
+The reproduction environment gets its **own isolated `.env`** under `repro/{ISD_TICKET_KEY}/`. This keeps Docker-local credentials separate from the customer credentials in the project root `.env`. All builder-skill invocations during Phase 4 use the reproduction `.env`; once validated, fixes are applied to the customer environment using the project root `.env`.
+
 ```bash
 # Create reproduction directory
 mkdir -p {project_path}/repro/{ISD_TICKET_KEY}/
 cd {project_path}/repro/{ISD_TICKET_KEY}/
 
-# Write .env from ticket context
+# Write reproduction .env — Docker-local credentials, separate from customer .env
 cat > .env << 'EOF'
 # Reproduction environment for {ISD_TICKET_KEY}
 # IAP version matching customer: {IAP_VERSION}
+# ⚠️  These are LOCAL Docker credentials — do NOT copy from customer .env
 PLATFORM_URL=http://localhost:3000
 AUTH_METHOD=password
 USERNAME=admin@pronghorn
 PASSWORD=admin
 
-# Fill in other vars as needed for the specific repro
+# Local infrastructure (Docker network)
 MONGO_URL=mongodb://localhost:27017/itential
 REDIS_HOST=localhost
 REDIS_PORT=6379
 EOF
+
+# The customer .env is at {project_path}/.env — do not use it here
+echo "Reproduction .env written. Customer .env is at {project_path}/.env (not used in Phase 4)."
 ```
 
 ### Step 4b — Version-Matched Docker Setup
