@@ -341,6 +341,8 @@ Escalation triggers:
 | Workflow `errors[]` not empty after import | Draft state — validation errors | Check each error entry, fix, re-PUT |
 | `$var` reference resolves to `undefined` | Non-hex task ID on the referenced task | Rename task ID to hex (`[0-9a-f]{1,4}`) |
 | childJob `Cannot find workflow: X` at runtime | childJob refs plain name but asset is project-scoped | Update `workflow` field to `@{projectId}: {name}` |
+| Workflow much slower after upgrade, no logic change (ISD-9500) | MongoDB `majority` write concern on a distributed/multi-site replica set forces cross-site secondary acks on every write | Change write concern to `w: 2`; also check Redis node health first |
+| New SSO accounts not created/authorized, group mapping mismatch vs. MongoDB (ISD-9506) | Missing group assignment for the user on the IdP (Azure AD) side — no group claim asserted at login | Check IdP-side group assignment first before assuming a Platform mapping bug; customer adds missing group in Azure AD |
 
 ---
 

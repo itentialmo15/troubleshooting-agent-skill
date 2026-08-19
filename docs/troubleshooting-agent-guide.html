@@ -105,6 +105,11 @@
       text-transform: uppercase; color: var(--pink);
       margin-bottom: 10px;
     }
+    .subsection-label {
+      font-size: 10px; font-weight: 700; letter-spacing: 1.2px;
+      text-transform: uppercase; color: var(--muted);
+      margin-bottom: 12px; margin-top: 8px;
+    }
     h2 {
       font-family: 'Oswald', sans-serif;
       font-size: 20px; font-weight: 700;
@@ -490,7 +495,7 @@
         <div class="phase-num">4</div>
         <div class="phase-label">Validation</div>
         <h3>Reproduce</h3>
-        <p>Scaffolds a version-matched Docker environment. Writes step-by-step reproduction doc with expected vs actual results. Saved to <span class="inline-code">repro/{ISD_KEY}/</span>.</p>
+        <p>Scaffolds a version-matched Docker environment. Imports production-ready workflow templates from <span class="inline-code">vendor/builder-skills/</span> to reconstruct the failing scenario without building from scratch. Writes step-by-step reproduction doc. Saved to <span class="inline-code">repro/{ISD_KEY}/</span>.</p>
       </div>
       <div class="phase-card">
         <div class="phase-num">5</div>
@@ -544,6 +549,7 @@ flowchart TD
     SS --> IF["/troubleshoot-infra<br/>CPU, memory,<br/>disk, EKS"]
     SS --> LG["/troubleshoot-logs<br/>Docker, SSH,<br/>K8s, CloudWatch"]
 
+    MAIN -->|"Phase 4"| BS["vendor/builder-skills/<br/>Workflow Templates<br/>Import to Docker stack"]
     MAIN -->|"Phase 5"| RPT["diagnostic_report.md<br/>ticket_context.md<br/>known_issues.md"]
     MAIN -->|"Phase 7"| RES["known-resolutions.md<br/>Resolution Library"]
 
@@ -560,6 +566,7 @@ flowchart TD
     style LG fill:#1a0808,stroke:#e84d4d,color:#e9eaf2
     style RPT fill:#0a1a0a,stroke:#b8c22e,color:#e9eaf2
     style RES fill:#0a1a0a,stroke:#b8c22e,color:#e9eaf2
+    style BS fill:#1a120a,stroke:#f27a1e,color:#e9eaf2
       </div>
     </div>
   </div>
@@ -607,6 +614,66 @@ flowchart TD
         <h3>/troubleshoot-logs</h3>
         <p>Log collection from IAP, IAG, MongoDB, Redis, and load balancers across Docker, SSH/VM, Kubernetes/EKS, and AWS CloudWatch. Filters by incident window. Masks sensitive values. Cross-component correlation.</p>
         <span class="tag">Docker</span><span class="tag">SSH</span><span class="tag">CloudWatch</span>
+      </div>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Builder Skills / Vendor Templates -->
+  <div class="section">
+    <div class="section-label">Reproduction Toolkit</div>
+    <h2>Vendor Workflow Templates — builder-skills</h2>
+    <p class="desc">Phase 4 (Reproduce the Issue) uses a curated, vendored library of production-ready Itential workflow templates from <span class="inline-code">vendor/builder-skills/</span>. Instead of building reproduction workflows from scratch, the agent imports these templates directly into the local Docker stack — spinning up a realistic scenario in minutes. The library is maintained upstream at <span class="inline-code">github.com/itential/builder-skills</span> and refreshed on demand via <span class="inline-code">scripts/sync-builder-skills.sh</span>.</p>
+
+    <div class="cards">
+      <div class="card t-orange">
+        <div class="icon">&#x2699;</div>
+        <h3>Platform Core Utilities</h3>
+        <p>Four importable projects covering the most common platform operations used in customer workflows: Configuration Management (backup, push, diff), Data Manipulation (21 transformations), Email (SMTP), and Regex Operations.</p>
+        <span class="tag">Config Mgmt</span><span class="tag">Data Manipulation</span><span class="tag">Email</span><span class="tag">Regex</span>
+      </div>
+      <div class="card t-blue">
+        <div class="icon">&#x1F4E6;</div>
+        <h3>Vendor Integrations</h3>
+        <p>Pre-built, platform-tested workflow bundles for common enterprise integrations. Import these into the repro Docker stack to reconstruct adapter-specific failures without hand-crafting payloads or guessing field names.</p>
+        <span class="tag">Cisco IOS</span><span class="tag">Juniper</span><span class="tag">Arista</span><span class="tag">NetBox</span><span class="tag">ServiceNow</span><span class="tag">Infoblox</span>
+      </div>
+      <div class="card t-purple">
+        <div class="icon">&#x1F504;</div>
+        <h3>LCM Resource Models</h3>
+        <p>Lifecycle Manager resource model exports and their backing workflow projects. Used to reproduce LCM action failures — fan device lifecycle, port turn-up, VXLAN fabric, IP blocking, interface provisioning. Import via the LCM endpoint, not Automation Studio.</p>
+        <span class="tag">LCM</span><span class="tag">Resource Models</span><span class="tag">Action Workflows</span>
+      </div>
+      <div class="card t-magenta">
+        <div class="icon">&#x1F5C2;</div>
+        <h3>Workflow Scaffold</h3>
+        <p><span class="inline-code">helpers/create/create-workflow.json</span> — the bare workflow scaffold with start/end tasks and correct structure. Used when the failing workflow must be rebuilt from scratch rather than imported from an existing template.</p>
+        <span class="tag">Scaffold</span><span class="tag">Phase 4</span>
+      </div>
+    </div>
+
+    <div style="margin-top: 24px;">
+      <div class="subsection-label">How Phase 4 Uses builder-skills</div>
+      <div class="rules">
+        <div class="rule"><div class="rule-text">
+          <strong>Identify the template</strong> — Based on ticket context (adapter type, workflow pattern, LCM action), the agent picks the matching <span class="inline-code">vendor/builder-skills/helpers/assets/</span> file that closest matches the customer's failing scenario.
+        </div></div>
+        <div class="rule"><div class="rule-text">
+          <strong>Import into the Docker stack</strong> — The selected JSON is POSTed to <span class="inline-code">POST /automation-studio/projects/import</span> on the local Docker IAP instance. This creates the project, workflows, templates, and transformations in one atomic call.
+        </div></div>
+        <div class="rule"><div class="rule-text">
+          <strong>Configure to match customer</strong> — Adapter instance names, host/port, auth settings are updated to mirror the customer's environment config (from ticket context and adapter gather phase).
+        </div></div>
+        <div class="rule"><div class="rule-text">
+          <strong>Trigger and capture</strong> — The failing workflow is run. The resulting job ID, error array, and logs are captured as reproduction evidence and attached to the ENG bug report.
+        </div></div>
+        <div class="rule"><div class="rule-text">
+          <strong>Keeping templates current</strong> — Run <span class="inline-code">scripts/sync-builder-skills.sh</span> to pull the latest from upstream. Review <span class="inline-code">git diff vendor/builder-skills/</span> before committing — never auto-apply without review.
+        </div></div>
+        <div class="rule"><div class="rule-text">
+          <strong>Manifest audit trail</strong> — <span class="inline-code">vendor/builder-skills/SYNC_MANIFEST.json</span> records the upstream commit SHA, branch, and sync timestamp. Always matches what's vendored so there's no ambiguity about template provenance.
+        </div></div>
       </div>
     </div>
   </div>
@@ -685,6 +752,13 @@ flowchart TD
       <div class="indent-2"><span class="dir">ISD-XXXX/</span></div>
       <div class="indent-3"><span class="file">repro_steps.md</span> <span class="comment">← reproduction steps + evidence (Phase 4)</span></div>
       <div class="indent-3"><span class="file">docker-compose.yml</span> <span class="comment">← version-matched stack (Phase 4)</span></div>
+      <div class="indent-1"><span class="dir">vendor/</span></div>
+      <div class="indent-2"><span class="dir">builder-skills/</span> <span class="comment">← vendored from github.com/itential/builder-skills</span></div>
+      <div class="indent-3"><span class="dir">helpers/assets/</span> <span class="comment">← importable workflow projects (platform + vendor integrations)</span></div>
+      <div class="indent-3"><span class="dir">helpers/assets/lcm/</span> <span class="comment">← LCM resource model exports + backing workflow projects</span></div>
+      <div class="indent-3"><span class="dir">helpers/create/</span> <span class="comment">← bare workflow scaffold (create-workflow.json)</span></div>
+      <div class="indent-3"><span class="file">SYNC_MANIFEST.json</span> <span class="comment">← upstream commit SHA + sync timestamp</span></div>
+      <div class="indent-3"><span class="file">SYNC_CHANGELOG.md</span> <span class="comment">← diff history per sync run</span></div>
       <div class="indent-1"><span class="file">.env</span> <span class="comment">← credentials (never committed to git)</span></div>
       <div class="indent-1"><span class="file">.auth.json</span> <span class="comment">← cached auth token (50 min TTL)</span></div>
     </div>
@@ -1227,6 +1301,46 @@ flowchart TD
           </tr>
         </tbody>
       </table>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Vendor Builder-Skills Sync -->
+  <div class="section">
+    <div class="section-label">Reproduction Toolkit</div>
+    <h2>Vendor Template Sync — builder-skills</h2>
+    <p class="desc">The <span class="inline-code">vendor/builder-skills/</span> directory holds a committed, sparse snapshot of production-ready workflow templates from the upstream <span class="inline-code">itential/builder-skills</span> repo. Phase 4 imports from this local copy — no network access to GitHub during investigations. Templates must be refreshed manually before Phase 4 work that needs current helpers.</p>
+
+    <div class="code-block"><pre><span class="comment"># Refresh vendored templates from upstream main branch</span>
+<span class="cmd">scripts/sync-builder-skills.sh</span>
+
+<span class="comment"># Or target a specific branch</span>
+<span class="cmd">scripts/sync-builder-skills.sh develop</span>
+
+<span class="comment"># After sync — review what changed before committing</span>
+<span class="cmd">git diff vendor/builder-skills/</span>
+<span class="cmd">cat vendor/builder-skills/SYNC_CHANGELOG.md</span></pre></div>
+
+    <div class="rules">
+      <div class="rule"><div class="rule-text">
+        <strong>Sparse checkout only</strong> — the sync script pulls only the specific paths the troubleshooting agent needs: <span class="inline-code">helpers/create/create-workflow.json</span>, <span class="inline-code">helpers/assets/*.json</span>, <span class="inline-code">helpers/assets/lcm/*.json</span>, and <span class="inline-code">AGENTS.md</span>. Never widened to the full repo.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Never auto-commit the sync</strong> — always run <span class="inline-code">git diff vendor/builder-skills/</span> after sync. The changelog surfaces which files changed upstream. Review for breaking changes (removed fields, renamed tasks) before relying on them in Phase 4.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Manifest is ground truth</strong> — <span class="inline-code">SYNC_MANIFEST.json</span> records <span class="inline-code">synced_commit</span>, <span class="inline-code">synced_commit_date</span>, and <span class="inline-code">synced_at</span>. If an ENG escalation references a workflow template, include the manifest's commit SHA as provenance.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Import path for Automation Studio assets</strong> — <span class="inline-code">POST /automation-studio/projects/import</span> with body <span class="inline-code">{"project": &lt;file contents&gt;}</span>. For LCM resource models: <span class="inline-code">POST /lifecycle-manager/resources/import</span>. Never use the Automation Studio endpoint for LCM files.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>What's in helpers/assets/</strong> — Platform utilities (Config Mgmt, Data Manipulation, Email, Regex), vendor integrations (Cisco IOS, Juniper JunOS, Arista EOS, NetBox, Infoblox NIOS DDI, ServiceNow), LCM models (VXLAN fabric, port turn-up, IP blocking, interface provisioning, fan device lifecycle). Each file is a complete importable project bundle.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>AGENTS.md context</strong> — The vendored <span class="inline-code">AGENTS.md</span> is the upstream builder-skills agent guide. Load it when Phase 4 needs patterns beyond the troubleshooting SKILL.md — it covers the full delivery lifecycle (spec → build → test) for workflow construction.
+      </div></div>
     </div>
   </div>
 

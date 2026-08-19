@@ -149,6 +149,73 @@ Add a task before the childJob that builds the array from the input object:
 
 ---
 
+### [ISD-9500] Workflow 30x slower after upgrade — MongoDB majority write concern on distributed cluster
+
+| Field | Value |
+|-------|-------|
+| **Ticket** | ISD-9500 |
+| **Component** | MongoDB (replica set write concern) + Redis (contributing factor) |
+| **Platform Version** | 6.4 (new build), regression vs. 22.1 |
+| **Severity** | Major — production workflow degraded from 3 seconds to 1.5 minutes |
+
+**Symptom:**
+Same workflow that completed in ~3 seconds on IAP 22.1 took ~1.5 minutes on a new Platform 6.4 build. The workflow logic was unchanged — only the platform version/environment differed.
+
+**Root Cause:**
+Two contributing issues, found in order:
+1. One Redis node in the cluster was down. Fixing this alone did not resolve the slowness.
+2. The real cause: MongoDB replica set was configured with a **`majority` write concern**. Because this is a **distributed, multi-site Mongo cluster**, every write had to wait for acknowledgment from secondaries across sites before returning — that cross-site round-trip was the actual source of the delay. This is not visible from the workflow or job data itself; it only shows up as generalized slowness across every task that writes job state.
+
+**Detection Hints:**
+- Symptom is "workflow got slower after a platform upgrade/rebuild" with **no logic change** — rules out the workflow itself
+- Reproduce the same workflow in a known-healthy environment (e.g., another Platform instance) — if it's fast there, the problem is environment/infra, not the workflow or the platform version's code
+- Check Redis cluster node health first (quick to rule in/out) — but don't stop there if slowness persists after fixing it
+- Check MongoDB replica set write concern configuration, especially on **multi-site/geo-distributed** clusters — `majority` forces cross-site secondary acknowledgment on every write
+
+**Resolution:**
+Change the MongoDB write concern from `majority` to `w: 2` (acknowledgment from 2 nodes, satisfiable locally without waiting on cross-site secondaries):
+```javascript
+// example — set at the connection/driver or replica set default level per your MongoDB deployment
+{ writeConcern: { w: 2 } }
+```
+
+**Verification:**
+1. Confirm Redis cluster shows all nodes healthy
+2. Confirm MongoDB write concern updated to `w: 2`
+3. Re-run the same workflow and confirm duration returns to baseline (~seconds, not minutes)
+
+**Resolved by:** David Haywood (2026-08-17), reproduced customer's exact workflow in his own P6.5 environment (2 seconds) to confirm the workflow itself was not the cause before pivoting to infra.
+
+---
+
+### [ISD-9506] New SSO accounts not created/authorized — group mapping mismatch vs. MongoDB
+
+| Field | Value |
+|-------|-------|
+| **Ticket** | ISD-9506 |
+| **Component** | SSO / IdP (Azure AD) — group-to-role provisioning |
+| **Platform Version** | Labs environment |
+| **Severity** | Blocking (Outage) — new users entirely unable to log in |
+
+**Symptom:**
+New SSO users could not log into the Itential environment. Accounts were not being authorized and not being created at all. Customer observed that SSO group mapping values did not match what existed in MongoDB.
+
+**Root Cause:**
+Customer-side misconfiguration, not a Platform bug — the affected users were missing the required group assignments in their **Azure AD** (IdP) tenant. Because the users weren't in the groups Itential's SSO integration expects, no group claim was asserted at login, so the platform had no group to map to a role and never provisioned/authorized the account. The "values that don't match Mongo" symptom is the visible effect of a claim that was never sent, not a Platform-side mapping bug.
+
+**Detection Hints:**
+- Symptom pattern: new SSO users fail to log in / accounts never get created, while existing users are unaffected — points at provisioning/group-claim issues rather than general SSO/auth breakage
+- Before assuming a Platform mapping bug, verify the affected users actually have the expected group assignments on the **IdP side** (Azure AD / Okta / etc.) — this is the first thing to check, ahead of comparing Platform `groups`/`roles` collections in MongoDB
+- Related: ENG-25981 (feature request for automatic SSO/IdP group-to-role mapping) confirms group→role mapping is a limited/manually-configured capability today — reinforces that config/assignment issues on the IdP side are the more likely cause vs. a platform defect
+
+**Resolution:**
+Customer added the missing group assignments for the affected users in Azure AD. No Platform-side change required.
+
+**Verification:**
+New SSO users with correct Azure AD group assignment could log in and were authorized/created successfully.
+
+---
+
 ### [Pattern] Adapter OFFLINE — token_timeout: -1
 
 | Field | Value |
@@ -301,3 +368,42 @@ db.jobs.createIndex({status: 1})
 **Root Cause:** childJob references the plain workflow name (`workflow: "MyWorkflow"`) but the asset is project-scoped after being added to a project. Project-scoped workflow names are prefixed with `@{projectId}: `.
 
 **Resolution:** Update `workflow` field to `@{projectId}: {name}` format to reference the project-scoped asset.
+
+---
+
+### [ISD-9502] Operations Manager jobs API — child job filtering and variable dereferencing limits
+
+| Field | Value |
+|-------|-------|
+| **Ticket** | ISD-9502 |
+| **Type** | Service Request (Labs) — API behavioral investigation |
+| **Component** | `GET /operations-manager/jobs` — query DSL and `dereference` parameter |
+| **Platform** | `p6.pe.itential.io` (tested empirically; OpenAPI spec does not document query params for this endpoint) |
+| **Severity** | S4 — No customer impact; Lab / API exploration |
+
+**Symptom (Question 1):**
+Customer expected `equals[ancestors]=<parentJobId>` to return only the immediate children of a job. It instead returns the full descendant subtree at any depth.
+
+**Root Cause (Q1 — `ancestors` semantics):**
+`ancestors` on every job document is an inclusive lineage array `[root, ..., self]`. Filtering `equals[ancestors]=<id>` matches every job whose lineage contains `<id>` — meaning every descendant at every depth, not just immediate children. `parent.job` (the actual immediate-parent pointer) is **not** in the `equals`-operator allowlist for this resource; all attempts to filter on `parent.job` via `equals[parent.job]`, `equals[parent][job]`, `in[parent.job]`, or `contains[parent.job]` are rejected with `"Parameter 'equals' received invalid property paths"`. Other operators (`regex`, `elemMatch`, `match`, `like`, `startsWith`) are silently no-ops on unknown fields.
+
+**Workaround (Q1):**
+Use `GET /operations-manager/jobs?equals[ancestors]=<parentJobId>` to retrieve the full subtree, then filter client-side on `parent.job === parentJobId` in the returned documents. The `parent` field is present in list-endpoint responses even though it cannot be used as a server-side filter.
+
+**Symptom (Question 2):**
+Variables returned by the list endpoint (`GET /operations-manager/jobs`) appear as `{"location": "job_data", "_id": "..."}` reference objects, not resolved values. Customer wanted a `dereference` parameter to inline them.
+
+**Root Cause (Q2 — `dereference` behavior):**
+The list endpoint's `dereference` parameter accepts only `tasks` as a valid target. Every other value (`true`, `variables`, `all`, `job_data`, `job-data`, `jobData`, `*`, `variables.*`, per-field paths like `variables.vip_ip`) is rejected with `"Unsupported dereference target(s)"`. `dereference=tasks` adds a `tasks` key to each result document but leaves `variables` as reference objects. The reference-object behavior is by design on the bulk list endpoint to avoid full-document expansion cost across potentially millions of rows.
+
+**Workaround (Q2):**
+Use `GET /operations-manager/jobs/{id}` (single-job-by-ID) for each job of interest. This endpoint always returns fully-resolved `variables` inline — no `dereference` parameter needed. It is the extra per-job API call the customer was trying to avoid, but it is the only confirmed path to inline variable values today.
+
+**Detection Hints (for future similar tickets):**
+- If a customer reports "job variables show as `{location: job_data, _id: ...}` objects" → they are hitting the list endpoint. Redirect to the single-job endpoint.
+- If a customer reports "filter only returns distant descendants, not just children" → they are relying on `ancestors` semantics. Redirect to client-side `parent.job` filtering.
+- These are API design limitations, not bugs. Enhancement requests for both are candidates for ENG backlog if customer need is strong.
+
+**Verification:**
+No platform-side fix. Confirm workarounds work for the customer's use case by testing `GET /operations-manager/jobs/{id}` and client-side `parent.job` filtering against their job set.
+
