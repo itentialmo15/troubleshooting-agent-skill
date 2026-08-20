@@ -474,6 +474,7 @@
   <button class="tab-btn active" onclick="showTab('overview')">&#9642; Overview &amp; Architecture</button>
   <button class="tab-btn" onclick="showTab('user')">&#9642; User Guide</button>
   <button class="tab-btn" onclick="showTab('admin')">&#9642; Admin Guide</button>
+  <button class="tab-btn" onclick="showTab('subskills')">&#9642; Sub-Skills Reference</button>
   <button class="tab-btn" onclick="showTab('contrib')">&#9642; Contribution</button>
 </div>
 
@@ -1758,7 +1759,395 @@ SSH_ROLE_1=iap</pre></div>
 </div><!-- /tab-admin -->
 
 <!-- ══════════════════════════════════════════════════════════════
-     TAB 4: CONTRIBUTION
+     TAB 4: SUB-SKILLS REFERENCE
+     ══════════════════════════════════════════════════════════════ -->
+<div id="tab-subskills" class="tab-content">
+
+  <div class="section">
+    <div class="section-label">Sub-Skills Reference</div>
+    <h2>Specialist Sub-Skills — How Each One Troubleshoots</h2>
+    <p class="desc">Each specialist sub-skill runs targeted platform diagnostics for a specific failure domain. The orchestrator routes to the right sub-skill based on symptom classification in Phase 2. Sub-skills authenticate themselves from <code>.env</code> — the orchestrator does not pre-authenticate on their behalf.</p>
+  </div>
+
+  <!-- ── /troubleshoot-triage ─────────────────────────── -->
+  <div class="section">
+    <h2 id="sk-triage">&#9632; /troubleshoot-triage — Ticket Understanding &amp; Triage</h2>
+    <p class="desc">Offline-only Phase 1 sub-skill. Works with Jira, Confluence, and local reference files only — no platform authentication required. Supports ISD, IPSO, and ENG ticket prefixes.</p>
+
+    <div class="cards" style="margin-bottom:24px;">
+      <div class="card t-magenta">
+        <div class="icon">TR</div>
+        <h3>ISD Tickets</h3>
+        <p>Full customer triage: SLA/support status, customer question list (5 categories), priority mismatch detection, Jira + Confluence mining, pre-investigation summary.</p>
+      </div>
+      <div class="card t-blue">
+        <div class="icon">IP</div>
+        <h3>IPSO / ENG Tickets</h3>
+        <p>Engineering triage: reproduction steps, failing code path, affected versions, workaround status. No SLA check. Drafts an ENG promotion ticket for engineer approval.</p>
+      </div>
+      <div class="card t-purple">
+        <div class="icon">AU</div>
+        <h3>--auto Mode</h3>
+        <p>Posts the question list as an internal ISD comment and writes all output files without human gates — suitable for scheduled/autonomous triage. ENG promotion always requires approval.</p>
+      </div>
+    </div>
+
+    <div class="rule-list">
+      <div class="rule-item">
+        <div class="rule-label">Step 1a</div>
+        <div class="rule-body">Read ticket via Atlassian MCP (<code>getJiraIssue</code>) — summary, description, status, priority, SLA, version, attachments, all comments.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Step 1b</div>
+        <div class="rule-body">Extract structured context → <code>ticket_context.md</code>: metadata block, environment details, problem statement, attachments list.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Step 1c</div>
+        <div class="rule-body">Platform support status: cross-reference IAP version against <code>product-capability-reference.md</code>. Flag EOL immediately. Pull Section 7 version-specific behavioral notes for Phase 2 context.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Step 1d</div>
+        <div class="rule-body">Mine similar Jira tickets (ISD + ENG) using error strings and component labels → <code>known_issues.md</code>. Compare ENG fix version against customer version.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Step 1e</div>
+        <div class="rule-body">Search Confluence — three CQL queries: error string, component runbooks, post-mortems → <code>confluence_references.md</code>.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Step 1f</div>
+        <div class="rule-body">Priority mismatch detection: scan description for "production down", "go-live blocked", "all users affected" signals. Escalate immediately if found — don't wait for Phase 4.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Step 1g</div>
+        <div class="rule-body">Generate engineer question list: Version &amp; Environment, Symptom Precision, Scope &amp; Reproduction, Recent Changes, Evidence Needed. Pre-fill answers already in ticket.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Step 1h</div>
+        <div class="rule-body">Pre-investigation summary → <code>pre-investigation-summary.md</code>: ticket identity, plain-English problem, initial hypothesis, known-issue match, investigation plan.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── /troubleshoot-workflows ─────────────────────────── -->
+  <div class="section">
+    <h2 id="sk-workflows">&#9632; /troubleshoot-workflows — Job &amp; Workflow Failures</h2>
+    <p class="desc">Diagnoses workflow execution failures: job errors, failing tasks, JST script exceptions, child workflow chains, and workflow import validation errors.</p>
+
+    <div class="cards" style="margin-bottom:24px;">
+      <div class="card t-orange">
+        <div class="icon">WF</div>
+        <h3>Job Error Analysis</h3>
+        <p>Fetches <code>job.error[]</code> array and reads <code>IAPerror.source</code> + <code>displayString</code> to identify whether the failure originated in a task, adapter call, JST, or childJob.</p>
+      </div>
+      <div class="card t-purple">
+        <div class="icon">JST</div>
+        <h3>JST Debugging</h3>
+        <p>Extracts the JavaScript Transformation script and the exact input that triggered the exception, then runs <code>node -e</code> locally to reproduce the error without touching the platform.</p>
+      </div>
+      <div class="card t-blue">
+        <div class="icon">CH</div>
+        <h3>ChildJob Chain</h3>
+        <p>Recursively fetches parent → child → grandchild job error arrays until it finds the origin error. Identifies which level introduced the failure.</p>
+      </div>
+    </div>
+
+    <div class="rule-list">
+      <div class="rule-item">
+        <div class="rule-label">Phase 1</div>
+        <div class="rule-body">Identify the workflow name, failing job ID, and error type (functional failure vs. import failure vs. stuck). Fetch the job record via <code>GET /operations-manager/jobs/{id}</code>.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Phase 2</div>
+        <div class="rule-body">Walk all tasks: show each task's status and output. Find the failing task, inspect its <code>task.error</code>. Read <code>IAPerror.source</code> to identify the originating component.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Phase 2 (JST)</div>
+        <div class="rule-body">If the failing task is a JavaScript Transformation: extract the script + the input object that triggered it. Run <code>node -e "const inp = {...}; ..."</code> locally to reproduce. No platform writes needed.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Phase 2 (childJob)</div>
+        <div class="rule-body">If the failing task spawned a child workflow: fetch child job error array recursively. Walk until finding the leaf-level task that actually failed.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Import failures</div>
+        <div class="rule-body">Fetch the workflow import validation response. Parse the error list: which task or transition is malformed, which required field is missing. Fix in the workflow JSON and re-import.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── /troubleshoot-adapters ─────────────────────────── -->
+  <div class="section">
+    <h2 id="sk-adapters">&#9632; /troubleshoot-adapters — Adapter OFFLINE / Auth Failures</h2>
+    <p class="desc">Three gated phases that diagnose and fix adapter connectivity. Engineer consent is required before entering debug mode, and cleanup (disabling auth_logging) is enforced before the session ends — regardless of findings.</p>
+
+    <div class="cards" style="margin-bottom:24px;">
+      <div class="card t-magenta">
+        <div class="icon">GA</div>
+        <h3>Phase 1 — Gather</h3>
+        <p>List all adapters with ONLINE/OFFLINE status. Fetch full settings JSON. Fetch <code>sampleProperties</code> from GitHub/npm (source of truth). Diff current settings vs. sample to find mismatches.</p>
+      </div>
+      <div class="card t-orange">
+        <div class="icon">DB</div>
+        <h3>Phase 2 — Debug Mode</h3>
+        <p>With engineer consent: set <code>auth_logging: true</code> + <code>console_level: debug</code> via PUT, restart adapter, capture live auth cycle logs to see exactly where OAuth or token exchange fails.</p>
+      </div>
+      <div class="card t-olive">
+        <div class="icon">CL</div>
+        <h3>Phase 3 — Cleanup</h3>
+        <p>Always reset <code>auth_logging: false</code> + <code>console_level: error</code> before ending. Enforced even if debug produced no findings — leaving auth_logging on exposes credentials in every log line.</p>
+      </div>
+    </div>
+
+    <div class="rule-list">
+      <div class="rule-item">
+        <div class="rule-label">Settings diff</div>
+        <div class="rule-body">Compares current adapter settings against <code>sampleProperties</code> for: <code>auth_method</code>, <code>token_timeout</code>, <code>auth_field</code>, <code>host</code>, <code>port</code>, <code>ssl.enabled</code>, <code>stub</code>. Flags <code>token_timeout: -1</code> immediately — no token refresh means adapter goes OFFLINE on next restart.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">PUT safety rule</div>
+        <div class="rule-body">Adapter PUT does not support partial updates. Always GET the current settings first, modify the specific field in-place, then PUT the full body. Never construct a PUT body from scratch.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Debug mode</div>
+        <div class="rule-body">Requires explicit engineer approval before enabling. Once enabled: restart adapter, make a test API call, capture the authentication exchange from logs. Disable debug mode immediately when done — do not leave the session without running cleanup.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Fix path</div>
+        <div class="rule-body">After root cause is confirmed: invoke builder-skill (Gap I/J) to construct a corrected settings payload. Present the diff to the engineer before any PUT to the adapter.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── /troubleshoot-jobs ─────────────────────────────── -->
+  <div class="section">
+    <h2 id="sk-jobs">&#9632; /troubleshoot-jobs — Stuck &amp; Slow Jobs</h2>
+    <p class="desc">Two investigation paths chosen at the start based on the symptom: performance regression (slow) or execution failure (stuck/errored). Path A profiles task-level timing; Path B walks the parent–child job chain.</p>
+
+    <div class="cards" style="margin-bottom:24px;">
+      <div class="card t-blue">
+        <div class="icon">SL</div>
+        <h3>Path A — Slow Jobs</h3>
+        <p>Profiles each task's duration. Pulls 5–10 prior healthy runs of the same workflow from MongoDB for baseline. Diffs task timings to isolate which task regressed. Checks concurrent job load to distinguish resource contention from a single-task regression.</p>
+      </div>
+      <div class="card t-red">
+        <div class="icon">ST</div>
+        <h3>Path B — Stuck / Errored</h3>
+        <p>Confirms true stall (task <code>start_time</code> vs. now — >10 min with no progress). Walks parent → child → grandchild chain for error arrays. Checks adapter and application health. Cross-correlates IAP/IAG/MongoDB/Redis logs in the incident window.</p>
+      </div>
+    </div>
+
+    <div class="rule-list">
+      <div class="rule-item">
+        <div class="rule-label">Slow baseline</div>
+        <div class="rule-body">MongoDB query: find prior runs of the same workflow, extract per-task timing. Build a timing baseline table (median duration per task across healthy runs). Diff the slow run against the baseline row-by-row to find the regressed task.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Contention check</div>
+        <div class="rule-body">Count concurrent jobs/tasks running during the slow run's time window. If contention was high on the day of the slow run but not the baseline, root cause is resource exhaustion rather than a single-task regression.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">True-stall test</div>
+        <div class="rule-body">A task marked "running" is not necessarily stuck. Compare <code>task.start_time</code> to now — if >10 min with no output updates, it is a true stall. Adapter or application down at the same time is the usual cause.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Chain traversal</div>
+        <div class="rule-body">Walk all parent → child → grandchild job IDs recursively. Each level's <code>job.error[]</code> array is inspected. Origin error is at the deepest level that shows an error where the parent level shows none.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── /troubleshoot-databases ─────────────────────────── -->
+  <div class="section">
+    <h2 id="sk-databases">&#9632; /troubleshoot-databases — MongoDB &amp; Redis</h2>
+    <p class="desc">Read-only diagnostics for the data layer. MongoDB path covers connection saturation, replica set health, slow queries, and missing indexes. Redis path covers memory pressure, eviction policy, and Bull queue depth.</p>
+
+    <div class="cards" style="margin-bottom:24px;">
+      <div class="card t-purple">
+        <div class="icon">MG</div>
+        <h3>MongoDB</h3>
+        <p>Ping → server status (connections, opcounters) → replica set lag → <code>currentOp</code> slow queries (>2s) → collection sizes → slow query log → COLLSCAN / index analysis.</p>
+      </div>
+      <div class="card t-red">
+        <div class="icon">RD</div>
+        <h3>Redis</h3>
+        <p><code>INFO all</code>: memory, eviction policy, hit/miss ratio → Bull queue depths → blocked clients. Flags <code>allkeys-lru</code> eviction as dangerous for IAP (can silently evict job state).</p>
+      </div>
+      <div class="card t-blue">
+        <div class="icon">EC</div>
+        <h3>ElastiCache</h3>
+        <p>CloudWatch metrics for managed Redis: <code>DatabaseMemoryUsagePercentage</code>, <code>CurrConnections</code>, <code>Evictions</code>, <code>CacheHits</code>/<code>CacheMisses</code>.</p>
+      </div>
+    </div>
+
+    <div class="rule-list">
+      <div class="rule-item">
+        <div class="rule-label">Connection saturation</div>
+        <div class="rule-body">Check <code>connections.current</code> vs. <code>connections.available</code> in <code>serverStatus</code>. If available is &lt;10% of current, IAP will start seeing connection refusals — connection pool or MongoDB <code>maxIncomingConnections</code> needs adjustment.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Replica set lag</div>
+        <div class="rule-body"><code>rs.status()</code> — check each secondary member's <code>optimeDate</code> lag vs. primary. Lag &gt;10s means reads from secondaries return stale data. IAP workflows reading from a lagged secondary can see "not found" for recently written jobs.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">COLLSCAN detection</div>
+        <div class="rule-body"><code>db.currentOp()</code> filtered for <code>secs_running &gt; 2</code>. If <code>planSummary</code> shows <code>COLLSCAN</code>, the query is doing a full collection scan — the index for that query pattern is missing.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Bull queue depth</div>
+        <div class="rule-body">Check queue depths for all IAP Bull queues (<code>KEYS bull:*:waiting</code>). A backed-up queue means jobs can't get WFE workers. Root cause is usually insufficient WFE replicas or a blocked worker consuming no items.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Redis eviction risk</div>
+        <div class="rule-body"><code>maxmemory-policy: allkeys-lru</code> is dangerous for IAP — Redis can silently evict job state keys under memory pressure. Policy should be <code>noeviction</code> or <code>volatile-lru</code> (only evicts keys with TTL set).</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── /troubleshoot-infra ─────────────────────────────── -->
+  <div class="section">
+    <h2 id="sk-infra">&#9632; /troubleshoot-infra — CPU / Memory / Disk / Containers / EKS</h2>
+    <p class="desc">Infrastructure diagnostics across all deployment types: Docker Compose, SSH/VM, and Kubernetes/EKS. Identifies OOMKilled containers, disk exhaustion, file descriptor limits, and network connectivity breaks between components.</p>
+
+    <div class="cards" style="margin-bottom:24px;">
+      <div class="card t-orange">
+        <div class="icon">DC</div>
+        <h3>Docker / Container</h3>
+        <p><code>docker ps -a</code> for restarts + OOMKilled + non-zero exit codes. <code>docker stats</code> for live CPU% and memory usage/limit. Disk: <code>docker system df</code> + log directory sizes.</p>
+      </div>
+      <div class="card t-blue">
+        <div class="icon">VM</div>
+        <h3>SSH / VM</h3>
+        <p>Parallel SSH collection across all <code>SSH_ROLE_N=iap</code> hosts. CPU load average, top processes, swap usage, <code>/proc/{PID}/limits</code> for file descriptor ceiling.</p>
+      </div>
+      <div class="card t-purple">
+        <div class="icon">EK</div>
+        <h3>Kubernetes / EKS</h3>
+        <p><code>kubectl top nodes</code> / <code>kubectl top pods</code>, node pressure conditions, pod OOMKilled history, PVC usage. Flags node DiskPressure and MemoryPressure immediately.</p>
+      </div>
+    </div>
+
+    <div class="rule-list">
+      <div class="rule-item">
+        <div class="rule-label">OOMKill detection</div>
+        <div class="rule-body">Docker: <code>docker inspect {container} | jq '.[].State.OOMKilled'</code>. K8s: <code>kubectl describe pod</code> shows <code>OOMKilled</code> in the last state. IAP or MongoDB getting OOMKilled is the most common cause of intermittent job failures.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Disk threshold</div>
+        <div class="rule-body"><code>df -h</code> — disk &gt;85% on root or MongoDB data directory is flagged critical. IAP log directories fill fast under high job volume. <code>find /var/log/itential -name "*.log" -size +500M</code> identifies candidates for rotation.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">File descriptors</div>
+        <div class="rule-body">FD exhaustion causes MongoDB connection failures silently (IAP sees "connection refused" with no memory pressure). Check <code>cat /proc/{pid}/limits</code> for the hard FD limit and <code>ls /proc/{pid}/fd | wc -l</code> for current count.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Network connectivity</div>
+        <div class="rule-body">Tests: IAP → MongoDB (<code>nc -zv {MONGO_HOST} 27017</code>), IAP → Redis (<code>nc -zv {REDIS_HOST} 6379</code>), IAP → IAG health endpoint. Firewall rule changes in the 48h before the incident are the most common cause of sudden connectivity breaks.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── /troubleshoot-logs ─────────────────────────────── -->
+  <div class="section">
+    <h2 id="sk-logs">&#9632; /troubleshoot-logs — Log Collection &amp; Cross-Component Correlation</h2>
+    <p class="desc">Pure collection and analysis — no platform API writes. Discovers log paths, collects from the deployment's log surfaces (Docker exec, SSH parallel, kubectl/stern, CloudWatch), filters to the incident window, and correlates timestamps across IAP, IAG, MongoDB, and Redis to find the origin failure.</p>
+
+    <div class="cards" style="margin-bottom:24px;">
+      <div class="card t-magenta">
+        <div class="icon">CO</div>
+        <h3>Collect</h3>
+        <p>Discovers log paths from IAP application properties API. Collects by deployment: Docker exec, SSH parallel across all <code>SSH_ROLE_N=iap</code> hosts, <code>kubectl logs</code>/<code>stern</code>, or CloudWatch Logs.</p>
+      </div>
+      <div class="card t-blue">
+        <div class="icon">FI</div>
+        <h3>Filter</h3>
+        <p>Greps to the incident date/window. Filters for <code>error</code>/<code>warn</code>/<code>exception</code>/<code>FATAL</code> lines. Masks sensitive values: tokens and passwords shown as first 6 + last 4 characters only.</p>
+      </div>
+      <div class="card t-olive">
+        <div class="icon">CR</div>
+        <h3>Correlate</h3>
+        <p>Aligns IAP + IAG + MongoDB + Redis log lines by UTC timestamp. Produces a cross-component event timeline to find the exact sequence — e.g., Redis timeout at T+0 → Bull queue error T+2 → job stuck T+5.</p>
+      </div>
+    </div>
+
+    <div class="rule-list">
+      <div class="rule-item">
+        <div class="rule-label">Phase 1</div>
+        <div class="rule-body">Triage: identify which components are involved, establish the incident time window (UTC), and confirm the deployment type (Docker / K8s / VM / SaaS).</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Phase 2 — IAP</div>
+        <div class="rule-body">Collect IAP application logs. Docker: <code>docker exec {iap} cat /var/log/itential/app.log</code>. SSH: parallel collection across all IAP hosts. K8s: <code>kubectl logs {pod} --since=2h</code> or <code>stern {pod-selector}</code>. CloudWatch: query log group by incident window.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Phase 3–5</div>
+        <div class="rule-body">Repeat collection for IAG, MongoDB (mongod.log), and Redis (redis.log / CloudWatch). Each component's logs are saved separately to <code>data/{TIMESTAMP}/{ISD}/logs/</code>.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Phase 6 — LB logs</div>
+        <div class="rule-body">Load balancer access logs (ALB / nginx): look for 502/504 errors, connection timeouts, and upstream response times in the incident window. Confirms whether failures started at the edge (LB → IAP) or deeper (IAP → backend).</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Phase 7 — Correlation</div>
+        <div class="rule-body">Sort all log lines across components by UTC timestamp. Identify the first error in the merged timeline — that component is the origin. All subsequent errors in other components are downstream effects. Produces a correlation report attached to the Jira ticket.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Sensitive data masking</div>
+        <div class="rule-body">All log output shown to the engineer has tokens and passwords masked: first 6 characters + "..." + last 4. Full values are never echoed in session output. This applies even when the log file itself contains the full value.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick reference routing table -->
+  <div class="section">
+    <h2 id="sk-routing">Sub-Skill Routing Quick Reference</h2>
+    <p class="desc">Use this table to identify which sub-skill to invoke in Phase 2 based on the primary symptom.</p>
+    <table style="width:100%;border-collapse:collapse;margin-top:16px;">
+      <thead>
+        <tr style="border-bottom:2px solid var(--pink);text-align:left;">
+          <th style="padding:10px 14px;color:var(--pink-soft);font-family:'Oswald',sans-serif;text-transform:uppercase;font-size:12px;">Symptom</th>
+          <th style="padding:10px 14px;color:var(--pink-soft);font-family:'Oswald',sans-serif;text-transform:uppercase;font-size:12px;">Sub-Skill</th>
+          <th style="padding:10px 14px;color:var(--pink-soft);font-family:'Oswald',sans-serif;text-transform:uppercase;font-size:12px;">First Thing It Does</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:10px 14px;">Workflow job failed / task error</td>
+          <td style="padding:10px 14px;"><code>/troubleshoot-workflows</code></td>
+          <td style="padding:10px 14px;">Fetch <code>job.error[]</code>, read <code>IAPerror.source</code></td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border);background:rgba(255,255,255,.03);">
+          <td style="padding:10px 14px;">Adapter OFFLINE or returning wrong data</td>
+          <td style="padding:10px 14px;"><code>/troubleshoot-adapters</code></td>
+          <td style="padding:10px 14px;">List all adapters, diff settings vs. sampleProperties</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:10px 14px;">Job stuck (running for hours) or slow</td>
+          <td style="padding:10px 14px;"><code>/troubleshoot-jobs</code></td>
+          <td style="padding:10px 14px;">Slow→baseline comparison; Stuck→true-stall check</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border);background:rgba(255,255,255,.03);">
+          <td style="padding:10px 14px;">MongoDB / Redis errors or slowness</td>
+          <td style="padding:10px 14px;"><code>/troubleshoot-databases</code></td>
+          <td style="padding:10px 14px;">Ping → serverStatus → currentOp / INFO all</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:10px 14px;">OOMKill, disk full, CPU spike, pod crash</td>
+          <td style="padding:10px 14px;"><code>/troubleshoot-infra</code></td>
+          <td style="padding:10px 14px;"><code>docker ps -a</code> / <code>kubectl describe pod</code> / <code>df -h</code></td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border);background:rgba(255,255,255,.03);">
+          <td style="padding:10px 14px;">Need logs for RCA or escalation</td>
+          <td style="padding:10px 14px;"><code>/troubleshoot-logs</code></td>
+          <td style="padding:10px 14px;">Collect IAP → IAG → MongoDB → Redis → LB, correlate by timestamp</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</div><!-- /tab-subskills -->
+
+<!-- ══════════════════════════════════════════════════════════════
+     TAB 5: CONTRIBUTION
      ══════════════════════════════════════════════════════════════ -->
 <div id="tab-contrib" class="tab-content">
 
