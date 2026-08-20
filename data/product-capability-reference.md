@@ -297,3 +297,15 @@ Released: **2026-05-13** (on-prem) / **2026-05-21** (cloud)
 | Task dialog won't open (22.x → P6 migration) | Missing `location` field on hand-authored tasks | Add `"location": "Application"` to affected tasks; platform fix: v8 migration (ENG-22105) |
 | childJob parent stuck waiting forever | WFE memory spike (ENG-22494) | Fixed in Platform 6.4.0 |
 | Enable query crashes on childJob | `childJobLoopIndex` TypeError (ISD-9261) | Workaround: use `makeData`/`merge`/JST upstream instead |
+
+---
+
+## 7. Version-Specific Behavioral Differences
+
+**How to use:** Read this section in Phase 1 Step 1c after determining support status. For each row matching the customer's IAP version, extract the "What Does NOT Apply / Exist" and "Diagnostic Impact" and append them to `ticket_context.md` under a `## Version-Specific Behavioral Notes` block. Include these notes in the pre-investigation summary (Step 1h) and pass them to any sub-skill invocations in Phase 2.
+
+**Adding entries:** Append a row per behavioral difference discovered during any investigation. Version range uses exact version (`23.2.x`), a bound (`< 6.0`, `6.x+`), or a release window (`23.2.x – 2023.1.x`). One row = one behavioral fact. These are proactive facts — not symptom-driven gotchas (those go in Section 6).
+
+| Version Range | Component | What Applies | What Does NOT Apply / Exist | Diagnostic Impact |
+|---|---|---|---|---|
+| 23.2.x | Platform configuration | `services` array per profile in platform config controls which services start for that profile | `/etc/platform/properties` — this file does not exist in 23.2 deployments | Do not look for, reference, or attempt to read `/etc/platform/properties` when diagnosing 23.2 systems; use the platform config API (`GET /api/v2.0/platform/config`) to inspect service and profile settings instead |

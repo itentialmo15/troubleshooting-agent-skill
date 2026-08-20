@@ -320,14 +320,12 @@ Save to `{project_path}/data/{TIMESTAMP}/ticket_context.md`.
 
 ---
 
-### Step 1c — Platform Support Status Check
+### Step 1c — Platform Support Status Check & Version-Specific Behavioral Notes
 
-Cross-reference the IAP version from the ticket against `data/product-capability-reference.md`:
+Read `data/product-capability-reference.md` and run both checks against the customer's IAP version (from ticket fields or description):
 
+**Part A — Support Status (Section 1 of reference)**
 ```
-Read data/product-capability-reference.md
-Find the row matching the customer's IAP version (from ticket fields or description).
-
 Determine support status:
   - Version in active support (current GA or prior minor) → note inline, continue
   - Version in maintenance only → warn: "⚠️ IAP {version} is in maintenance-only support.
@@ -338,7 +336,29 @@ Determine support status:
   - Version not found in reference → note as "support status unverified — check support.itential.com"
 ```
 
-Append the support status determination to `ticket_context.md` alongside the version field.
+**Part B — Version-Specific Behavioral Notes (Section 7 of reference)**
+```
+Scan Section 7 "Version-Specific Behavioral Differences" for rows whose Version Range matches
+the customer's IAP version. For each match, extract:
+  - Component
+  - What Applies
+  - What Does NOT Apply / Exist
+  - Diagnostic Impact
+```
+
+If any rows match, append a block to `ticket_context.md`:
+
+```markdown
+## Version-Specific Behavioral Notes (from product-capability-reference.md Section 7)
+- [{version}] {Component}: {What Does NOT Apply / Exist} — {Diagnostic Impact}
+- [{version}] {Component}: {What Applies}
+```
+
+**No Section 7 matches → no block needed.** Do not add the heading if nothing matched.
+
+**These notes must be included in:**
+1. The pre-investigation summary (Step 1h) — engineers need to see them before Phase 2
+2. Any sub-skill invocation message in Phase 2 — so sub-skills don't run diagnostic steps that don't apply to this version
 
 ---
 
@@ -610,6 +630,9 @@ but never refreshes the token. Common with IAG adapters."}
 
 **Known issue match:**
 {ENG-XXXX (fix in vX.Y.Z, workaround: ...) | No matching ticket found}
+
+**Version-specific behavioral notes:** *(omit section if none)*
+- [{version}] {Component}: {What does NOT exist / apply} — {Diagnostic impact}
 
 **Investigation plan:**
 1. Phase 2 — Route to {specific sub-skill} because {reason from hypothesis}
