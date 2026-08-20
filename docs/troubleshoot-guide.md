@@ -4,6 +4,75 @@ The `/troubleshoot` skill is an AI-powered, full-stack support engineer built in
 
 ---
 
+## Quick Start
+
+### Step 1 — Install Claude Code
+
+Claude Code is the CLI that runs skills. Install it with npm:
+
+```bash
+npm install -g @anthropic-ai/claude-code
+```
+
+Requires **Node.js 18+**. Verify:
+
+```bash
+node --version   # must be 18.0.0 or higher
+claude --version
+```
+
+### Step 2 — Log in to Claude
+
+```bash
+claude login
+```
+
+This opens your browser to authenticate with your Anthropic account. You will need:
+- An [Anthropic Console](https://console.anthropic.com) account, **or**
+- An enterprise SSO login if your organization uses Claude through Itential's license
+
+Once authenticated, your session is stored locally — you stay logged in across terminal sessions.
+
+> **Itential team members:** use your `@itential.com` Google account via SSO on the Anthropic Console login page.
+
+### Step 3 — Clone the Skills Repo
+
+```bash
+git clone https://github.com/itentialmo15/troubleshooting-agent-skill.git
+cd troubleshooting-agent-skill
+```
+
+> The skills live in `.claude/skills/` — Claude Code discovers them automatically when you run `claude` from inside this directory.
+
+### Step 4 — Create Your `.env`
+
+```bash
+cp .env.example .env   # if provided, or create from scratch
+```
+
+Minimum required fields to start (see [Prerequisites](#prerequisites) for the full list):
+
+```bash
+PLATFORM_URL=https://your-iap-instance.itential.io
+AUTH_METHOD=oauth          # "oauth" or "password"
+CLIENT_ID=your-client-id
+CLIENT_SECRET=your-client-secret
+JIRA_URL=https://itential.atlassian.net
+JIRA_USER=you@itential.com
+JIRA_API_TOKEN=your-atlassian-api-token
+```
+
+### Step 5 — Run the Skill
+
+```bash
+claude
+/troubleshoot ISD-XXXX
+```
+
+Replace `ISD-XXXX` with your actual Jira ticket key. The agent reads your `.env` and begins Phase 1 (offline triage) immediately.
+
+---
+
 ## What It Is
 
 A skill that acts as a senior Itential support engineer. It knows every IAP API endpoint, understands the full platform stack (IAP → IAG → MongoDB → Redis → Kafka → OS), and runs the same diagnostic playbook a seasoned engineer would run — but faster, reproducibly, and without forgetting a step.
@@ -85,9 +154,22 @@ Use `/troubleshoot` any time something is **broken or degraded**:
 
 ## Prerequisites
 
-### Required (always)
+### Software Requirements
 
-Add to `{itential-skills}/.env`:
+| Requirement | Version | Notes |
+|---|---|---|
+| **Node.js** | 18.0.0+ | Check with `node --version` |
+| **Claude Code** | Latest | Install: `npm install -g @anthropic-ai/claude-code` |
+| **Anthropic account** | Any plan | Console account or enterprise SSO |
+| **Git** | Any | To clone the repo |
+| **curl** | Any | Pre-installed on macOS/Linux; used for platform API calls |
+| **jq** | Any | `brew install jq` (macOS) or `apt install jq` (Linux) |
+
+> **No Docker required** to run investigations against live environments. Docker is only needed for Phase 3 local reproduction environments.
+
+### Required `.env` Variables (always)
+
+Add to `{troubleshooting-agent-skill}/.env`:
 
 ```bash
 PLATFORM_URL=https://your-iap-instance:3443

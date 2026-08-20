@@ -765,29 +765,85 @@ flowchart TD
   <div class="section">
     <div class="section-label">Getting Started</div>
     <h2>Quick Start</h2>
-    <p class="desc">Invoke the troubleshooting agent with a ticket key or a brief description. The agent reads your <span class="inline-code">.env</span> file for all credentials and handles the rest.</p>
+    <p class="desc">Five steps to go from zero to your first investigation. Each step is a one-time setup — after that, every session is just <span class="inline-code">/troubleshoot ISD-XXXX</span>.</p>
 
-    <div class="code-block"><pre><span class="comment"># Invoke with an ISD ticket key</span>
+    <!-- Prerequisites -->
+    <h3 style="margin-top:20px; margin-bottom:10px;">Prerequisites</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Requirement</th><th>Version</th><th>How to get it</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Node.js</strong></td><td>18.0.0+</td><td><code>node --version</code> to check; download from <a href="https://nodejs.org" style="color:#f26bac">nodejs.org</a></td></tr>
+          <tr><td><strong>Claude Code</strong></td><td>Latest</td><td><code>npm install -g @anthropic-ai/claude-code</code></td></tr>
+          <tr><td><strong>Anthropic account</strong></td><td>Any</td><td>Console account at <a href="https://console.anthropic.com" style="color:#f26bac">console.anthropic.com</a>, or enterprise SSO</td></tr>
+          <tr><td><strong>Git</strong></td><td>Any</td><td>Pre-installed on macOS; <code>apt install git</code> on Linux</td></tr>
+          <tr><td><strong>curl + jq</strong></td><td>Any</td><td>Pre-installed on macOS; <code>apt install curl jq</code> on Linux</td></tr>
+          <tr><td><strong>Atlassian API token</strong></td><td>—</td><td>Profile → Security → API tokens at <a href="https://id.atlassian.com" style="color:#f26bac">id.atlassian.com</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note" style="margin-top:10px;"><strong>Docker is not required</strong> to investigate live environments. It is only needed for Phase 3 local reproduction environments — and only when you specifically want to reproduce an issue locally rather than in the customer environment.</div>
+
+    <!-- Step 1: Install Claude Code -->
+    <h3 style="margin-top:28px; margin-bottom:10px;"><span style="color:#ec1e7f">Step 1</span> — Install Claude Code</h3>
+    <div class="code-block"><pre><span class="cmd">npm install -g @anthropic-ai/claude-code</span>
+
+<span class="comment"># Verify installation</span>
+<span class="cmd">claude --version</span></pre></div>
+
+    <!-- Step 2: Log in -->
+    <h3 style="margin-top:24px; margin-bottom:10px;"><span style="color:#ec1e7f">Step 2</span> — Log In to Claude</h3>
+    <div class="code-block"><pre><span class="cmd">claude login</span></pre></div>
+    <p style="margin:10px 0 0;">This opens your browser to authenticate. Use your <span class="inline-code">@itential.com</span> Google account via SSO on the Anthropic Console page, or your personal Anthropic account. Your session is stored locally — you stay logged in across terminal sessions.</p>
+
+    <!-- Step 3: Clone the repo -->
+    <h3 style="margin-top:24px; margin-bottom:10px;"><span style="color:#ec1e7f">Step 3</span> — Clone the Skills Repo</h3>
+    <div class="code-block"><pre><span class="cmd">git clone https://github.com/itentialmo15/troubleshooting-agent-skill.git</span>
+<span class="cmd">cd troubleshooting-agent-skill</span></pre></div>
+    <p style="margin:10px 0 0;">Skills live in <span class="inline-code">.claude/skills/</span> — Claude Code discovers them automatically when you run <span class="inline-code">claude</span> from this directory. No additional installation step is needed.</p>
+
+    <!-- Step 4: Create .env -->
+    <h3 style="margin-top:24px; margin-bottom:10px;"><span style="color:#ec1e7f">Step 4</span> — Create Your <span class="inline-code">.env</span></h3>
+    <p style="margin:0 0 10px;">Create <span class="inline-code">.env</span> in the repo root. Minimum required fields:</p>
+    <div class="code-block"><pre><span class="section-hdr"># ── IAP Platform (required) ───────────────────────────────────</span>
+<span class="key">PLATFORM_URL</span>=<span class="val">https://your-iap-instance.itential.io</span>
+<span class="key">AUTH_METHOD</span>=<span class="val">oauth</span>              <span class="comment"># "oauth" or "password"</span>
+<span class="key">CLIENT_ID</span>=<span class="val">your-client-id</span>       <span class="comment"># OAuth</span>
+<span class="key">CLIENT_SECRET</span>=<span class="val">your-secret</span>      <span class="comment"># OAuth</span>
+<span class="comment"># For password auth instead: USERNAME=admin@pronghorn  PASSWORD=admin</span>
+
+<span class="section-hdr"># ── Jira (required for ticket reading and ISD/ENG mining) ─────</span>
+<span class="key">JIRA_URL</span>=<span class="val">https://itential.atlassian.net</span>
+<span class="key">JIRA_USER</span>=<span class="val">you@itential.com</span>
+<span class="key">JIRA_API_TOKEN</span>=<span class="val">your-token</span>     <span class="comment"># id.atlassian.com → Profile → Security → API tokens</span>
+<span class="key">JIRA_PROJECTS</span>=<span class="val">ENG,ISD</span></pre></div>
+    <div class="note" style="margin-top:8px;">The agent will tell you which optional variables unlock deeper diagnostics (MongoDB, Redis, SSH, Kubernetes, IAG, Slack) — see the Admin Guide for the full reference. Start with the minimum and add as needed.</div>
+
+    <!-- Step 5: Run -->
+    <h3 style="margin-top:24px; margin-bottom:10px;"><span style="color:#ec1e7f">Step 5</span> — Run Your First Investigation</h3>
+    <div class="code-block"><pre><span class="comment"># Start Claude Code from the skills directory</span>
+<span class="cmd">claude</span>
+
+<span class="comment"># Invoke with an ISD ticket key</span>
 <span class="cmd">/troubleshoot ISD-9261</span>
 
-<span class="comment"># Invoke with a description when you don't have a ticket yet</span>
+<span class="comment"># Or invoke with a description</span>
 <span class="cmd">/troubleshoot "adapter automation_gateway shows OFFLINE"</span>
-<span class="cmd">/troubleshoot "jobs are stuck after last deployment"</span>
-<span class="cmd">/troubleshoot "MongoDB slow queries causing job timeouts"</span></pre></div>
+<span class="cmd">/troubleshoot "jobs stuck after deployment"</span></pre></div>
 
-    <div class="note"><strong>Tip:</strong> Always run <span class="inline-code">/troubleshoot</span> from your project directory where <span class="inline-code">.env</span> lives. The agent reads credentials automatically — you never need to paste tokens or passwords.</div>
+    <div class="note"><strong>Tip:</strong> Always run <span class="inline-code">claude</span> from the <span class="inline-code">troubleshooting-agent-skill/</span> directory where <span class="inline-code">.env</span> lives. The agent reads credentials automatically — you never need to paste tokens or passwords.</div>
 
-    <h3 style="margin-top:24px; margin-bottom:12px;">What happens when you run it</h3>
+    <h3 style="margin-top:28px; margin-bottom:12px;">What happens when you run it</h3>
     <div class="rules">
-      <div class="rule"><div class="rule-text"><strong>Immediately</strong> — Reads the ISD ticket, extracts all context fields (version, deployment, error message, adapter, job ID), detects SLA status.</div></div>
-      <div class="rule"><div class="rule-text"><strong>~1 min</strong> — Searches ISD + ENG Jira for similar past cases. Uses their resolution comments as diagnostic hypotheses.</div></div>
+      <div class="rule"><div class="rule-text"><strong>Immediately</strong> — Reads the ISD ticket, extracts all context fields (version, deployment, error message, adapter, job ID), detects SLA status. Checks platform support status (EOL detection).</div></div>
+      <div class="rule"><div class="rule-text"><strong>~1 min</strong> — Searches ISD + ENG Jira for similar past cases. Uses their resolution comments as diagnostic hypotheses. Flags open ENG bugs.</div></div>
       <div class="rule"><div class="rule-text"><strong>~2 min</strong> — Searches Confluence for KB articles, runbooks, and post-mortems matching the error string.</div></div>
-      <div class="rule"><div class="rule-text"><strong>~3 min</strong> — Presents a pre-investigation summary: hypothesis, known issue match, investigation plan, escalation risk.</div></div>
-      <div class="rule"><div class="rule-text"><strong>~5 min</strong> — Authenticates to the platform, collects health snapshot, routes to the right sub-skill(s).</div></div>
-      <div class="rule"><div class="rule-text"><strong>~10-30 min</strong> — Sub-skills run their diagnostics. May run in parallel if multiple components are suspect.</div></div>
+      <div class="rule"><div class="rule-text"><strong>~3 min</strong> — Presents pre-investigation summary: hypothesis, support status, known issue match, engineer question list, investigation plan.</div></div>
+      <div class="rule"><div class="rule-text"><strong>~5 min</strong> — Phase 2: routes to right sub-skill(s). Sub-skills authenticate themselves and run diagnostics.</div></div>
+      <div class="rule"><div class="rule-text"><strong>~10-30 min</strong> — Phase 3: reproduce and build workarounds in your chosen environment using builder-skills.</div></div>
     </div>
 
-    <div class="warning" style="margin-top:20px;"><strong>Priority Mismatch Detection:</strong> If the agent detects that a low-priority ticket (P3/P4) contains language indicating a production outage, blocked team, or time-critical deadline — it escalates to senior management <em>before</em> investigation begins, not after. This is intentional and by design.</div>
+    <div class="warning" style="margin-top:20px;"><strong>Priority Mismatch Detection:</strong> If the agent detects that a low-priority ticket (P3/P4) contains language indicating a production outage, blocked team, or time-critical deadline — it escalates to senior management <em>before</em> investigation begins (Phase 1 Step 1f), not after. This is intentional and by design.</div>
   </div>
 
   <hr class="section-divider" />
