@@ -98,6 +98,45 @@
     .tab-content { display: none; padding: 40px; max-width: 1100px; margin: 0 auto; }
     .tab-content.active { display: block; }
 
+    /* ── TOC Sidebar ── */
+    .toc-sidebar {
+      position: fixed;
+      top: 134px;
+      right: 16px;
+      width: 196px;
+      max-height: calc(100vh - 160px);
+      overflow-y: auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 10px;
+      z-index: 90;
+      scrollbar-width: thin;
+    }
+    .toc-sidebar::-webkit-scrollbar { width: 4px; }
+    .toc-sidebar::-webkit-scrollbar-track { background: transparent; }
+    .toc-sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    .toc-title {
+      font-size: 9px; font-weight: 700; letter-spacing: 1.4px;
+      text-transform: uppercase; color: var(--pink);
+      margin-bottom: 10px; padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+    .toc-sidebar a {
+      display: block;
+      padding: 4px 6px;
+      color: var(--muted);
+      text-decoration: none;
+      border-radius: 4px;
+      font-size: 11px;
+      line-height: 1.45;
+      transition: color .15s, background .15s;
+      margin-bottom: 1px;
+    }
+    .toc-sidebar a:hover { color: var(--text); background: var(--card); }
+    .toc-sidebar a.toc-active { color: var(--pink-soft); background: var(--card); }
+    @media (max-width: 1280px) { .toc-sidebar { display: none; } }
+
     /* ── Section ── */
     .section { margin-bottom: 56px; }
     .section-label {
@@ -435,7 +474,14 @@
   <button class="tab-btn active" onclick="showTab('overview')">&#9642; Overview &amp; Architecture</button>
   <button class="tab-btn" onclick="showTab('user')">&#9642; User Guide</button>
   <button class="tab-btn" onclick="showTab('admin')">&#9642; Admin Guide</button>
+  <button class="tab-btn" onclick="showTab('contrib')">&#9642; Contribution</button>
 </div>
+
+<!-- ── TOC Sidebar (populated by JS) ─────────────────────────── -->
+<nav id="toc-sidebar" class="toc-sidebar" aria-label="Section navigation">
+  <div class="toc-title">On This Page</div>
+  <div id="toc-links"></div>
+</nav>
 
 <!-- ══════════════════════════════════════════════════════════════
      TAB 1: OVERVIEW & ARCHITECTURE
@@ -1090,6 +1136,131 @@ flowchart TD
     </div>
   </div>
 
+  <!-- Integrations -->
+  <div class="section">
+    <div class="section-label">Integrations</div>
+    <h2>Integration Credentials Setup</h2>
+    <p class="desc">The agent integrates with Jira, Confluence, Slack, and the Itential platform. Each integration requires its own credentials stored in your <code>.env</code> file. Follow the steps below to obtain and configure each token.</p>
+
+    <!-- Jira / Confluence (Atlassian) -->
+    <h3 style="margin-top:24px; margin-bottom:10px;">Jira &amp; Confluence — Atlassian API Token</h3>
+    <p class="desc" style="margin-bottom:12px;">One token grants access to both Jira (read/search issues, post internal comments) and Confluence (search KB articles, fetch runbook pages). Create it once at Atlassian's account portal.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Step</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Open Atlassian account security</td><td>Go to <strong>id.atlassian.com → Profile → Security → API tokens → Create API token</strong></td></tr>
+          <tr><td>2</td><td>Name the token</td><td>Use a descriptive label, e.g. <code>itential-troubleshoot-agent</code></td></tr>
+          <tr><td>3</td><td>Copy the token</td><td>Atlassian shows it <strong>once</strong> — copy it now before closing the dialog</td></tr>
+          <tr><td>4</td><td>Add to <code>.env</code></td><td><code>JIRA_API_TOKEN=&lt;paste-token-here&gt;</code></td></tr>
+          <tr><td>5</td><td>Add account email</td><td><code>JIRA_USER_EMAIL=you@itential.com</code> — required for Basic auth header</td></tr>
+          <tr><td>6</td><td>Add base URL</td><td><code>JIRA_BASE_URL=https://itential.atlassian.net</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="rule" style="margin-top:12px;"><div class="rule-text">
+      <strong>Token revocation</strong> — if you rotate or revoke the token at id.atlassian.com, update <code>.env</code> immediately. A stale token produces <code>401 Unauthorized</code> in all Atlassian MCP calls.
+    </div></div>
+
+    <!-- Platform OAuth -->
+    <h3 style="margin-top:32px; margin-bottom:10px;">Itential Platform — OAuth Credentials</h3>
+    <p class="desc" style="margin-bottom:12px;">The agent authenticates to the customer's IAP environment via OAuth2 client credentials. Obtain a <code>CLIENT_ID</code> and <code>CLIENT_SECRET</code> from the IAP administrator for the target environment.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Step</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Log in to IAP Admin UI</td><td>Navigate to <strong>Admin → OAuth Clients → New Client</strong> (or ask the customer to create one)</td></tr>
+          <tr><td>2</td><td>Set grant type</td><td>Choose <strong>Client Credentials</strong>; set a name like <code>itential-support-agent</code></td></tr>
+          <tr><td>3</td><td>Copy credentials</td><td>Save the generated <code>client_id</code> and <code>client_secret</code></td></tr>
+          <tr><td>4</td><td>Add to <code>.env</code></td><td><code>AUTH_METHOD=oauth</code><br><code>CLIENT_ID=&lt;client_id&gt;</code><br><code>CLIENT_SECRET=&lt;client_secret&gt;</code></td></tr>
+          <tr><td>5</td><td>Verify</td><td>Run a test call: <code>curl -s $PLATFORM_URL/api/about | jq .version</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="rule" style="margin-top:12px;"><div class="rule-text">
+      <strong>Basic auth fallback</strong> — if the environment doesn't have OAuth configured, set <code>AUTH_METHOD=basic</code> and add <code>PLATFORM_USER</code> and <code>PLATFORM_PASS</code> instead of CLIENT_ID/SECRET. The agent handles both auth flows automatically.
+    </div></div>
+
+    <!-- Slack -->
+    <h3 style="margin-top:32px; margin-bottom:10px;">Slack — MCP OAuth Token</h3>
+    <p class="desc" style="margin-bottom:12px;">The Slack MCP server (used for incident channel updates, escalation pings) requires a bot token scoped to the Itential workspace. Contact your Slack workspace admin if you don't have one.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Step</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Go to api.slack.com/apps</td><td>Create a new app or use the existing <strong>itential-support-bot</strong> app in your workspace</td></tr>
+          <tr><td>2</td><td>Add OAuth scopes</td><td>Under <strong>OAuth &amp; Permissions → Bot Token Scopes</strong>, add: <code>channels:read</code>, <code>chat:write</code>, <code>chat:write.public</code>, <code>users:read</code></td></tr>
+          <tr><td>3</td><td>Install to workspace</td><td>Click <strong>Install to Workspace</strong> and approve; copy the <strong>Bot User OAuth Token</strong> (<code>xoxb-…</code>)</td></tr>
+          <tr><td>4</td><td>Configure MCP server</td><td>The Slack MCP server reads the token from its own config (not <code>.env</code>). Open Claude Code settings and set <code>SLACK_BOT_TOKEN=xoxb-…</code> in the Slack MCP server environment block</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="rule" style="margin-top:12px;"><div class="rule-text">
+      <strong>Escalation channel</strong> — by default the agent sends escalation pings to <code>#support-escalations</code>. Update the channel name in the orchestrator SKILL.md Step 7 if your workspace uses a different channel.
+    </div></div>
+
+    <!-- MongoDB / Redis -->
+    <h3 style="margin-top:32px; margin-bottom:10px;">MongoDB &amp; Redis — Direct Connection (Optional)</h3>
+    <p class="desc" style="margin-bottom:12px;">Database credentials are optional and only needed when the platform API cannot surface enough detail (e.g. slow-query analysis, replica set health, Bull queue inspection).</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Variable</th><th>Example</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>MONGO_URL</code></td><td><code>mongodb://admin:pass@host:27017/iap?authSource=admin</code></td><td>Full connection string including auth; use <code>?tls=true</code> for TLS-enabled clusters</td></tr>
+          <tr><td><code>REDIS_HOST</code></td><td><code>redis.customer.internal</code></td><td>Hostname or IP of the Redis primary</td></tr>
+          <tr><td><code>REDIS_PORT</code></td><td><code>6379</code></td><td>Defaults to 6379 if omitted</td></tr>
+          <tr><td><code>REDIS_PASSWORD</code></td><td><code>s3cr3t</code></td><td>Required if Redis has <code>requirepass</code> set</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- SSH -->
+    <h3 style="margin-top:32px; margin-bottom:10px;">SSH Multi-Host (Optional)</h3>
+    <p class="desc" style="margin-bottom:12px;">For VM or bare-metal deployments, provide SSH credentials so the infra sub-skill can collect CPU/memory/disk data and retrieve logs from multiple hosts simultaneously.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Variable pattern</th><th>Example</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>SSH_HOST_N</code></td><td><code>SSH_HOST_1=10.0.1.42</code></td><td>Host IP or hostname; increment N for each host</td></tr>
+          <tr><td><code>SSH_USER_N</code></td><td><code>SSH_USER_1=ec2-user</code></td><td>Login username for that host</td></tr>
+          <tr><td><code>SSH_KEY_PATH_N</code></td><td><code>SSH_KEY_PATH_1=~/.ssh/customer_key.pem</code></td><td>Path to private key (no passphrase, or add to ssh-agent)</td></tr>
+          <tr><td><code>SSH_ROLE_N</code></td><td><code>SSH_ROLE_1=iap</code></td><td>Label for the host: <code>iap</code>, <code>mongo</code>, <code>redis</code>, <code>gateway</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="rule" style="margin-top:12px;"><div class="rule-text">
+      <strong>Key permissions</strong> — SSH private keys must be <code>chmod 600</code>. If your key is passphrase-protected, run <code>ssh-add ~/.ssh/customer_key.pem</code> once per session so the agent doesn't prompt for the passphrase mid-investigation.
+    </div></div>
+
+    <!-- Complete .env example -->
+    <h3 style="margin-top:32px; margin-bottom:10px;">Complete .env Example</h3>
+    <div class="code-block"><pre><span class="section-hdr"># Platform</span>
+PLATFORM_URL=https://customer.itential.io
+AUTH_METHOD=oauth
+CLIENT_ID=your-client-id
+CLIENT_SECRET=your-client-secret
+
+<span class="section-hdr"># Jira / Confluence</span>
+JIRA_BASE_URL=https://itential.atlassian.net
+JIRA_USER_EMAIL=you@itential.com
+JIRA_API_TOKEN=your-atlassian-api-token
+
+<span class="section-hdr"># MongoDB (optional)</span>
+MONGO_URL=mongodb://admin:pass@host:27017/iap?authSource=admin
+
+<span class="section-hdr"># Redis (optional)</span>
+REDIS_HOST=redis.customer.internal
+REDIS_PORT=6379
+REDIS_PASSWORD=s3cr3t
+
+<span class="section-hdr"># SSH — host 1 (optional)</span>
+SSH_HOST_1=10.0.1.42
+SSH_USER_1=ec2-user
+SSH_KEY_PATH_1=~/.ssh/customer_key.pem
+SSH_ROLE_1=iap</pre></div>
+  </div>
+
+
 </div><!-- /tab-user -->
 
 
@@ -1510,6 +1681,129 @@ flowchart TD
 
 </div><!-- /tab-admin -->
 
+<!-- ══════════════════════════════════════════════════════════════
+     TAB 4: CONTRIBUTION
+     ══════════════════════════════════════════════════════════════ -->
+<div id="tab-contrib" class="tab-content">
+
+  <div class="section">
+    <div class="section-label">Contribution</div>
+    <h2>Contributing Back — PR-Based Knowledge Loop</h2>
+    <p class="desc">Every investigation you close is a learning opportunity for the entire team. At the end of a cadence — weekly, bi-weekly, or per sprint — open a single PR that captures two types of knowledge: ISD resolution patterns and product behavioral facts. This keeps the shared knowledge base current without requiring any extra work during the investigation itself.</p>
+
+    <!-- Two contribution types -->
+    <div class="cards" style="margin-bottom:28px;">
+      <div class="card t-magenta">
+        <div class="icon">R</div>
+        <h3>ISD Resolution Patterns</h3>
+        <p style="font-size:12px; color:var(--muted); line-height:1.6;">Symptom → root cause → fix rows from closed tickets. Goes into <code>data/known-resolutions.md</code>. Used by Phase 1 to instantly recognize repeat issues.</p>
+      </div>
+      <div class="card t-purple">
+        <div class="icon">P</div>
+        <h3>Product Behavioral Facts</h3>
+        <p style="font-size:12px; color:var(--muted); line-height:1.6;">Version-specific facts discovered during investigation (file paths, config keys, API differences by version). Goes into Section 7 of <code>data/product-capability-reference.md</code>. Used by Phase 1 to avoid wrong diagnostic steps.</p>
+      </div>
+    </div>
+
+    <!-- Step by step -->
+    <h3 style="margin-top:8px; margin-bottom:12px;">Step-by-Step: Opening a Contribution PR</h3>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Action</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td><strong>Pull latest main</strong></td>
+            <td>Always start from the most recent shared knowledge base so your additions don't conflict with teammates' entries.<br><code>git checkout main &amp;&amp; git pull origin main</code></td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td><strong>Create a contribution branch</strong></td>
+            <td>Name it with your initials and the date so PRs from multiple engineers don't collide.<br><code>git checkout -b contrib/&lt;initials&gt;-&lt;YYYY-MM-DD&gt;</code><br>Example: <code>contrib/mr-2026-08-20</code></td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td><strong>Review your closed ISDs</strong></td>
+            <td>Look through <code>data/</code> for investigation folders from your cadence window. Open each <code>diagnostic_report.md</code> — that is your source of truth for what the root cause and fix were.</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td><strong>Append to <code>known-resolutions.md</code></strong></td>
+            <td>For each closed ISD that had a confirmed root cause, add one row to the table in <code>data/known-resolutions.md</code>:<br><br>
+              <code>| ISD-XXXX | &lt;symptom keywords&gt; | &lt;root cause — 1 sentence&gt; | &lt;fix — action taken&gt; | &lt;IAP version&gt; | &lt;builder-skill or manual&gt; |</code><br><br>
+              Skip tickets that were handed off, duplicates, or where root cause was never confirmed. Quality over quantity — one accurate row beats three vague ones.
+            </td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td><strong>Append to Section 7 of <code>product-capability-reference.md</code></strong></td>
+            <td>For any product behavioral fact you discovered — a file that doesn't exist in a certain version, an API endpoint that changed, a config key that moved — add a row to the Section 7 table:<br><br>
+              <code>| &lt;version range&gt; | &lt;component&gt; | &lt;what applies&gt; | &lt;what does NOT apply / exist&gt; | &lt;diagnostic impact&gt; |</code><br><br>
+              Only add facts you verified directly, not things you suspect. Include the ISD ticket number in the Diagnostic Impact column for traceability.
+            </td>
+          </tr>
+          <tr>
+            <td>6</td>
+            <td><strong>Stage only the two data files</strong></td>
+            <td>Never stage <code>.env</code>, <code>.auth.json</code>, or any <code>data/&lt;timestamp&gt;/</code> investigation folders — those are gitignored for good reason. Stage only the shared knowledge files:<br>
+              <code>git add data/known-resolutions.md</code><br>
+              <code>git add data/product-capability-reference.md</code>
+            </td>
+          </tr>
+          <tr>
+            <td>7</td>
+            <td><strong>Commit with a structured message</strong></td>
+            <td>Use a consistent format so the team can scan git log to understand what was added:<br><br>
+              <code>git commit -m "contrib: add resolutions for ISD-1234, ISD-1235; add 23.2 config fact"</code><br><br>
+              List ticket numbers for resolutions. Mention version if a Section 7 fact was added.
+            </td>
+          </tr>
+          <tr>
+            <td>8</td>
+            <td><strong>Push and open a PR</strong></td>
+            <td><code>git push -u origin contrib/&lt;initials&gt;-&lt;YYYY-MM-DD&gt;</code><br><br>
+              Open a PR against <code>main</code>. PR title: <code>[Contrib] &lt;date&gt; — &lt;N&gt; resolutions, &lt;M&gt; product facts</code>. Add any context in the PR description that would help reviewers understand edge cases or unusual findings.
+            </td>
+          </tr>
+          <tr>
+            <td>9</td>
+            <td><strong>PR review &amp; merge</strong></td>
+            <td>One peer review is enough — the reviewer checks that resolution rows have a confirmed root cause and Section 7 facts cite a ticket or direct verification. Merge with <strong>Squash and merge</strong> to keep the main branch log clean.</td>
+          </tr>
+          <tr>
+            <td>10</td>
+            <td><strong>Everyone pulls after merge</strong></td>
+            <td>At the start of the next investigation session, pull main before running <code>/troubleshoot</code>. This ensures Phase 1 is working from the full team's accumulated knowledge, not just your own.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- What makes a good row -->
+    <h3 style="margin-top:32px; margin-bottom:10px;">What Makes a Good Resolution Row</h3>
+    <div class="cards" style="margin-bottom:0;">
+      <div class="card t-olive">
+        <div class="icon">✓</div>
+        <h3>Do include</h3>
+        <p style="font-size:12px; color:var(--muted); line-height:1.6;">Exact error text or symptom keywords the agent can pattern-match · Confirmed root cause (not a hypothesis) · Specific fix action — command run, setting changed, or Jira ENG filed · IAP version range where the issue was seen</p>
+      </div>
+      <div class="card t-red">
+        <div class="icon">✗</div>
+        <h3>Do not include</h3>
+        <p style="font-size:12px; color:var(--muted); line-height:1.6;">Customer names or environment-specific hostnames · Tickets where root cause was never confirmed · Vague fixes like "restarted the service" without a reason · Credentials, tokens, or internal URLs</p>
+      </div>
+    </div>
+
+    <div class="rule" style="margin-top:16px;"><div class="rule-text">
+      <strong>Rotate the PR reviewer</strong> — designate a different team member each cycle to review contribution PRs. Reviewing a colleague's resolution rows is one of the best ways to learn from their investigations without sitting in on every ticket.
+    </div></div>
+  </div>
+
+  </div>
+
+</div><!-- /tab-contrib -->
+
 
 <!-- ── Footer ────────────────────────────────────────────────── -->
 <footer>
@@ -1518,13 +1812,60 @@ flowchart TD
 </footer>
 
 <script>
+  /* ── TOC Sidebar ── */
+  function slugify(text) {
+    return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  }
+
+  function buildToc(tabName) {
+    const tab = document.getElementById('tab-' + tabName);
+    const linksEl = document.getElementById('toc-links');
+    linksEl.innerHTML = '';
+    if (!tab) return;
+    const headings = tab.querySelectorAll('h2');
+    headings.forEach(function(h, i) {
+      if (!h.id) {
+        h.id = slugify(h.textContent) || ('section-' + i);
+      }
+      const a = document.createElement('a');
+      a.href = '#' + h.id;
+      a.textContent = h.textContent;
+      a.dataset.target = h.id;
+      linksEl.appendChild(a);
+    });
+  }
+
+  function updateActiveToc() {
+    const links = document.querySelectorAll('#toc-links a');
+    if (!links.length) return;
+    const scrollY = window.scrollY + 160;
+    let active = links[0];
+    links.forEach(function(a) {
+      const el = document.getElementById(a.dataset.target);
+      if (el && el.getBoundingClientRect().top + window.scrollY <= scrollY) {
+        active = a;
+      }
+    });
+    links.forEach(function(a) { a.classList.remove('toc-active'); });
+    active.classList.add('toc-active');
+  }
+
+  window.addEventListener('scroll', updateActiveToc, { passive: true });
+
   function showTab(name) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     document.getElementById('tab-' + name).classList.add('active');
     event.currentTarget.classList.add('active');
     window.scrollTo(0, 0);
+    buildToc(name);
   }
+
+  /* Build TOC for the default active tab on page load */
+  document.addEventListener('DOMContentLoaded', function() {
+    buildToc('overview');
+    updateActiveToc();
+  });
 
   mermaid.initialize({
     startOnLoad: true,
