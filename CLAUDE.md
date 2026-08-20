@@ -8,11 +8,12 @@ A Claude Code skill family for Itential Platform support engineering. There is n
 
 ## Skill Architecture
 
-One orchestrator skill delegates to six specialist sub-skills. The orchestrator drives a **3-phase investigation lifecycle** (Phase 1: Ticket Understanding & Triage → Phase 2: Symptom Analysis & Routing → Phase 3: Reproduce & Workaround) followed by four closing phases (Phase 4: Diagnostic Report, Phase 5: Engineering Escalation, Phase 6: Resolution Learning, Phase 7: Manager Escalation). Sub-skills run targeted platform diagnostics when invoked and authenticate themselves from `.env`.
+One orchestrator skill delegates to a triage sub-skill (Phase 1) and six specialist diagnostic sub-skills (Phase 2). The orchestrator drives a **3-phase investigation lifecycle** (Phase 1: Ticket Understanding & Triage → Phase 2: Symptom Analysis & Routing → Phase 3: Reproduce & Workaround) followed by four closing phases (Phase 4: Diagnostic Report, Phase 5: Engineering Escalation, Phase 6: Resolution Learning, Phase 7: Manager Escalation). Sub-skills authenticate themselves from `.env` when invoked.
 
 | Skill | Invoke | Covers |
 |-------|--------|--------|
-| **Orchestrator** | `/troubleshoot ISD-XXXX` | 3-phase investigation + 4 closing phases; Jira read/write, routing, report, escalation |
+| **Orchestrator** | `/troubleshoot ISD-XXXX` | Full investigation lifecycle; delegates Phase 1 to triage sub-skill, Phase 2 to specialist sub-skills |
+| **Triage** | `/troubleshoot-triage ISD-XXXX` | Phase 1 triage for ISD, IPSO, and ENG tickets — offline only. Resume check, `--list`, `--auto` mode, IPSO→ENG promotion |
 | Adapters | `/troubleshoot-adapters` | Settings comparison, debug mode (auth_logging + console_level), cleanup |
 | Workflows | `/troubleshoot-workflows` | Job error analysis, task failures, JST errors, import failures, childJob chains |
 | Jobs | `/troubleshoot-jobs` | Stuck/errored jobs, slow-job baseline comparison, parent-child chain traversal |
@@ -24,22 +25,24 @@ Skills live in `.claude/skills/<skill-name>/SKILL.md`. Each SKILL.md is self-con
 
 ## Investigation Data Layout
 
-Each investigation produces per-ticket artifacts under `data/`:
+Each investigation produces per-ticket artifacts under `data/`. Multiple investigations (ISD, IPSO, ENG) can coexist simultaneously — each in its own timestamped folder:
 
 ```
 data/
 ├── <ISO-timestamp>/
-│   └── <ISD-XXXX>/
+│   └── <TICKET-KEY>/           — ISD-XXXX, IPSO-XXXX, or ENG-XXXX
 │       ├── ticket_context.md       — Jira ticket snapshot and symptom summary
-│       ├── pre-investigation-summary.md — Known-issue cross-reference
-│       ├── known_issues.md         — Matched known resolutions
-│       └── diagnostic_report.md   — Findings, evidence, recommended actions
+│       ├── pre-investigation-summary.md — Triage output (Phase 1 / troubleshoot-triage)
+│       ├── known_issues.md         — Matched past cases and ENG bugs
+│       ├── confluence_references.md — KB articles and runbooks found
+│       ├── diagnostic_report.md   — Findings, evidence, recommended actions (Phase 4)
+│       └── eng_ticket_draft.md    — ENG ticket draft saved if engineer declines immediate filing (IPSO only)
 ├── known-resolutions.md            — Accumulated resolution patterns (append-only)
-├── product-capability-reference.md — Platform version history, open bugs, components
+├── product-capability-reference.md — Platform version history, open bugs, components, version behavioral notes
 └── ISD-Triage-Skill-Executive-Brief.md — Business case and case studies
 ```
 
-When starting a new investigation, create the `data/<timestamp>/<ISD-XXXX>/` directory first and write `ticket_context.md` before any platform queries.
+The `/troubleshoot-triage` sub-skill checks for an existing folder before creating a new one — if a prior triage exists for the same ticket key, it prompts the engineer to resume or start fresh. Use `/troubleshoot-triage --list` to see all in-flight investigations.
 
 ## Credentials and Auth
 

@@ -612,8 +612,14 @@ flowchart TD
   <div class="section">
     <div class="section-label">Sub-Skills</div>
     <h2>Specialist Sub-Skills</h2>
-    <p class="desc">Each sub-skill owns a specific diagnostic domain. They are invoked by the primary skill based on symptom classification, or can be run directly by a support engineer for targeted investigations.</p>
+    <p class="desc">Each sub-skill owns a specific diagnostic domain. They are invoked by the primary skill based on symptom classification, or can be run directly by a support engineer for targeted investigations. The triage sub-skill runs first for every investigation and also supports standalone use.</p>
     <div class="cards">
+      <div class="card t-magenta">
+        <div class="icon">TR</div>
+        <h3>/troubleshoot-triage</h3>
+        <p>Phase 1 triage for ISD (customer), IPSO, and ENG tickets — offline only. Resume check, active investigation list, <code>--auto</code> mode for autonomous triage, IPSO→ENG ticket promotion.</p>
+        <span class="tag">ISD</span><span class="tag">IPSO</span><span class="tag">ENG</span><span class="tag">--auto</span>
+      </div>
       <div class="card t-purple">
         <div class="icon">WF</div>
         <h3>/troubleshoot-workflows</h3>
@@ -1134,6 +1140,76 @@ flowchart TD
         IAG OFFLINE is almost always <code>token_timeout: -1</code>. The agent checks this first (Phase 3d inline). Adapter OFFLINE could be network, credentials, wrong host, or stub mode — the adapter sub-skill runs a full gather → debug → cleanup cycle with your approval at each step.
       </div></div>
     </div>
+  </div>
+
+  <!-- Multi-Ticket Workflow -->
+  <div class="section">
+    <div class="section-label">Multi-Ticket Workflow</div>
+    <h2>Working Multiple Tickets Simultaneously</h2>
+    <p class="desc">Each investigation lives in its own timestamped folder under <span class="inline-code">data/</span>. You can have any number of ISD, IPSO, and ENG investigations in flight at once — they never collide. The triage sub-skill handles resume and listing automatically.</p>
+
+    <h3 style="margin-top:20px; margin-bottom:10px;">Listing Active Investigations</h3>
+    <div class="code-block"><pre><span class="comment"># See all in-flight investigations across all ticket types</span>
+<span class="cmd">/troubleshoot-triage --list</span></pre></div>
+    <p style="font-size:13px; color:var(--muted); margin:10px 0 20px;">Prints a table showing ticket key, start timestamp, SLA status, and priority for each active investigation. No ticket key needed.</p>
+
+    <h3 style="margin-bottom:10px;">Switching Between Tickets</h3>
+    <p style="font-size:13px; color:var(--muted); line-height:1.7; margin-bottom:12px;">When you invoke a ticket that already has a triage folder, the sub-skill detects it and asks whether to resume from the existing summary or start fresh. If you resume, it reads the prior output files and picks up from the pre-investigation summary — no repeat research.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Scenario</th><th>Command</th><th>What happens</th></tr></thead>
+        <tbody>
+          <tr><td>Start new investigation</td><td><code>/troubleshoot-triage ISD-9261</code></td><td>Creates new folder, runs full triage Steps 1a–1h</td></tr>
+          <tr><td>Switch to another ticket</td><td><code>/troubleshoot-triage ISD-9300</code></td><td>Checks for existing folder; creates new triage if none found</td></tr>
+          <tr><td>Resume an in-progress ticket</td><td><code>/troubleshoot-triage ISD-9261</code></td><td>Detects existing folder, prompts <em>resume or fresh?</em> — resume skips straight to summary</td></tr>
+          <tr><td>See all in-flight work</td><td><code>/troubleshoot-triage --list</code></td><td>Prints all tickets with active triage folders and their SLA status</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- IPSO / ENG Bug Triage -->
+  <div class="section">
+    <div class="section-label">Engineering Bug Triage</div>
+    <h2>IPSO &amp; ENG Ticket Analysis</h2>
+    <p class="desc">The triage sub-skill handles engineering bugs (IPSO and ENG projects) the same way it handles customer ISD tickets — minus the customer-facing steps. For IPSO tickets, it also drafts an ENG ticket at the end of triage for promotion to the engineering backlog.</p>
+
+    <div class="cards" style="margin-bottom:28px;">
+      <div class="card t-purple">
+        <div class="icon">IS</div>
+        <h3>ISD Tickets</h3>
+        <p style="font-size:12px; color:var(--muted); line-height:1.6;">Full triage: SLA check, priority mismatch detection, customer question list (A–E categories), pre-investigation summary with escalation risk.</p>
+      </div>
+      <div class="card t-orange">
+        <div class="icon">IP</div>
+        <h3>IPSO Tickets</h3>
+        <p style="font-size:12px; color:var(--muted); line-height:1.6;">Engineering triage: skips SLA/customer steps. Engineering question list (reproduction, code path, affected versions). Drafts ENG ticket at close for promotion.</p>
+      </div>
+      <div class="card t-olive">
+        <div class="icon">EN</div>
+        <h3>ENG Tickets</h3>
+        <p style="font-size:12px; color:var(--muted); line-height:1.6;">Same as IPSO triage but no ENG promotion step (already an ENG ticket). Mines IPSO + ISD for related customer impact.</p>
+      </div>
+    </div>
+
+    <h3 style="margin-bottom:10px;">IPSO → ENG Promotion</h3>
+    <p style="font-size:13px; color:var(--muted); line-height:1.7; margin-bottom:12px;">At the end of IPSO triage, the agent drafts an ENG bug ticket pre-filled from the triage output — summary, description, steps to reproduce, affected versions, component, workaround (if found in Confluence), and links back to the IPSO ticket and any related ISD tickets found during research.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ENG Draft Field</th><th>Source</th></tr></thead>
+        <tbody>
+          <tr><td>Summary</td><td>IPSO ticket title + root-cause hypothesis from triage</td></tr>
+          <tr><td>Affects Versions</td><td>Extracted from IPSO ticket fields or description</td></tr>
+          <tr><td>Component / Label</td><td>Inferred from symptom routing (workflows / adapters / databases / infra)</td></tr>
+          <tr><td>Steps to Reproduce</td><td>Engineering question list answers</td></tr>
+          <tr><td>Workaround</td><td>From Confluence KB search; "None identified" if not found</td></tr>
+          <tr><td>Links</td><td>"Is caused by" → IPSO ticket; related ISD tickets (customer impact)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="rule" style="margin-top:12px;"><div class="rule-text">
+      <strong>Always requires approval</strong> — the ENG ticket is never filed automatically, even in <code>--auto</code> mode. The agent presents the draft, waits for the engineer to type <code>approve</code>, then files it. If declined, the draft is saved to <code>eng_ticket_draft.md</code> in the investigation folder.
+    </div></div>
   </div>
 
   <!-- Integrations -->
