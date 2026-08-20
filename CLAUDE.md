@@ -8,11 +8,11 @@ A Claude Code skill family for Itential Platform support engineering. There is n
 
 ## Skill Architecture
 
-One orchestrator skill delegates to six specialist sub-skills. The orchestrator drives an 8-phase investigation lifecycle; sub-skills run targeted platform diagnostics when invoked.
+One orchestrator skill delegates to six specialist sub-skills. The orchestrator drives a **3-phase investigation lifecycle** (Phase 1: Ticket Understanding & Triage → Phase 2: Symptom Analysis & Routing → Phase 3: Reproduce & Workaround) followed by four closing phases (Phase 4: Diagnostic Report, Phase 5: Engineering Escalation, Phase 6: Resolution Learning, Phase 7: Manager Escalation). Sub-skills run targeted platform diagnostics when invoked and authenticate themselves from `.env`.
 
 | Skill | Invoke | Covers |
 |-------|--------|--------|
-| **Orchestrator** | `/troubleshoot ISD-XXXX` | Full 8-phase lifecycle, Jira read/write, routing, report, escalation |
+| **Orchestrator** | `/troubleshoot ISD-XXXX` | 3-phase investigation + 4 closing phases; Jira read/write, routing, report, escalation |
 | Adapters | `/troubleshoot-adapters` | Settings comparison, debug mode (auth_logging + console_level), cleanup |
 | Workflows | `/troubleshoot-workflows` | Job error analysis, task failures, JST errors, import failures, childJob chains |
 | Jobs | `/troubleshoot-jobs` | Stuck/errored jobs, slow-job baseline comparison, parent-child chain traversal |

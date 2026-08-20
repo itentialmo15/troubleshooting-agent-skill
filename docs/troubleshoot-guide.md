@@ -196,36 +196,91 @@ The argument is optional but helps skip triage questions. If omitted, the skill 
 
 ## Investigation Phases
 
-The skill runs in structured phases. Not every issue needs all phases — it routes by symptom.
+The orchestrator runs a **3-phase investigation model** followed by four closing phases. Not every issue needs all phases — it routes by symptom in Phase 2.
 
-| Phase | Name | When It Runs |
+### Investigation Protocol (runs throughout all phases)
+
+The **Itential Product Support Investigation Protocol** (8 sections: symptoms, timeline, reproducibility, impact, business impact, resolution, recovery time, evidence) governs all customer communication at every phase. It is not a one-time questionnaire — it runs continuously and must be kept current.
+
+### Phase 1: Ticket Understanding & Triage
+
+Entirely offline — Jira, Confluence, and local reference files only. No platform authentication.
+
+- Read the ISD ticket (Jira): summary, description, attachments, SLA, all comments
+- Extract structured context to `ticket_context.md`
+- **Platform support status check**: cross-reference IAP version against `data/product-capability-reference.md` — flag EOL versions immediately
+- Mine similar ISD/ENG Jira tickets for past resolutions and open bugs
+- Search Confluence for runbooks and KB articles
+- **Priority mismatch detection**: scan description for high-impact signals ("production down", "go-live blocked") — escalate immediately if detected
+- **Generate engineer question list**: structured pre-investigation checklist (Version & Environment, Symptom Precision, Scope & Reproduction, Recent Changes, Evidence Needed) — gates Phase 2
+- Produce `pre-investigation-summary.md`
+
+**Gate:** engineer reviews questions and decides to proceed or send them to the customer first.
+
+### Phase 2: Symptom Analysis & Routing
+
+No orchestrator-level platform authentication. Sub-skills authenticate themselves from `.env` when invoked.
+
+- Address any Investigation Protocol gaps still open after Phase 1
+- Classify the issue (Functional vs Performance/Non-functional) and route:
+
+| Symptom | Sub-skill |
+|---|---|
+| Workflow/job/JST/import issues | `/troubleshoot-workflows` |
+| Adapter OFFLINE / auth failure | `/troubleshoot-adapters` |
+| Stuck/slow jobs | `/troubleshoot-jobs` |
+| MongoDB/Redis | `/troubleshoot-databases` |
+| CPU/memory/disk/containers | `/troubleshoot-infra` |
+| Log collection needed | `/troubleshoot-logs` |
+| IAG inline / Kafka inline / UI latency inline | Phase 2 inline diagnostics |
+
+- After sub-skill confirms root cause → route to builder-skills for fix construction (Constructive Fix Path)
+
+### Phase 3: Reproduce & Workaround
+
+Authentication happens here — after the engineer selects an environment.
+
+**Step 3a — Environment Selection**: Discover all `.env` and `.env.*` files in the project. If multiple exist, present a numbered list showing each file's `PLATFORM_URL` and ask the engineer to choose. Authenticate with the selected `.env`.
+
+**`.env` naming convention:**
+- `.env` — default customer environment (project root)
+- `.env.{label}` — named environments (e.g., `.env.staging`, `.env.acme-prod`)
+- `repro/{ISD_TICKET_KEY}/.env` — isolated local reproduction environment
+
+**Step 3b — Reproduce**: Using the authenticated session, trigger the confirmed root cause in the selected environment. Import failing workflow/adapter config, execute trigger steps, capture evidence.
+
+**Step 3c — Find Workarounds using builder-skills**: In the same selected environment, invoke the appropriate builder-skill:
+- Workflow structural issue → `/builder-agent`
+- JST error → `/builder-agent` (test locally, then PUT)
+- Adapter misconfiguration → `/troubleshoot-adapters` fix path
+- JSON Form → `/itential-json-forms`
+- MOP command template → `/itential-mop`
+- LCM issue → `/itential-lcm`
+
+All writes require explicit engineer approval. The builder-skill invocation does not bypass read-only-by-default rules.
+
+**Local reproduction environment (when needed)**: Create `repro/{ISD_TICKET_KEY}/.env` with Docker-local credentials, then spin up a version-matched local stack (Docker Compose). Validate the fix there before applying to the customer environment.
+
+### Closing Phases
+
+| Phase | Name | What Happens |
 |-------|------|-------------|
-| **1** | Triage | Always — categorize issue, get incident time, gather context |
-| **2** | Auth & Discover | Always — authenticate to IAP, snapshot health |
-| **3a** | Functional: Job/Adapter | Workflow failures, import errors, adapter issues |
-| **3b** | Performance: MongoDB + Redis | Slow jobs, stuck queues, DB latency |
-| **3c** | Metrics: Prometheus + Grafana | CPU, heap, event loop, HTTP latency |
-| **3d** | IAG Troubleshooting | IAG adapter OFFLINE, service failures, token issues |
-| **3e** | Adapter Debug Mode | Deep adapter diagnostics — enable auth logging, capture live logs |
-| **3f** | Adapter Cleanup | Reverse debug settings after Phase 3e |
-| **3g** | OS & Containers | OOMKill, disk full, high CPU, container restarts |
-| **3h** | UI & API Performance | Response time baseline, slow endpoints, TLS check |
-| **3i** | Kafka & Messaging | Consumer lag, broker health, topic/partition status |
-| **3j** | Jira Known-Issue Search | Cross-reference ENG/ISD for known bugs and fix versions |
-| **4** | Log Collection | webserver.log, mongod.log, Redis log, LB access log |
-| **5** | Diagnostic Report | Summary, findings, root cause, recommendations |
+| **4** | Diagnostic Report | Full findings, evidence, root cause, recommendations saved to `diagnostic_report.md` |
+| **5** | Engineering Escalation | Bug report drafted, ENG ticket created (with approval), linked to ISD |
+| **6** | Resolution Learning | Resolution pattern appended to `data/known-resolutions.md`; ISD ticket resolved |
+| **7** | Manager Escalation | Priority mismatch templates, SLA-breach escalation, management messaging |
 
 **Quick routing guide:**
 
 ```
-Adapter OFFLINE         → Phase 3a → 3e → 3f
-Jobs slow               → Phase 3b → 3c
-IAG failing             → Phase 3d
-Disk / memory / OOM     → Phase 3g
-UI slow / API timeouts  → Phase 3h
-Kafka consumer lag      → Phase 3i
-Known bug check         → Phase 3j
-Unexplained issue       → All phases, sequential
+Adapter OFFLINE         → Phase 2 (troubleshoot-adapters) → Phase 3 (workaround)
+Jobs slow               → Phase 2 (troubleshoot-jobs + troubleshoot-databases)
+IAG failing             → Phase 2 inline IAG diagnostics + troubleshoot-adapters
+Disk / memory / OOM     → Phase 2 (troubleshoot-infra)
+UI slow / API timeouts  → Phase 2 inline UI diagnostics + troubleshoot-logs
+Kafka consumer lag      → Phase 2 inline Kafka diagnostics
+EOL platform version    → Phase 1 flags immediately, recommend upgrade path
+Production down         → Phase 1 Step 1f detects, escalates before investigation
 ```
 
 ---
@@ -238,8 +293,10 @@ The skill **never** performs destructive actions without explicit user consent:
 - No MongoDB writes, updates, or deletes — read-only only
 - No Redis `SET`, `DEL`, `FLUSHDB` — read-only only
 - No service, adapter, or container restarts without confirmation
-- Adapter debug mode (Phase 3e) requires explicit consent — it exposes credentials in logs
-- Adapter cleanup (Phase 3f) is always run after debug mode to reverse settings
+- Adapter debug mode requires explicit consent — it exposes credentials in logs
+- Adapter cleanup (reset `auth_logging` + `console_level`) always runs after debug mode
+- All ISD comments must be internal (`Service Desk Team` visibility only)
+- All Jira/ENG actions require explicit engineer approval per action
 
 ---
 

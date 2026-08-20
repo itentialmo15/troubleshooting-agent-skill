@@ -460,66 +460,54 @@
 
   <hr class="section-divider" />
 
-  <!-- 8-Phase Lifecycle -->
+  <!-- 3-Phase Investigation Lifecycle -->
   <div class="section">
     <div class="section-label">Lifecycle</div>
-    <h2>8-Phase Investigation Lifecycle</h2>
-    <p class="desc">Every investigation follows the same eight phases in sequence. Each phase feeds the next. Phases 6, 7, and 8 trigger only when conditions are met (confirmed bug, confirmed resolution, escalation trigger).</p>
+    <h2>3-Phase Investigation Lifecycle</h2>
+    <p class="desc">Every investigation follows three structured phases, followed by four closing phases. The Investigation Protocol (8-section customer communication standard) runs continuously throughout all phases.</p>
 
     <div class="phases">
       <div class="phase-card">
-        <div class="phase-num">0</div>
-        <div class="phase-label">Entry Point</div>
-        <h3>Ticket Intake</h3>
-        <p>Reads full ISD ticket. Extracts structured context. Mines ISD + ENG Jira for similar cases. Searches Confluence for runbooks. Detects priority mismatches. Produces pre-investigation summary.</p>
-      </div>
-      <div class="phase-card">
         <div class="phase-num">1</div>
-        <div class="phase-label">Platform Connect</div>
-        <h3>Auth &amp; Snapshot</h3>
-        <p>Authenticates via <span class="inline-code">.env</span> (OAuth or password). Caches token 50 min. Collects IAP version, app health, adapter health. Lists all OFFLINE adapters. Categorizes issue.</p>
+        <div class="phase-label">Offline Only</div>
+        <h3>Ticket Understanding &amp; Triage</h3>
+        <p>Reads full ISD ticket. Extracts structured context. Checks platform support status (EOL detection). Mines ISD + ENG Jira for similar cases. Searches Confluence for runbooks. Detects priority mismatches immediately. Generates engineer question list. Produces pre-investigation summary. <strong>No platform authentication.</strong></p>
       </div>
       <div class="phase-card">
         <div class="phase-num">2</div>
-        <div class="phase-label">Customer Dialog</div>
-        <h3>Investigation Protocol</h3>
-        <p>Eight-section standardized questionnaire: symptoms, timeline, reproduction, scope, business impact, resolution, incident end, data collection. Posts unanswered questions to ticket (with approval).</p>
+        <div class="phase-label">No Orchestrator Auth</div>
+        <h3>Symptom Analysis &amp; Routing</h3>
+        <p>Addresses remaining Investigation Protocol gaps. Classifies issue as Functional or Performance. Routes to the correct sub-skill(s) — each sub-skill authenticates itself from <span class="inline-code">.env</span>. After diagnosis, routes to builder-skills for fix construction (Constructive Fix Path).</p>
       </div>
       <div class="phase-card">
         <div class="phase-num">3</div>
-        <div class="phase-label">Diagnostics</div>
-        <h3>Platform Investigation</h3>
-        <p>Routes to specialist sub-skills based on symptom. Runs sub-skills in parallel when issue spans multiple components. Inline diagnostics for IAG, UI performance, and Kafka.</p>
+        <div class="phase-label">Auth Here</div>
+        <h3>Reproduce &amp; Workaround</h3>
+        <p>Discovers all <span class="inline-code">.env</span> and <span class="inline-code">.env.*</span> files. If multiple exist, presents a numbered list showing each environment's <span class="inline-code">PLATFORM_URL</span> and asks engineer to choose. Authenticates with selected env. Reproduces root cause. Invokes builder-skills for workarounds in the same environment.</p>
       </div>
       <div class="phase-card">
         <div class="phase-num">4</div>
-        <div class="phase-label">Validation</div>
-        <h3>Reproduce</h3>
-        <p>Scaffolds a version-matched Docker environment. Imports production-ready workflow templates from <span class="inline-code">vendor/builder-skills/</span> to reconstruct the failing scenario without building from scratch. Writes step-by-step reproduction doc. Saved to <span class="inline-code">repro/{ISD_KEY}/</span>.</p>
+        <div class="phase-label">Deliverable</div>
+        <h3>Diagnostic Report</h3>
+        <p>Structured report: environment snapshot, investigation checklist, ranked root-cause hypotheses with evidence, next steps with owners, access gaps table. Saved to <span class="inline-code">data/{TIMESTAMP}/diagnostic_report.md</span>.</p>
       </div>
       <div class="phase-card">
         <div class="phase-num">5</div>
-        <div class="phase-label">Deliverable</div>
-        <h3>Diagnostic Report</h3>
-        <p>Structured report: environment snapshot, investigation checklist, ranked root-cause hypotheses with evidence, next steps with owners, access gaps table.</p>
-      </div>
-      <div class="phase-card">
-        <div class="phase-num">6</div>
         <div class="phase-label">Engineering</div>
         <h3>ENG Escalation Pack</h3>
         <p><em>When a platform bug is confirmed.</em> Drafts ENG bug report. Creates or updates ENG Jira ticket. Links ENG to ISD. All writes require explicit engineer approval.</p>
       </div>
       <div class="phase-card">
-        <div class="phase-num">7</div>
+        <div class="phase-num">6</div>
         <div class="phase-label">Closeout</div>
         <h3>Resolution Learning</h3>
-        <p><em>When fix is confirmed.</em> Records symptom-to-fix pattern in <span class="inline-code">known-resolutions.md</span>. Posts resolution comment to ISD. Transitions ticket. Updates routing table.</p>
+        <p><em>When fix is confirmed.</em> Records symptom-to-fix pattern in <span class="inline-code">known-resolutions.md</span>. Posts resolution comment to ISD. Transitions ticket. Updates Phase 2 routing table.</p>
       </div>
       <div class="phase-card">
-        <div class="phase-num">8</div>
+        <div class="phase-num">7</div>
         <div class="phase-label">Escalation</div>
         <h3>Manager Escalation</h3>
-        <p><em>On SLA breach, priority mismatch, or S1/S2 events.</em> Detects low-priority tickets with blocking descriptions. Drafts Slack escalation to senior management. Upgrades priority with approval.</p>
+        <p><em>On SLA breach, priority mismatch, or S1/S2 events.</em> Priority mismatch detection fires in Phase 1 Step 1f — at ticket intake, before any investigation. Drafts Slack escalation to senior management. Upgrades priority with approval.</p>
       </div>
     </div>
   </div>
@@ -535,12 +523,11 @@
     <div class="diagram-card">
       <div class="mermaid">
 flowchart TD
-    ENG["Support Engineer"] -->|"/troubleshoot ISD-XXXX"| MAIN["<b>/troubleshoot</b><br/>Primary Orchestrator<br/>8-Phase Lifecycle"]
+    ENG["Support Engineer"] -->|"/troubleshoot ISD-XXXX"| MAIN["<b>/troubleshoot</b><br/>Primary Orchestrator<br/>3-Phase Investigation"]
 
-    MAIN -->|"Phase 0"| JIRA["Jira / Atlassian MCP<br/>ISD + ENG tickets<br/>Confluence pages"]
-    MAIN -->|"Phase 1"| IAP["IAP Platform<br/>Health, adapters,<br/>apps, version"]
+    MAIN -->|"Phase 1 — offline only"| JIRA["Jira / Atlassian MCP<br/>ISD + ENG tickets<br/>Confluence + Support Status<br/>Question List + Triage"]
 
-    MAIN -->|"Phase 3 — routes by symptom"| SS["Sub-Skills"]
+    MAIN -->|"Phase 2 — no orchestrator auth"| SS["Sub-Skills<br/>(each auth from .env)"]
 
     SS --> WF["/troubleshoot-workflows<br/>Job errors, JST,<br/>import failures"]
     SS --> AD["/troubleshoot-adapters<br/>OFFLINE, auth,<br/>debug mode"]
@@ -549,9 +536,11 @@ flowchart TD
     SS --> IF["/troubleshoot-infra<br/>CPU, memory,<br/>disk, EKS"]
     SS --> LG["/troubleshoot-logs<br/>Docker, SSH,<br/>K8s, CloudWatch"]
 
-    MAIN -->|"Phase 4"| BS["vendor/builder-skills/<br/>Workflow Templates<br/>Import to Docker stack"]
-    MAIN -->|"Phase 5"| RPT["diagnostic_report.md<br/>ticket_context.md<br/>known_issues.md"]
-    MAIN -->|"Phase 7"| RES["known-resolutions.md<br/>Resolution Library"]
+    MAIN -->|"Phase 3 — auth after env select"| P3["Reproduce & Workaround<br/>.env selection → auth<br/>builder-skills for fixes"]
+    P3 --> BS["vendor/builder-skills/<br/>Workflow Templates<br/>Local or Customer env"]
+
+    MAIN -->|"Phase 4"| RPT["diagnostic_report.md<br/>ticket_context.md<br/>known_issues.md"]
+    MAIN -->|"Phase 6"| RES["known-resolutions.md<br/>Resolution Library"]
 
     style ENG fill:#1a1d3e,stroke:#ec1e7f,color:#e9eaf2
     style MAIN fill:#14173a,stroke:#ec1e7f,color:#e9eaf2
@@ -624,7 +613,7 @@ flowchart TD
   <div class="section">
     <div class="section-label">Reproduction Toolkit</div>
     <h2>Vendor Workflow Templates — builder-skills</h2>
-    <p class="desc">Phase 4 (Reproduce the Issue) uses a curated, vendored library of production-ready Itential workflow templates from <span class="inline-code">vendor/builder-skills/</span>. Instead of building reproduction workflows from scratch, the agent imports these templates directly into the local Docker stack — spinning up a realistic scenario in minutes. The library is maintained upstream at <span class="inline-code">github.com/itential/builder-skills</span> and refreshed on demand via <span class="inline-code">scripts/sync-builder-skills.sh</span>.</p>
+    <p class="desc">Phase 3 (Reproduce &amp; Workaround) uses a curated, vendored library of production-ready Itential workflow templates from <span class="inline-code">vendor/builder-skills/</span>. Instead of building reproduction workflows from scratch, the agent imports these templates directly into the selected environment — spinning up a realistic scenario in minutes. The library is maintained upstream at <span class="inline-code">github.com/itential/builder-skills</span> and refreshed on demand via <span class="inline-code">scripts/sync-builder-skills.sh</span>.</p>
 
     <div class="cards">
       <div class="card t-orange">
@@ -654,7 +643,7 @@ flowchart TD
     </div>
 
     <div style="margin-top: 24px;">
-      <div class="subsection-label">How Phase 4 Uses builder-skills</div>
+      <div class="subsection-label">How Phase 3 Uses builder-skills</div>
       <div class="rules">
         <div class="rule"><div class="rule-text">
           <strong>Identify the template</strong> — Based on ticket context (adapter type, workflow pattern, LCM action), the agent picks the matching <span class="inline-code">vendor/builder-skills/helpers/assets/</span> file that closest matches the customer's failing scenario.
@@ -719,7 +708,7 @@ flowchart TD
       <div class="card t-purple">
         <div class="icon">S</div>
         <h3>Slack</h3>
-        <p>Sends escalation messages to support channel and manager escalation channel. Used in Phase 8 for priority mismatch detection and SLA breach notification. Requires Slack MCP.</p>
+        <p>Sends escalation messages to support channel and manager escalation channel. Used in Phase 7 for SLA breach notification and manager escalation messaging. Requires Slack MCP.</p>
         <span class="tag">Write w/ approval</span>
       </div>
     </div>
@@ -737,12 +726,12 @@ flowchart TD
       <div><span class="dir">troubleshooting-agent/</span></div>
       <div class="indent-1"><span class="dir">data/</span></div>
       <div class="indent-2"><span class="dir">2026-08-13T10-30-00/</span> <span class="comment">← TIMESTAMP per investigation</span></div>
-      <div class="indent-3"><span class="file">ticket_context.md</span> <span class="comment">← structured ticket context (Phase 0b)</span></div>
-      <div class="indent-3"><span class="file">known_issues.md</span> <span class="comment">← ISD + ENG similar ticket findings (Phase 0c)</span></div>
-      <div class="indent-3"><span class="file">confluence_references.md</span> <span class="comment">← KB / runbook excerpts (Phase 0d)</span></div>
-      <div class="indent-3"><span class="file">pre_investigation_summary.md</span> <span class="comment">← hypothesis + plan (Phase 0e)</span></div>
-      <div class="indent-3"><span class="file">diagnostic_report.md</span> <span class="comment">← full report with findings (Phase 5)</span></div>
-      <div class="indent-3"><span class="file">eng_bug_report.md</span> <span class="comment">← ENG bug report draft (Phase 6, if bug confirmed)</span></div>
+      <div class="indent-3"><span class="file">ticket_context.md</span> <span class="comment">← structured ticket context (Phase 1 Step 1b)</span></div>
+      <div class="indent-3"><span class="file">known_issues.md</span> <span class="comment">← ISD + ENG similar ticket findings (Phase 1 Step 1d)</span></div>
+      <div class="indent-3"><span class="file">confluence_references.md</span> <span class="comment">← KB / runbook excerpts (Phase 1 Step 1e)</span></div>
+      <div class="indent-3"><span class="file">pre_investigation_summary.md</span> <span class="comment">← hypothesis + plan (Phase 1 Step 1h)</span></div>
+      <div class="indent-3"><span class="file">diagnostic_report.md</span> <span class="comment">← full report with findings (Phase 4)</span></div>
+      <div class="indent-3"><span class="file">eng_bug_report.md</span> <span class="comment">← ENG bug report draft (Phase 5, if bug confirmed)</span></div>
       <div class="indent-3"><span class="dir">adapters/</span> <span class="comment">← per-adapter gather/log files from /troubleshoot-adapters</span></div>
       <div class="indent-3"><span class="file">job_analysis.md</span> <span class="comment">← job profiling report from /troubleshoot-jobs</span></div>
       <div class="indent-3"><span class="file">database_report.md</span> <span class="comment">← MongoDB + Redis report from /troubleshoot-databases</span></div>
@@ -750,8 +739,8 @@ flowchart TD
       <div class="indent-2"><span class="file">known-resolutions.md</span> <span class="comment">← cumulative resolution library (grows across all tickets)</span></div>
       <div class="indent-1"><span class="dir">repro/</span></div>
       <div class="indent-2"><span class="dir">ISD-XXXX/</span></div>
-      <div class="indent-3"><span class="file">repro_steps.md</span> <span class="comment">← reproduction steps + evidence (Phase 4)</span></div>
-      <div class="indent-3"><span class="file">docker-compose.yml</span> <span class="comment">← version-matched stack (Phase 4)</span></div>
+      <div class="indent-3"><span class="file">repro_steps.md</span> <span class="comment">← reproduction steps + evidence (Phase 3)</span></div>
+      <div class="indent-3"><span class="file">docker-compose.yml</span> <span class="comment">← version-matched stack (Phase 3 local repro)</span></div>
       <div class="indent-1"><span class="dir">vendor/</span></div>
       <div class="indent-2"><span class="dir">builder-skills/</span> <span class="comment">← vendored from github.com/itential/builder-skills</span></div>
       <div class="indent-3"><span class="dir">helpers/assets/</span> <span class="comment">← importable workflow projects (platform + vendor integrations)</span></div>
@@ -807,7 +796,7 @@ flowchart TD
   <div class="section">
     <div class="section-label">Routing Reference</div>
     <h2>Symptom → Sub-Skill Routing</h2>
-    <p class="desc">The agent classifies the issue in Phase 1 and routes to the appropriate sub-skill(s). You can also invoke sub-skills directly for targeted investigations without running the full lifecycle.</p>
+    <p class="desc">The agent classifies the issue in Phase 2 (Symptom Analysis &amp; Routing) and routes to the appropriate sub-skill(s). You can also invoke sub-skills directly for targeted investigations without running the full lifecycle.</p>
 
     <div class="routing-header">
       <span>Symptom</span><span>Sub-Skill</span><span>What It Checks</span>
@@ -1138,9 +1127,37 @@ flowchart TD
           <tr><td><code>AWS_ACCESS_KEY_ID</code></td><td><span class="pill pill-cond">Conditional</span></td><td>CloudWatch log access, ALB log access from S3, ElastiCache metrics — needed for AWS deployments</td></tr>
           <tr><td><code>IAG_URL</code> + credentials</td><td><span class="pill pill-cond">Conditional</span></td><td>IAG direct health check, service list, job history — needed for IAG-related issues</td></tr>
           <tr><td><code>PROMETHEUS_URL</code></td><td><span class="pill pill-opt">Optional</span></td><td>WFE CPU, heap, event loop lag, GC overhead metrics — unlocks Phase 6 of /troubleshoot-jobs</td></tr>
-          <tr><td><code>SLACK_ESCALATION_CHANNEL</code></td><td><span class="pill pill-opt">Optional</span></td><td>Manager escalation messages in Phase 8</td></tr>
+          <tr><td><code>SLACK_ESCALATION_CHANNEL</code></td><td><span class="pill pill-opt">Optional</span></td><td>Manager escalation messages in Phase 7</td></tr>
         </tbody>
       </table>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Multi-env Configuration -->
+  <div class="section">
+    <div class="section-label">Multi-Environment</div>
+    <h2>Multiple .env Files — Environment Selection in Phase 3</h2>
+    <p class="desc">Phase 3 (Reproduce &amp; Workaround) supports multiple environment targets. If more than one <span class="inline-code">.env</span> file is present, the agent presents a numbered selection list before authenticating — so the engineer chooses exactly where reproduction and workaround work happens.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>File Path</th><th>Convention</th><th>When to Use</th></tr></thead>
+        <tbody>
+          <tr><td><code>.env</code></td><td>Default customer environment (project root)</td><td>The primary production or staging instance — most investigations</td></tr>
+          <tr><td><code>.env.{label}</code></td><td>Named environment (e.g., <code>.env.staging</code>, <code>.env.acme-prod</code>)</td><td>When working multiple customer environments or accounts simultaneously</td></tr>
+          <tr><td><code>repro/{ISD}/.env</code></td><td>Isolated local reproduction environment</td><td>When validating a fix locally before applying to customer; Docker Compose stack</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout" style="margin-top:16px;">
+      <strong>Automatic vs. prompted selection:</strong> If exactly one <span class="inline-code">.env</span> file exists, Phase 3 uses it automatically. If multiple exist, the agent shows each file's <span class="inline-code">PLATFORM_URL</span> in a numbered list and waits for the engineer to choose before any authentication occurs.
+    </div>
+
+    <div class="callout" style="margin-top:10px;">
+      <strong>builder-skills credentials:</strong> All builder-skill invocations in Phase 3 use credentials from the <em>selected</em> <span class="inline-code">.env</span>. No separate authentication is needed. This applies whether the engineer is working in a customer environment or a local Docker stack.
     </div>
   </div>
 
@@ -1416,8 +1433,8 @@ flowchart TD
   <!-- Resolution Learning Workflow -->
   <div class="section">
     <div class="section-label">Continuous Improvement</div>
-    <h2>Resolution Learning — Phase 7</h2>
-    <p class="desc">Every confirmed resolution must be added to the known-resolution library. This is not optional — it's how the agent gets smarter over time. Future investigations against the same symptom will identify the root cause immediately from Phase 0.</p>
+    <h2>Resolution Learning — Phase 6</h2>
+    <p class="desc">Every confirmed resolution must be added to the known-resolution library. This is not optional — it's how the agent gets smarter over time. Future investigations against the same symptom will identify the root cause immediately in Phase 1 (known-issue cross-reference).</p>
 
     <div class="rules" style="grid-template-columns: 1fr;">
       <div class="rule"><div class="rule-text">
@@ -1430,7 +1447,7 @@ flowchart TD
         <strong>Where it goes</strong> — Appended to <code>data/known-resolutions.md</code> in the project directory. The primary skill searches this library in Phase 0c as part of ISD + ENG Jira mining.
       </div></div>
       <div class="rule"><div class="rule-text">
-        <strong>ISD ticket closeout</strong> — Phase 7 also posts a resolution comment to the ISD ticket (with your approval) and transitions it to Resolved. The resolution comment includes: root cause, steps taken, verification evidence, fix version or workaround.
+        <strong>ISD ticket closeout</strong> — Phase 6 also posts a resolution comment to the ISD ticket (with your approval) and transitions it to Resolved. The resolution comment includes: root cause, steps taken, verification evidence, fix version or workaround.
       </div></div>
     </div>
   </div>

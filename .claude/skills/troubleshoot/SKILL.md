@@ -117,11 +117,35 @@ After reading `.env`, check which groups are missing and tell the user:
 
 ---
 
-## Phase 0: ISD Ticket Intake
+## Investigation Protocol — Governs All Customer Communication
 
-**Run first.** Extract all context from the ISD ticket before touching the platform. This is the foundation for every subsequent phase.
+The **Itential Product Support Investigation Protocol** (8 sections) is not a phase — it is a communication standard that runs throughout the entire investigation lifecycle. Apply it at every phase. Every interaction with the customer must follow it.
 
-### Step 0a — Read the ISD Ticket
+**Never treat this as a one-time questionnaire.** At any point — Phase 1 through Phase 6 — if a section is incomplete, contradicted by new findings, or a gap is surfaced by a sub-skill, update it and post an internal ISD comment (`commentVisibility: {"type": "role", "value": "Service Desk Team"}`).
+
+| Section | What it covers | When it's primarily addressed |
+|---|---|---|
+| 1. What are the symptoms? | Observable facts about what is happening | Phase 1 (initial collection); refined throughout |
+| 2. When did the incident begin? | Verifiable system evidence for timeline | Phase 1 (ticket); confirmed with logs in Phase 2/3 |
+| 3. Can it be reproduced? | Exact steps to trigger, expected vs actual | Phase 3 (Reproduce & Workaround) |
+| 4. Who is impacted? | Users, workflows, environment, browser | Phase 1 (initial); refined in Phase 2 |
+| 5. What is the business impact? | Severity, urgency, blocked operations | Phase 1 (triage); re-evaluated if scope changes |
+| 6. How was the incident resolved? | Every recovery step, in sequence | Phase 6 (Resolution Learning) |
+| 7. When did the incident end? | System-verified recovery time | Phase 6 (Resolution Learning) |
+| 8. Data collection artifacts | Logs, job IDs, health snapshots, configs | Requested Phase 1–3; confirmed in Phase 4 report |
+
+**Opening line for all customer questionnaire comments:**
+> "Thank you for raising this issue. To help us investigate efficiently, we have a few questions. We will begin our investigation in parallel and will update this ticket as we progress."
+
+---
+
+## Phase 1: Ticket Understanding & Triage
+
+**Entirely offline — no platform authentication, no API calls to the customer environment.** Phase 1 works from Jira, Confluence, and local reference files only. Authentication happens in Phase 3 when the engineer selects a target environment.
+
+Gate: produce the engineer question list and pre-investigation summary, then prompt: *"Send these questions to the customer and return when you have answers, or proceed directly to Phase 2 if answers are already available."*
+
+### Step 1a — Read the ISD Ticket
 
 If `JIRA_URL` + `JIRA_USER` + `JIRA_API_TOKEN` are in `.env`:
 
@@ -246,7 +270,7 @@ mcp__claude_ai_Atlassian_MCP__getJiraIssue(issueIdOrKey: "{ISD_TICKET_KEY}")
 
 ---
 
-### Step 0b — Extract Structured Context
+### Step 1b — Extract Structured Context
 
 Parse the ticket and populate this context block. Mark fields as `unknown` if not stated — do not guess:
 
@@ -296,7 +320,29 @@ Save to `{project_path}/data/{TIMESTAMP}/ticket_context.md`.
 
 ---
 
-### Step 0c — Mine Similar Jira Tickets for Diagnostic Input
+### Step 1c — Platform Support Status Check
+
+Cross-reference the IAP version from the ticket against `data/product-capability-reference.md`:
+
+```
+Read data/product-capability-reference.md
+Find the row matching the customer's IAP version (from ticket fields or description).
+
+Determine support status:
+  - Version in active support (current GA or prior minor) → note inline, continue
+  - Version in maintenance only → warn: "⚠️ IAP {version} is in maintenance-only support.
+    Critical bugs and security patches only. Recommend planning upgrade."
+  - Version End of Life (e.g., 2023.1.x: EOS Aug 19, 2025) → flag immediately before any investigation:
+    "⚠️ IAP {version} is End of Life as of {date}. Standard support is not available for EOL versions.
+    Recommend upgrade path to a supported version before investing investigation time."
+  - Version not found in reference → note as "support status unverified — check support.itential.com"
+```
+
+Append the support status determination to `ticket_context.md` alongside the version field.
+
+---
+
+### Step 1d — Mine Similar Jira Tickets for Diagnostic Input
 
 Search both ISD (past support cases) and ENG (engineering bugs) for tickets whose description, error message, or component matches the current issue. Use their resolution comments and root-cause notes as diagnostic hypotheses — not just as a known-bug check.
 
@@ -413,19 +459,19 @@ mcp__claude_ai_Atlassian_MCP__searchJiraIssuesUsingJql(
 | Resolved ISD ticket | Steps the engineer took to narrow down | Skip those steps if already ruled out; jump ahead |
 | Open ISD ticket | Symptoms description + what was tried | Confirms the issue is occurring elsewhere; aids escalation |
 | Resolved ENG bug | Fix version + workaround comment | Check if customer's IAP version ≥ fix version |
-| Open ENG bug | Linked ISD tickets + engineering notes | Reference in Phase 7 engineering escalation |
+| Open ENG bug | Linked ISD tickets + engineering notes | Reference in Phase 5 engineering escalation |
 
 **Interpret results:**
 - Resolved ISD with matching symptoms → extract root-cause comment as top hypothesis; share with customer as likely fix
 - Resolved ENG with fix version > customer version → known bug not yet patched; provide workaround from ENG comments
-- Open ENG ticket → ongoing known issue; reference in Phase 7; check if customer should be added as affected
+- Open ENG ticket → ongoing known issue; reference in Phase 5 (Engineering Escalation); check if customer should be added as affected
 - No match → new or unreported issue; proceed to full investigation without pre-formed bias
 
 Save to `{project_path}/data/{TIMESTAMP}/known_issues.md`.
 
 ---
 
-### Step 0d — Search Confluence for Relevant Knowledge
+### Step 1e — Search Confluence for Relevant Knowledge
 
 Search Confluence for pages matching the issue description, error message, or component. This surfaces KB articles, runbooks, known-issue pages, and prior investigation notes that contain diagnostic guidance.
 
@@ -475,21 +521,84 @@ mcp__claude_ai_Atlassian_MCP__getConfluencePage(
 **Apply to investigation:**
 - If a Confluence page describes the same symptom → use its resolution steps as Phase 3 starting point
 - If a runbook exists for the component → follow it in Phase 3 before running sub-skills
-- If a known-issues page lists the error → reference it in Phase 0e pre-investigation summary
+- If a known-issues page lists the error → reference it in the pre-investigation summary (Step 1h below)
 
 Save relevant page titles, URLs, and key excerpts to `{project_path}/data/{TIMESTAMP}/confluence_references.md`.
 
 ---
 
-### Step 0d — Pre-Investigation Summary
+### Step 1f — Priority Mismatch Detection
 
-Produce this before Phase 1 and share it with the user for alignment:
+**Run immediately after reading the ticket (Step 1a).** A customer may file a low-priority ticket whose description reveals a blocking production impact. Detect this before any investigation begins.
+
+Scan the ticket description for ANY of these signals:
+
+| Signal | What it means |
+|---|---|
+| "production is down", "cannot work", "all users affected" | Total or near-total loss of service — should be S1/P1 |
+| "blocking our go-live", "release is at risk", "deadline is [imminent date]" | Time-critical business impact — escalate immediately |
+| "customer-facing", "impacting clients", "SLA breach to our customer" | Downstream customer impact — severity is higher than stated |
+| "entire team is blocked", "no one can use X" | Broad user impact |
+| "this has been broken for [X days/weeks]" | Long-running issue — SLA likely already breached |
+| "critical automation", "network operations down", "failed production job" | Core business process affected |
+| "escalating to you", "need this urgently", "ASAP" | Customer already frustrated |
+| "tried everything", "no workaround" | Customer stuck with no path forward |
+
+**When detected — do this before anything else:**
+
+1. Flag to engineer: `"⚠️ Priority Mismatch: filed as {STATED_PRIORITY} but description indicates [{impact summary}]. Recommend treating as {RECOMMENDED_PRIORITY}."`
+2. Escalate to senior manager immediately (do not wait for investigation)
+3. With engineer approval — upgrade ticket priority and post internal triage comment (see Phase 7 escalation templates)
+
+---
+
+### Step 1g — Generate Engineer Question List
+
+After Steps 1a–1f, produce a structured checklist of questions for the engineer to clarify with the customer. Tailor to the specific ticket — pre-fill answers already in the ticket, remove inapplicable categories.
+
+```markdown
+## Pre-Investigation Questions — {ISD_TICKET_KEY}
+
+**Resolve these before proceeding to Phase 2.**
+
+### A. Version & Environment
+1. [ ] Exact IAP version in production: (confirm `{version_from_ticket}` or get from `GET /api/about`)
+2. [ ] Deployment type: Docker Compose / Kubernetes (EKS/GKE) / VM / Cloud managed?
+3. [ ] Customer-managed or Itential-managed (SaaS)?
+
+### B. Symptom Precision
+4. [ ] Exact error message — copy/paste from platform, not paraphrased
+5. [ ] First occurrence: exact UTC timestamp from logs or job record (not user-reported clock)
+6. [ ] Frequency: always fails / intermittent / started after {event}?
+
+### C. Scope & Reproduction
+7. [ ] Which workflow(s) / adapter(s) affected? Are others working?
+8. [ ] Can you reproduce on demand? If yes, exact trigger steps
+9. [ ] All users affected or specific users/roles?
+
+### D. Recent Changes
+10. [ ] Changes in 48h before first occurrence: IAP upgrade, adapter config, network/firewall, cert renewal?
+
+### E. Evidence Needed
+11. [ ] Failing job ID (from Operations Manager) or workflow name
+12. [ ] IAP application logs covering the incident window
+13. [ ] Adapter settings export (if adapter-related)
+```
+
+Post this as an internal ISD comment (`Service Desk Team` visibility) after reviewing with the engineer.
+
+---
+
+### Step 1h — Pre-Investigation Summary
+
+Produce this at the end of Phase 1 and share with the engineer before proceeding:
 
 ```markdown
 ## Pre-Investigation Summary
 
 **Ticket:** {ISD_TICKET_KEY} — {summary}
 **Customer:** {name} | **Priority:** {P1-P4} | **Severity:** {S1-S4} | **SLA:** {status}
+**IAP Version:** {version} | **Support Status:** {active | maintenance-only | EOL | unverified}
 
 **What the customer reports:**
 {2–3 sentence plain-English description of the problem}
@@ -503,101 +612,188 @@ but never refreshes the token. Common with IAG adapters."}
 {ENG-XXXX (fix in vX.Y.Z, workaround: ...) | No matching ticket found}
 
 **Investigation plan:**
-1. Phase 1 — Authenticate & collect platform snapshot
-2. Phase 3 — {specific sub-skill} because {reason from hypothesis}
-3. Phase 4 — Reproduce with {version X.Y.Z + adapter config}
+1. Phase 2 — Route to {specific sub-skill} because {reason from hypothesis}
+2. Phase 3 — Reproduce / build workaround in selected environment
 
 **Escalation risk:**
-{None | Monitor — SLA at risk in Xh | ACTION REQUIRED — SLA breached, see Phase 9}
+{None | Monitor — SLA at risk in Xh | ACTION REQUIRED — SLA breached, see Phase 7}
 ```
+
+Save to `{project_path}/data/{TIMESTAMP}/pre-investigation-summary.md`.
+
+**Gate:** present the pre-investigation summary, support status, and question list to the engineer, then prompt:
+*"Send these questions to the customer and return when you have answers, or proceed directly to Phase 2 if answers are already available."*
 
 ---
 
-## Phase 1: Authenticate & Platform Snapshot
+## Phase 2: Symptom Analysis & Routing
 
-### Step 1a — Authenticate
+**No platform authentication in the orchestrator.** Phase 2 works from ticket context and pattern matching. Sub-skills authenticate themselves from `.env` when invoked. Platform authentication at the orchestrator level happens in Phase 3 when the engineer selects an environment.
 
-Check `{project_path}/.auth.json`:
-- If `platform_url` matches `PLATFORM_URL` in `.env` and `timestamp` < 50 min old → reuse token
-- Otherwise authenticate and save `.auth.json`
+### Step 2a — Apply Investigation Protocol Gaps
 
-**Password auth:**
+Review the 8-section Investigation Protocol (see standing section above). Identify which sections are still unanswered after Phase 1. Post only the outstanding questions as an additional internal ISD comment — do not re-ask questions already answered in the ticket or by the customer's response to Step 1g.
+
+### Step 2b — Categorize & Sub-skill Routing
+
+Based on ticket context, platform version, symptom description, and Investigation Protocol answers:
+
+**Classify the issue:**
+- **Functional** — something that should work doesn't (workflow error, adapter OFFLINE, import failure, JST error)
+- **Performance/Non-functional** — slowness, queue backlog, resource exhaustion, UI timeouts
+
+**Route to the appropriate sub-skill(s):**
+
+| Symptom from Ticket | Sub-skill to Invoke | Notes |
+|--------------------|---------------------|-------|
+| Workflow failing, job erroring, JST error | `/troubleshoot-workflows {WORKFLOW_NAME or JOB_ID}` | Sub-skill authenticates from `.env` |
+| Adapter OFFLINE, wrong data, auth failure | `/troubleshoot-adapters {ADAPTER_NAME}` | Sub-skill authenticates from `.env` |
+| Jobs stuck or running slowly | `/troubleshoot-jobs {JOB_ID or workflow name}` | Sub-skill authenticates from `.env` |
+| MongoDB slow / Redis eviction / queue depth | `/troubleshoot-databases mongodb\|redis\|both` | Sub-skill authenticates from `.env` |
+| Container OOMKilled / disk full / CPU high | `/troubleshoot-infra {component}` | Sub-skill authenticates from `.env` |
+| Log evidence needed for any issue | `/troubleshoot-logs {component} {incident time}` | Sub-skill authenticates from `.env` |
+| IAG adapter OFFLINE / GatewayManager error | `/troubleshoot-adapters {IAG_ADAPTER_NAME}` | Inline IAG diagnostics follow adapter investigation |
+| Kafka consumer lag | Inline diagnostics in Step 2b (see below) | — |
+| UI slow / API timeouts | Inline diagnostics in Step 2b (see below) + `/troubleshoot-logs` | — |
+
+Each sub-skill authenticates itself from `.env` when invoked — the orchestrator does not pre-authenticate.
+
+**Inline IAG Diagnostics (when IAG is implicated but sub-skill is insufficient):**
+
 ```bash
-curl -sk -X POST "{PLATFORM_URL}/login" \
+# IAG direct health
+curl -sk "{IAG_URL}/health" | jq '{status: .status}'
+
+# IAP adapter state for IAG
+curl -sk "{PLATFORM_URL}/health/adapters?token={TOKEN}" | jq '.[] | select(.name | contains("IAG"))'
+```
+
+Check IAG logs: `docker logs iag-container 2>&1 | grep -i "error\|warn\|fail" | tail -50`
+
+**Inline Kafka Diagnostics:**
+
+```bash
+# Kafka adapter health in IAP
+curl -sk "{PLATFORM_URL}/health/adapters?token={TOKEN}" | jq '.[] | select(.type == "Kafka")'
+
+# Consumer group lag (run from Kafka host)
+kafka-consumer-groups.sh --bootstrap-server {KAFKA_BROKER}:9092 --describe --all-groups 2>/dev/null | grep -v "^$"
+
+# Topic partition details
+kafka-topics.sh --bootstrap-server {KAFKA_BROKER}:9092 --describe --topic {TOPIC_NAME}
+```
+
+**Inline UI/API Latency Diagnostics:**
+
+```bash
+# Time key IAP endpoints (3 samples)
+for ep in "/api/v2/jobs?limit=1" "/health" "/health/adapters"; do
+  avg=$(for i in 1 2 3; do curl -sk -o /dev/null -w "%{time_total}" "{PLATFORM_URL}${ep}?token={TOKEN}"; echo; done | awk '{s+=$1;c++}END{printf "%.3f",s/c}')
+  echo "${ep}: avg ${avg}s"
+done
+```
+
+### Step 2c — Constructive Fix Path
+
+After sub-skill confirms root cause, route to the appropriate builder-skill for fix construction or workaround. All builder-skill invocations use `.env` credentials sourced by the sub-skill or the engineer's selected environment from Phase 3 Step 3a.
+
+| Root Cause Type | builder-skill | Helper to use |
+|---|---|---|
+| Workflow structural issue | `/builder-agent` | `helpers/create/create-workflow.json` or `helpers/assets/*.json` |
+| JST error (bad script) | `/builder-agent` | Build corrected script, test with `node -e` before PUT |
+| Adapter misconfiguration | `/troubleshoot-adapters` fix path | GET current settings → modify in-place → PUT full body (adapter PUT is not partial) |
+| JSON Form schema issue | `/itential-json-forms` | `helpers/create/create-json-form.json` / `helpers/update/update-json-form.json` |
+| MOP command template issue | `/itential-mop` | `helpers/create/create-command-template.json` |
+| LCM missing `instance` variable | `/itential-lcm` | Reference `vendor/builder-skills/helpers/assets/lcm/lcm-vxlan-fabric-services-project.json` |
+| IAG service definition failure | `/iag` | IAG 5 only — for IAG 4 escalate to ENG |
+
+**Safety rules unchanged:** all platform writes (PUT, PATCH, POST) require explicit engineer approval before execution. The builder-skill invocation does not bypass the troubleshooting agent's read-only-by-default rules.
+
+---
+
+## Phase 3: Reproduce & Workaround
+
+Reproduce the confirmed root cause and find workarounds in an engineer-selected environment. Authentication happens here — after the environment is chosen.
+
+> **Investigation Protocol still applies.** Any incomplete protocol sections (Section 3 — Can it be reproduced? Section 8 — Evidence artifacts) are fulfilled in this phase.
+
+### Step 3a — Environment Selection & Authentication
+
+Discover all available `.env` files in the project, show the target platform for each, and let the engineer choose before any authentication or platform access occurs.
+
+```bash
+# Discover all .env files (project root + repro subdirectories, up to 3 levels deep)
+find {project_path} -maxdepth 3 \( -name ".env" -o -name ".env.*" \) 2>/dev/null \
+  | grep -v "\.git" | sort
+
+# Show PLATFORM_URL for each file so the engineer knows what they're choosing
+for f in $(find {project_path} -maxdepth 3 \( -name ".env" -o -name ".env.*" \) \
+  | grep -v "\.git" | sort); do
+  url=$(grep "^PLATFORM_URL=" "$f" 2>/dev/null | cut -d= -f2-)
+  echo "  $f  →  ${url:-[PLATFORM_URL not set]}"
+done
+```
+
+If exactly one `.env` file is found → use it automatically (no prompt needed).
+
+If multiple `.env` files are found → present a numbered list:
+```
+Available environments:
+  [1] {project_path}/.env            → https://customer.itential.io
+  [2] {project_path}/.env.staging    → https://staging.itential.io
+  [3] {project_path}/repro/{ISD}/.env → http://localhost:3000
+
+Which environment do you want to use for reproduction and workaround? [1/2/3]
+```
+
+After the engineer selects, authenticate:
+
+```bash
+set -a; source {SELECTED_ENV_FILE}; set +a
+
+# Password auth
+curl -sk -X POST "${PLATFORM_URL}/login" \
   -H "Content-Type: application/json" \
-  -d '{"username": "{USERNAME}", "password": "{PASSWORD}"}'
-```
+  -d "{\"username\": \"${USERNAME}\", \"password\": \"${PASSWORD}\"}"
 
-**OAuth:**
-```bash
-curl -sk -X POST "{PLATFORM_URL}/oauth/token" \
+# OAuth
+curl -sk -X POST "${PLATFORM_URL}/oauth/token" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id={CLIENT_ID}&client_secret={CLIENT_SECRET}&grant_type=client_credentials"
+  -d "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&grant_type=client_credentials"
 ```
 
-Save: `{"platform_url": "...", "auth_method": "...", "token": "...", "timestamp": "..."}`
-
-On 401 — re-authenticate silently, retry once.
-
----
-
-### Step 1b — Platform Snapshot
-
-Run in parallel:
-
-```bash
-# Application health
-curl -sk "{PLATFORM_URL}/health/applications?token={TOKEN}"
-
-# Adapter health
-curl -sk "{PLATFORM_URL}/health/adapters?token={TOKEN}"
-
-# Overall health
-curl -sk "{PLATFORM_URL}/health?token={TOKEN}"
-
-# IAP version (if endpoint available)
-curl -sk "{PLATFORM_URL}/version?token={TOKEN}" 2>/dev/null \
-  || curl -sk "{PLATFORM_URL}/api/version?token={TOKEN}" 2>/dev/null
+Save token to `.auth.json`:
+```json
+{"platform_url": "...", "auth_method": "...", "token": "...", "timestamp": "..."}
 ```
 
-Summarize:
-- IAP version (compare against ticket's stated version)
-- Apps: total, running, stopped/error
-- Adapters: total, ONLINE, OFFLINE — list all OFFLINE adapters
-- Flag anything abnormal immediately
+Reuse token if `.auth.json` exists, `platform_url` matches, and `timestamp` < 50 min old.
+
+**`.env` naming convention:**
+- `.env` — default customer environment (project root)
+- `.env.{label}` — named environments (e.g., `.env.staging`, `.env.acme-prod`)
+- `repro/{ISD_TICKET_KEY}/.env` — local reproduction environment (see Step 3b)
+
+If the engineer wants a fresh local reproduction environment (no existing `.env` matches), proceed to Step 3b to create `repro/{ISD_TICKET_KEY}/.env`.
+
+### Step 3b — Reproduce the Issue in Selected Environment
+
+Using the authenticated session from Step 3a, attempt to trigger the confirmed root cause:
+
+- Import the failing workflow / adapter configuration into the selected environment
+- Execute the trigger steps identified in Phase 2 (Issue Category) and from the Investigation Protocol (Section 3: Can it be reproduced?)
+- Capture the resulting job ID, error output, and logs as evidence
+- Record actual vs. expected behavior for the diagnostic report
+
+**If the engineer selected a customer environment** (`.env` or `.env.{label}`): run the triggering steps directly. Do not make changes without explicit approval.
+
+**If the engineer wants an isolated local reproduction environment**: proceed to Step 3b.1 to scaffold a version-matched local stack.
 
 ---
 
-### Step 1c — Categorize the Issue
+### Step 3b.1 — Scaffold Local Reproduction Environment (when needed)
 
-Based on ticket context and platform snapshot, classify:
-
-**Functional** (something that should work doesn't):
-- Workflow / job failing, erroring, or stuck → `/troubleshoot-workflows`, `/troubleshoot-jobs`
-- Adapter OFFLINE, wrong data, auth failure → `/troubleshoot-adapters`
-- IAG service call failing, GatewayManager error → `/troubleshoot-workflows` + Phase 3d
-- Import failure, validation error → `/troubleshoot-workflows`
-- JST error → `/troubleshoot-workflows`
-- MongoDB / Redis connection errors → `/troubleshoot-databases`
-- Container crash-looping → `/troubleshoot-infra`
-- Kafka adapter not consuming → Phase 3i (inline)
-
-**Performance / Non-functional** (slow or stuck):
-- Jobs slow or stuck → `/troubleshoot-jobs`
-- High CPU / memory on IAP or IAG → `/troubleshoot-infra`
-- MongoDB slow queries → `/troubleshoot-databases`
-- Redis eviction / queue backlog → `/troubleshoot-databases`
-- UI slow / API timeouts → Phase 3h (inline) + `/troubleshoot-logs`
-
----
-
-## Phase 2: Investigation Protocol — Questions & Data Collection
-
-**Source:** [Product Support — Investigation Protocol](https://itential.atlassian.net/wiki/spaces/~712020defefe225c774389a28cd6f69fa90736/pages/6393462815/Product+Support+Investigation+Protocol)
-
-This phase follows the standardized 8-section protocol exactly. Work through each section in order. Sections 1–5 drive the questionnaire posted to the customer. Section 8 drives the artifact checklist. Sections 6–7 are completed post-resolution.
-
-> **Golden Rule:** Stay focused on facts. Avoid assumptions. Let the customer describe the issue in their own words before forming any hypothesis.
+Create an isolated `.env` under `repro/{ISD_TICKET_KEY}/` to keep Docker-local credentials separate from customer credentials. This is the local reproduction path.
 
 ---
 
@@ -944,23 +1140,41 @@ mcp__claude_ai_Atlassian_MCP__addCommentToJiraIssue(
 
 ---
 
-## Phase 3: Platform Investigation
+### Step 3c — Find Workarounds Using builder-skills
 
-Run the appropriate sub-skill(s) based on the issue category from Phase 1c. Always collect platform snapshot first (Phase 1b), then delegate.
+In the same authenticated environment from Step 3a, invoke the appropriate builder-skill to construct a workaround or fix. The `.env` sourced in Step 3a is the credential source for all builder-skill invocations — no separate auth needed.
 
-### Routing by Symptom
+```bash
+# Credentials already sourced from the selected .env in Step 3a
+echo "Target: ${PLATFORM_URL}"
+echo "Auth:   ${AUTH_METHOD}"
+```
 
-| Symptom from Ticket | Sub-skill to Run | Additional Phase |
-|--------------------|-----------------|-----------------|
-| Workflow failing, job erroring | `/troubleshoot-workflows {WORKFLOW_NAME or JOB_ID}` | — |
-| Adapter OFFLINE, wrong data, auth failure | `/troubleshoot-adapters {ADAPTER_NAME}` | — |
-| Jobs stuck or running slowly | `/troubleshoot-jobs {JOB_ID or workflow name}` | — |
-| MongoDB slow / Redis eviction / queue depth | `/troubleshoot-databases mongodb|redis|both` | — |
-| Container OOMKilled / disk full / CPU high | `/troubleshoot-infra {component}` | — |
-| Need log evidence for any issue | `/troubleshoot-logs {component} {incident time}` | — |
-| IAG adapter OFFLINE / GatewayManager error | `/troubleshoot-adapters {IAG_ADAPTER_NAME}` | Phase 3d (inline) |
-| Kafka consumer lag | Phase 3i (inline) | — |
-| UI / API slow | Phase 3h (inline) | — |
+**Route by root cause type:**
+
+| Root Cause | builder-skill | Action |
+|---|---|---|
+| Workflow structural issue | `/builder-agent` | Build corrected workflow from `helpers/create/create-workflow.json` |
+| JST error | `/builder-agent` | Write corrected script, test with `node -e`, then PUT |
+| Adapter misconfiguration | `/troubleshoot-adapters` fix path | GET → modify → PUT full body (no partial updates) |
+| JSON Form issue | `/itential-json-forms` | `helpers/create/create-json-form.json` or `helpers/update/update-json-form.json` |
+| MOP command template | `/itential-mop` | `helpers/create/create-command-template.json` |
+| LCM `instance` variable missing | `/itential-lcm` | Reference `vendor/builder-skills/helpers/assets/lcm/lcm-vxlan-fabric-services-project.json` |
+| IAG service definition failure | `/iag` | IAG 5 only — IAG 4 issues: escalate to ENG |
+
+**Safety rules:** all platform writes (PUT, PATCH, POST) require **explicit engineer approval** before execution. Confirmation is per-action; a prior approval does not authorize subsequent writes.
+
+Write reproduction steps and workaround notes to `repro/{ISD_TICKET_KEY}/repro_steps.md`.
+
+---
+
+### (Local Environment Path) — Remaining Steps
+
+If the engineer requested a local reproduction environment (Step 3b.1), continue with the Docker setup below:
+
+#### Sub-step: Routing by Symptom (sub-skill reference)
+| Kafka consumer lag | Inline diagnostics (see below) | — |
+| UI / API slow | Inline diagnostics (see below) | — |
 
 **Run sub-skills in parallel when issues span multiple components.**
 
@@ -1137,7 +1351,7 @@ echo "Auth:   ${AUTH_METHOD}"
 | Context | `.env` to source | PLATFORM_URL |
 |---|---|---|
 | **Live customer fix** (Constructive Fix Path, Gaps D-J) | `{project_path}/.env` | Customer instance — e.g. `https://customer.itential.io` |
-| **Reproduction / workaround build** (Phase 4) | `{project_path}/repro/{ISD_TICKET_KEY}/.env` | Docker local — `http://localhost:3000` |
+| **Local reproduction build** (Phase 3 Step 3b.1) | `{project_path}/repro/{ISD_TICKET_KEY}/.env` | Docker local — `http://localhost:3000` |
 
 When invoking a builder-skill, include this context in the invocation message so the skill knows which platform to target:
 
@@ -1148,17 +1362,13 @@ Credentials: from .env (CLIENT_ID/CLIENT_SECRET for OAuth, USERNAME/PASSWORD for
 Reuse session token if already authenticated (cached in .auth.json, valid for 50 min)
 ```
 
-**If the fix requires a workaround first (before applying to customer):** use Phase 4 to build and validate the workaround against the reproduction Docker environment using the reproduction `.env`, then apply the validated fix to the customer environment using the customer `.env`. Do not apply an untested fix directly to production.
+**If a workaround needs to be validated first (before applying to customer):** use Step 3b.1 (local env scaffold) to build and validate against a reproduction Docker environment using its `.env`, then apply the validated fix to the customer environment using the customer `.env`. Do not apply an untested fix directly to production.
 
 ---
 
-## Phase 4: Reproduce the Issue
+#### Sub-step: Local Reproduction Environment Scaffold
 
-Build a local environment that matches the customer's version and configuration to confirm the root cause.
-
-### Step 4a — Scaffold Reproduction Environment
-
-The reproduction environment gets its **own isolated `.env`** under `repro/{ISD_TICKET_KEY}/`. This keeps Docker-local credentials separate from the customer credentials in the project root `.env`. All builder-skill invocations during Phase 4 use the reproduction `.env`; once validated, fixes are applied to the customer environment using the project root `.env`.
+The local reproduction environment gets its **own isolated `.env`** under `repro/{ISD_TICKET_KEY}/`. This keeps Docker-local credentials separate from the customer credentials in the project root `.env`. All builder-skill invocations in local reproduction use this `.env`; once validated, fixes are applied to the customer environment using the customer `.env`.
 
 ```bash
 # Create reproduction directory
@@ -1182,7 +1392,7 @@ REDIS_PORT=6379
 EOF
 
 # The customer .env is at {project_path}/.env — do not use it here
-echo "Reproduction .env written. Customer .env is at {project_path}/.env (not used in Phase 4)."
+echo "Reproduction .env written. Customer .env is at {project_path}/.env (not used in local reproduction)."
 ```
 
 ### Step 4b — Version-Matched Docker Setup
@@ -1341,7 +1551,7 @@ Save to `{project_path}/repro/{ISD_TICKET_KEY}/repro_steps.md`.
 
 ---
 
-## Phase 5: Diagnostic Report
+## Phase 4: Diagnostic Report
 
 Save to `{project_path}/data/{TIMESTAMP}/diagnostic_report.md`.
 
@@ -1432,11 +1642,11 @@ Save to `{project_path}/data/{TIMESTAMP}/diagnostic_report.md`.
 
 ---
 
-## Phase 6: Engineering Escalation Pack
+## Phase 5: Engineering Escalation Pack
 
 Produce this when the investigation confirms a platform bug that needs an ENG ticket, or when an existing ENG ticket needs updating with new evidence.
 
-### Step 6a — Write the Bug Report
+### Step 5a — Write the Bug Report
 
 Save to `{project_path}/data/{TIMESTAMP}/eng_bug_report.md`:
 
@@ -1542,9 +1752,9 @@ If no workaround: "No known workaround."}
 
 ---
 
-### Step 6b — Create or Update ENG Ticket
+### Step 5b — Create or Update ENG Ticket
 
-If no matching ENG ticket was found in Phase 0c, create one:
+If no matching ENG ticket was found in Phase 1 (Step 1d — Mine Similar Jira Tickets), create one:
 
 ```bash
 # Create ENG Jira ticket
@@ -1603,11 +1813,11 @@ mcp__claude_ai_Atlassian_MCP__createIssueLink(
 
 ---
 
-## Phase 7: Resolution Learning
+## Phase 6: Resolution Learning
 
 Run this phase when a fix is confirmed — either by Engineering releasing a patch, or by a workaround resolving the customer's issue.
 
-### Step 7a — Record the Resolution Pattern
+### Step 6a — Record the Resolution Pattern
 
 Append to `{project_path}/data/known-resolutions.md`:
 
@@ -1640,7 +1850,7 @@ Append to `{project_path}/data/known-resolutions.md`:
 
 ---
 
-### Step 7b — Post Resolution Comment to ISD Ticket
+### Step 6b — Post Resolution Comment to ISD Ticket
 
 ```bash
 RESOLUTION_COMMENT="Resolution confirmed for {ISD_TICKET_KEY}.
@@ -1676,7 +1886,7 @@ mcp__claude_ai_Atlassian_MCP__addCommentToJiraIssue(
 
 ---
 
-### Step 7c — Transition ISD Ticket to Resolved
+### Step 6c — Transition ISD Ticket to Resolved
 
 ```bash
 # Get available transitions
@@ -1698,9 +1908,9 @@ curl -s -X POST "${JIRA_URL}/rest/api/3/issue/${TICKET_KEY}/transitions" \
 
 ---
 
-### Step 7d — Enhance the Skill Pattern Table
+### Step 6d — Enhance the Skill Pattern Table
 
-After each confirmed resolution, update the known-pattern routing table in Phase 1c. Append the new error string pattern and its resolution to the table so future investigations recognize it immediately.
+After each confirmed resolution, update the known-pattern routing table in Phase 2 Step 2b. Append the new error string pattern and its resolution to the table so future investigations recognize it immediately.
 
 **Known Resolution Library** (grows over time):
 
@@ -1719,13 +1929,15 @@ After each confirmed resolution, update the known-pattern routing table in Phase
 
 ---
 
-## Phase 8: Manager Escalation
+## Phase 7: Manager Escalation
 
 Run this phase when escalation to management is required.
 
 ---
 
-### Step 8a — Priority Mismatch Detection (Run at Phase 0, before anything else)
+### Step 7a — Priority Mismatch Detection
+
+> **Note:** Priority mismatch detection now runs in Phase 1 Step 1f — at ticket intake, before any investigation begins. This section contains the escalation message templates for use after a mismatch is detected.
 
 **The most important escalation trigger is one that doesn't look like an escalation yet:**
 a customer files a low-priority ticket (P3/P4, S3/S4) but their description
@@ -1778,7 +1990,7 @@ priority they selected:**
 
 ---
 
-### Step 8b — Escalation Triggers
+### Step 7b — Escalation Triggers
 
 Escalate immediately when ANY of the following are true:
 
@@ -1796,7 +2008,7 @@ Escalate immediately when ANY of the following are true:
 
 ---
 
-### Step 8c — Escalation Message Templates
+### Step 7c — Escalation Message Templates
 
 **Slack — Priority mismatch escalation (use when ticket is low-priority but description is blocking):**
 
@@ -1935,7 +2147,7 @@ Thanks,
 
 ---
 
-### Step 8c — Update ISD Ticket Priority/Flag
+### Step 7d — Update ISD Ticket Priority/Flag
 
 If the ticket needs its priority or severity elevated based on investigation findings:
 
