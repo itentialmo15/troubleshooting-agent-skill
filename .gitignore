@@ -8,11 +8,20 @@
 *secret*
 *token*.json
 
+# Investigation artifacts — contain customer PII, logs, ticket data
+# Static reference files (known-resolutions.md, product-capability-reference.md) ARE tracked
+data/[0-9]*/
+data/repro/
+
 # Office lock files
 ~$*
 
 # OS
 .DS_Store
+
+# Python bytecode
+__pycache__/
+*.pyc
 
 # Local scratch
 /tmp/
