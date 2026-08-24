@@ -154,10 +154,22 @@ See the Contribution tab in the HTML guide for the full 10-step PR workflow.
 
 ---
 
-## Refreshing Vendored Builder Skills
+## Vendored Builder Skills
 
+Staleness is checked **automatically**:
+- **At Phase 3 (Constructive Fix Path)** — before any builder-skill template import, the orchestrator runs a check and prompts to sync if behind
+- **At session end** — a `Stop` hook prints a staleness report if the vendor copy is out of date
+
+To check manually (fast — no clone):
+```bash
+scripts/sync-builder-skills.sh --check
+```
+
+To sync:
 ```bash
 scripts/sync-builder-skills.sh [branch]
 ```
 
-Review `git diff vendor/builder-skills/` and `vendor/builder-skills/SYNC_CHANGELOG.md` before committing.
+If the sync fails (network down, auth error), the script reports the current vendor SHA, date, and commit count before exiting — so you always know where the local copy stands.
+
+After a successful sync: review `git diff vendor/builder-skills/` and `vendor/builder-skills/SYNC_CHANGELOG.md` before committing.

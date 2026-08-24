@@ -862,6 +862,23 @@ docker exec apache-kafka kafka-topics.sh \
 
 ## Constructive Fix Path — After Phase 3 Root Cause Confirmed
 
+**Before invoking any builder-skill template, check if the vendor copy is current:**
+
+```bash
+scripts/sync-builder-skills.sh --check
+```
+
+- **Up to date** → proceed to the routing table below.
+- **Stale** → present the staleness report to the engineer:
+  ```
+  ⚠️  builder-skills is {N} commit(s) behind upstream ({short_sha}).
+  Sync now to get the latest templates? [yes / no / skip]
+  ```
+  - `yes` → run `scripts/sync-builder-skills.sh`, show the changed files list, then proceed
+  - `no` → proceed with the existing copy; note "using stale builder-skills copy" in the diagnostic report
+  - `skip` → proceed, suppress the check for the rest of this session
+- **Check failed (network unavailable)** → note "staleness unknown, proceeding with existing copy" and continue
+
 When Phase 3 diagnosis confirms a root cause that is a **fixable asset issue** — not a platform bug requiring ENG escalation — offer to construct the fix using the appropriate builder-skill. Present the proposed fix to the engineer and wait for explicit approval before invoking.
 
 | Root cause type | builder-skill to invoke | Notes |

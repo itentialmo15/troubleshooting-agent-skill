@@ -314,6 +314,8 @@ Escalation triggers:
 ### `/troubleshoot-logs`
 **Covers:** Log collection from IAP, IAG, MongoDB, Redis, load balancers — Docker, SSH/VM, Kubernetes/EKS, AWS CloudWatch. Filters by incident time, reports error patterns, masks sensitive values.
 
+**Attachment-anchored root-cause search:** if `/troubleshoot-triage` (Step 1a-attach) downloaded and parsed a customer log/error attachment from the ISD ticket, `/troubleshoot-logs` uses the extracted `{REPORTED_ERROR_TIME}` (earliest timestamped error line, not the customer's rough estimate) as the search anchor, and grep-matches the exact error text against the platform's own logs before trusting time-window proximity alone. It then runs a **staged backward lookback** (−30min → −2h → −24h/since last restart) to hunt for the precursor event, since root cause typically logs before the visible symptom. Falls back to `/health/applications` → `/server/config` for log path discovery if the platform doesn't expose `properties.properties.log_directory`.
+
 ---
 
 ## Known Bugs — Quick Reference

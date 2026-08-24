@@ -79,7 +79,17 @@ These apply in every troubleshooting session:
 
 ## Vendor Sync
 
-`vendor/builder-skills/` is a vendored snapshot of workflow-construction helpers from the upstream `itential/builder-skills` repo. These are used in Phase 4 (Reproduce the Issue) to construct Docker-based reproduction environments.
+`vendor/builder-skills/` is a vendored snapshot of workflow-construction helpers from the upstream `itential/builder-skills` repo. These are used in the Constructive Fix Path (Phase 3) to construct fixes and workarounds.
+
+**Staleness is checked automatically in two places:**
+- At the start of the Constructive Fix Path (before any builder-skill template import) — the orchestrator runs `--check` and prompts the engineer to sync if behind
+- At the end of every Claude Code session — the `Stop` hook prints a staleness report if the vendor copy is out of date
+
+To check staleness manually (no network clone, fast):
+
+```bash
+scripts/sync-builder-skills.sh --check [branch]
+```
 
 To refresh the vendored copy:
 
@@ -88,6 +98,8 @@ scripts/sync-builder-skills.sh [branch]
 ```
 
 After running: review `git diff vendor/builder-skills/` and `vendor/builder-skills/SYNC_CHANGELOG.md`, then commit deliberately. The sync never auto-applies — it surfaces what changed upstream and leaves the commit to you.
+
+If the sync fails (network unavailable, auth error), the script prints the current vendor SHA, date, and a `--check` reminder before exiting non-zero.
 
 ## Spec → Skill Relationship
 

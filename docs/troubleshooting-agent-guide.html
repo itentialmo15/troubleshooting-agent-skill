@@ -1699,24 +1699,45 @@ SSH_ROLE_1=iap</pre></div>
   <div class="section">
     <div class="section-label">Reproduction Toolkit</div>
     <h2>Vendor Template Sync — builder-skills</h2>
-    <p class="desc">The <span class="inline-code">vendor/builder-skills/</span> directory holds a committed, sparse snapshot of production-ready workflow templates from the upstream <span class="inline-code">itential/builder-skills</span> repo. Phase 4 imports from this local copy — no network access to GitHub during investigations. Templates must be refreshed manually before Phase 4 work that needs current helpers.</p>
+    <p class="desc">The <span class="inline-code">vendor/builder-skills/</span> directory holds a committed, sparse snapshot of production-ready workflow templates from the upstream <span class="inline-code">itential/builder-skills</span> repo. Staleness is checked <strong>automatically</strong> — at the start of every Phase 3 (Constructive Fix Path) session and at the end of every Claude Code session via a Stop hook.</p>
 
-    <div class="code-block"><pre><span class="comment"># Refresh vendored templates from upstream main branch</span>
+    <div class="cards" style="margin-bottom:20px;">
+      <div class="card t-magenta">
+        <div class="icon">P3</div>
+        <h3>Phase 3 Auto-Check</h3>
+        <p>Before any builder-skill template import, the orchestrator runs <code>--check</code> and prompts the engineer to sync if the copy is behind. Engineer can answer <strong>yes</strong> (sync now), <strong>no</strong> (use existing), or <strong>skip</strong> (suppress for session).</p>
+      </div>
+      <div class="card t-blue">
+        <div class="icon">SH</div>
+        <h3>Session-End Hook</h3>
+        <p>A <code>Stop</code> hook fires at the end of every Claude Code session. If the vendor copy is stale, it prints the current SHA, upstream SHA, and commit count. Exits silently if network is unavailable.</p>
+      </div>
+    </div>
+
+    <div class="code-block"><pre><span class="comment"># Check staleness (fast — no clone, just a ref lookup)</span>
+<span class="cmd">scripts/sync-builder-skills.sh --check</span>
+
+<span class="comment"># Sync from upstream main</span>
 <span class="cmd">scripts/sync-builder-skills.sh</span>
 
-<span class="comment"># Or target a specific branch</span>
+<span class="comment"># Sync from a specific branch</span>
 <span class="cmd">scripts/sync-builder-skills.sh develop</span>
 
 <span class="comment"># After sync — review what changed before committing</span>
 <span class="cmd">git diff vendor/builder-skills/</span>
 <span class="cmd">cat vendor/builder-skills/SYNC_CHANGELOG.md</span></pre></div>
 
+    <p style="font-size:12px; color:var(--muted); margin:12px 0;">If the sync fails (network unavailable, auth error), the script prints the current vendor SHA, date, and commit count before exiting — so the engineer always knows where the local copy stands.</p>
+
     <div class="rules">
       <div class="rule"><div class="rule-text">
-        <strong>Sparse checkout only</strong> — the sync script pulls only the specific paths the troubleshooting agent needs: <span class="inline-code">helpers/create/create-workflow.json</span>, <span class="inline-code">helpers/assets/*.json</span>, <span class="inline-code">helpers/assets/lcm/*.json</span>, and <span class="inline-code">AGENTS.md</span>. Never widened to the full repo.
+        <strong>Staleness report format</strong> — when the copy is behind, you see: <span class="inline-code">Current: {sha12} (synced {date}) | Upstream: {sha12} ({branch}) | Behind: {N} commit(s)</span>. Commit count comes from the GitHub compare API; falls back to "1+" if the API is unavailable.
       </div></div>
       <div class="rule"><div class="rule-text">
-        <strong>Never auto-commit the sync</strong> — always run <span class="inline-code">git diff vendor/builder-skills/</span> after sync. The changelog surfaces which files changed upstream. Review for breaking changes (removed fields, renamed tasks) before relying on them in Phase 4.
+        <strong>Sparse checkout only</strong> — the sync script pulls only the specific paths the troubleshooting agent needs: <span class="inline-code">helpers/create/</span>, <span class="inline-code">helpers/update/</span>, <span class="inline-code">helpers/assets/*.json</span>, <span class="inline-code">helpers/assets/lcm/*.json</span>, and <span class="inline-code">AGENTS.md</span>. Never widened to the full repo.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Never auto-commit the sync</strong> — always run <span class="inline-code">git diff vendor/builder-skills/</span> after sync. The changelog surfaces which files changed upstream. Review for breaking changes (removed fields, renamed tasks) before relying on them.
       </div></div>
       <div class="rule"><div class="rule-text">
         <strong>Manifest is ground truth</strong> — <span class="inline-code">SYNC_MANIFEST.json</span> records <span class="inline-code">synced_commit</span>, <span class="inline-code">synced_commit_date</span>, and <span class="inline-code">synced_at</span>. If an ENG escalation references a workflow template, include the manifest's commit SHA as provenance.
@@ -1728,7 +1749,7 @@ SSH_ROLE_1=iap</pre></div>
         <strong>What's in helpers/assets/</strong> — Platform utilities (Config Mgmt, Data Manipulation, Email, Regex), vendor integrations (Cisco IOS, Juniper JunOS, Arista EOS, NetBox, Infoblox NIOS DDI, ServiceNow), LCM models (VXLAN fabric, port turn-up, IP blocking, interface provisioning, fan device lifecycle). Each file is a complete importable project bundle.
       </div></div>
       <div class="rule"><div class="rule-text">
-        <strong>AGENTS.md context</strong> — The vendored <span class="inline-code">AGENTS.md</span> is the upstream builder-skills agent guide. Load it when Phase 4 needs patterns beyond the troubleshooting SKILL.md — it covers the full delivery lifecycle (spec → build → test) for workflow construction.
+        <strong>AGENTS.md context</strong> — The vendored <span class="inline-code">AGENTS.md</span> is the upstream builder-skills agent guide. Load it when Phase 3 needs patterns beyond the troubleshooting SKILL.md — it covers the full delivery lifecycle (spec → build → test) for workflow construction.
       </div></div>
     </div>
   </div>

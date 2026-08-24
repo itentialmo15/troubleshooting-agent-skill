@@ -26,16 +26,43 @@ Before collecting, ask (or infer from context):
 - **What is the incident time?** (date + approximate time + timezone)
 - **What identifier is known?** Job ID, workflow name, service name, adapter name, error string
 - **What is the deployment type?** Docker, VM/SSH, Kubernetes/EKS
+- **Was a log/error attachment already parsed by `/troubleshoot-triage`?** If `{REPORTED_ERROR_TIME}` and `{ATTACHED_LOG_PATH}` were handed off from Phase 0's Step 1a-attach, use them — they're an exact, evidence-backed anchor, not a customer's rough estimate. See Step 1a below.
 
 Set:
-- `{INCIDENT_TIME}` = datetime of incident (e.g., `2026-04-18T10:30:00`)
+- `{INCIDENT_TIME}` = `{REPORTED_ERROR_TIME}` if provided by the caller, else the customer/engineer-stated incident time (e.g., `2026-04-18T10:30:00`)
 - `{INCIDENT_DATE}` = date portion (e.g., `2026-04-18`)
-- `{WINDOW_BEFORE}` = 30 minutes before incident
+- `{WINDOW_BEFORE}` = 30 minutes before incident (initial pass — see Step 1b for the staged backward lookback used when root cause isn't found in this window)
 - `{WINDOW_AFTER}` = 30 minutes after incident
 
 ```bash
 mkdir -p {project_path}/data/{TIMESTAMP}/
 ```
+
+### Step 1a — Use an Attached Log/Error as the Search Anchor (if provided)
+
+If the caller passed `{ATTACHED_LOG_PATH}` (a customer-provided log excerpt or error dump from the ISD ticket, downloaded and parsed in `/troubleshoot-triage` Step 1a-attach), do not treat it as read-once evidence — actively correlate it against the platform logs you're about to collect:
+
+1. Copy it into this investigation's working directory so both are side by side:
+   ```bash
+   mkdir -p {project_path}/data/{TIMESTAMP}/customer_attachment/
+   cp {ATTACHED_LOG_PATH} {project_path}/data/{TIMESTAMP}/customer_attachment/
+   ```
+2. Extract the exact error string/stack trace text around `{REPORTED_ERROR_TIME}` from the attachment — this is what you'll grep for verbatim in the platform's own logs in Phase 8, to find the matching entry (which usually has more surrounding context — thread IDs, correlation/job IDs, adjacent service logs — than the customer's excerpt alone).
+3. Treat `{REPORTED_ERROR_TIME}` as the **end** of the search window, not the middle. A customer-reported error is a symptom; root cause commonly logs *before* it. Use the staged backward lookback in Step 1b instead of a flat symmetric ±30 min window.
+
+### Step 1b — Staged Backward Lookback for Root Cause
+
+When investigating a reported error (from an attachment or a stated incident time), don't stop at a single ±30 min window — root cause frequently precedes the visible symptom by more than that (e.g., a connection drop, a worker being disabled, a queue backing up hours earlier). Search backward in stages, widening only if the narrower window doesn't explain the symptom:
+
+| Stage | Window searched | When to use |
+|-------|-----------------|-------------|
+| 1 | `{INCIDENT_TIME}` − 30 min → `{INCIDENT_TIME}` | Always run first — matches most transient errors (bad request, one-off timeout) |
+| 2 | `{INCIDENT_TIME}` − 2 hours → `{INCIDENT_TIME}` − 30 min | Run if Stage 1 shows the error but no precursor (e.g., no preceding connection/auth failure) |
+| 3 | `{INCIDENT_TIME}` − 24 hours → `{INCIDENT_TIME}` − 2 hours, or since last process/container restart if known | Run if Stage 2 is also clean — looking for a configuration change, restart, or a slow-building resource exhaustion (disk, memory, connection pool) |
+
+Apply each stage using the same collection commands in Phases 2–7, just with `{WINDOW_BEFORE}` widened per stage (e.g., substitute `date -d "{INCIDENT_TIME} - 2 hours"` for the grep/date-range boundary instead of `- 30 minutes`). Stop widening as soon as you find a precursor event that plausibly explains the symptom — don't blindly run all 3 stages every time.
+
+**Report which stage found the answer** in Phase 10's Correlation Summary — this tells the engineer how far back the real cause was hiding, which is itself diagnostic (a Stage 3 finding usually means a config/restart is the culprit, not a transient network blip).
 
 ---
 
@@ -58,6 +85,23 @@ for a in d.get('results',[]):
         print(f'{a[\"id\"]}: {log_dir}/{log_file}  [{lvl}]  {flag}')
 "
 ```
+
+**Fallback — confirmed authoritative source on platforms where `/health/applications` doesn't expose `properties.properties.log_directory`** (observed on 6.5.x): use `GET /server/config` instead, which returns a flat list of `{name, origin, value}` config entries including the real on-disk paths:
+
+```bash
+curl -sk -H "Authorization: Bearer {TOKEN}" "{PLATFORM_URL}/server/config" \
+  | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+cfg = {e['name']: e['value'] for e in d if isinstance(e, dict) and 'name' in e}
+print('log_directory:', cfg.get('log_directory'))
+print('log_filename:', cfg.get('log_filename'))
+print('webserver_log_directory:', cfg.get('webserver_log_directory'))
+print('webserver_log_filename:', cfg.get('webserver_log_filename'))
+"
+```
+
+Note: on platforms using this config style, `log_filename` (e.g. `platform.log`) is typically a **single combined log for all apps and adapters** — there is no separate per-app/per-adapter log file. Don't go hunting for an app-specific file that doesn't exist; grep the combined file for the app/adapter name instead.
 
 Default location: `/var/log/itential/`
 
@@ -502,7 +546,16 @@ grep -i "health\|check\|upstream" {project_path}/data/{TIMESTAMP}/lb_window.txt 
 
 ## Phase 8: Cross-Component Log Correlation
 
-After collecting all log sets, correlate by timestamp around the incident:
+After collecting all log sets, correlate by timestamp around the incident.
+
+**If a customer attachment was provided (Step 1a),** first confirm you've found the matching entry in the platform's own logs — grep verbatim for the exact error text from the attachment, don't rely on timestamp proximity alone (clocks can drift, and the customer's copy/paste may be truncated):
+
+```bash
+grep -F "{REPORTED_ERROR_LINE excerpt}" {project_path}/data/{TIMESTAMP}/iap_logs_raw.txt \
+  {project_path}/data/{TIMESTAMP}/webserver_raw.txt 2>/dev/null
+```
+
+Once matched, walk backward from that exact line in the platform log (which has full context the customer's excerpt may lack) rather than only using the time window — this is the most reliable way to find the actual precursor event, since it's anchored to the confirmed same occurrence, not just "something in the same 30-minute window."
 
 ```bash
 # Merge all error lines with source labels
