@@ -215,6 +215,93 @@ mcp__claude_ai_Atlassian_MCP__getJiraIssue(issueIdOrKey: "{ISD_TICKET_KEY}")
 
 ---
 
+### Step 1a-attach — Download & Parse Log/Error Attachments
+
+If Step 1a found attachments, don't stop at filename/size — download and parse the ones that carry log evidence. This turns a customer-attached log excerpt or error screenshot text-dump into the exact anchor timestamp the rest of the investigation (and `/troubleshoot-logs`) should search around, instead of relying on a vague customer-typed "incident time."
+
+**1. Filter for log-like attachments** (skip screenshots/binaries unless no text attachment exists):
+
+```bash
+curl -s "${JIRA_URL}/rest/api/3/issue/${TICKET_KEY}?fields=attachment" \
+  -u "${JIRA_USER}:${JIRA_API_TOKEN}" -H "Accept: application/json" \
+  | python3 -c "
+import sys, json, re
+d = json.load(sys.stdin)
+LOG_EXT = re.compile(r'\.(log|txt|log\.gz|gz|json|out|err)$', re.I)
+for a in d.get('fields',{}).get('attachment', []):
+    name = a.get('filename','')
+    if LOG_EXT.search(name) or 'log' in name.lower() or 'error' in name.lower():
+        print(f'{a[\"id\"]}\t{name}\t{a[\"content\"]}')
+" > {project_path}/data/{TIMESTAMP}/{TICKET_KEY}/attachments/candidates.tsv
+
+mkdir -p {project_path}/data/{TIMESTAMP}/{TICKET_KEY}/attachments
+```
+
+**2. Download each candidate's raw content** (Jira attachment `content` URL requires the same basic auth):
+
+```bash
+while IFS=$'\t' read -r ATT_ID ATT_NAME ATT_URL; do
+  curl -sL "$ATT_URL" -u "${JIRA_USER}:${JIRA_API_TOKEN}" \
+    -o "{project_path}/data/{TIMESTAMP}/{TICKET_KEY}/attachments/${ATT_NAME}"
+done < {project_path}/data/{TIMESTAMP}/{TICKET_KEY}/attachments/candidates.tsv
+```
+
+If Atlassian MCP is available, use `mcp__claude_ai_Atlassian_MCP__fetch` on the attachment URL instead of raw curl.
+
+**3. Parse each downloaded file for the reported error and its timestamp** — don't assume the LAST line is the error; customers often attach a window of surrounding log context, so find every ERROR/FATAL/Exception/Traceback line and take the **earliest** one as the anchor (the earliest visible symptom is closer to root cause than the last line, which is often just the final retry/give-up):
+
+```bash
+python3 -c "
+import re, glob, sys
+
+TS_PATTERNS = [
+    re.compile(r'(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[.,]?\d*Z?)'),      # ISO8601 / IAP style
+    re.compile(r'([A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})'),           # syslog style
+]
+ERR_KEYWORDS = re.compile(r'error|exception|traceback|fatal|fail(ed)?', re.I)
+
+findings = []
+for path in glob.glob('{project_path}/data/{TIMESTAMP}/{TICKET_KEY}/attachments/*'):
+    if path.endswith('.tsv'):
+        continue
+    try:
+        for ln in open(path, errors='ignore'):
+            if ERR_KEYWORDS.search(ln):
+                for pat in TS_PATTERNS:
+                    m = pat.search(ln)
+                    if m:
+                        findings.append((m.group(1), path, ln.strip()[:300]))
+                        break
+    except Exception:
+        continue
+
+findings.sort(key=lambda x: x[0])
+if findings:
+    print('── EARLIEST REPORTED ERROR (anchor for backward log search) ──')
+    ts, path, line = findings[0]
+    print(f'Timestamp: {ts}')
+    print(f'Source:    {path}')
+    print(f'Line:      {line}')
+    print()
+    print(f'── ALL {len(findings)} ERROR LINES FOUND (chronological) ──')
+    for ts, path, line in findings[:30]:
+        print(f'[{ts}] {line}')
+else:
+    print('No timestamped error lines found in attachments — fall back to customer-stated Incident Time.')
+"
+```
+
+**4. Set variables from the result:**
+- `{REPORTED_ERROR_TIME}` = the earliest timestamp found (this supersedes any vague customer-typed incident time — it's exact, not approximate)
+- `{REPORTED_ERROR_LINE}` = the exact error text at that timestamp
+- `{ATTACHED_LOG_PATH}` = local path to the downloaded attachment(s), for pass-through to `/troubleshoot-logs`
+
+If no timestamp could be parsed (e.g., a screenshot with no visible clock, or a log format not covered by `TS_PATTERNS`), fall back to the customer-stated Incident Time and note in `ticket_context.md` that the attachment could not be time-anchored automatically.
+
+**Why earliest, not latest:** root cause almost always logs *before* the customer-visible symptom (e.g., a connection drop 40s before the timeout error the customer pasted). Anchoring on the earliest error line and then searching further backward from there (see `/troubleshoot-logs` Phase 1) gives the best chance of finding the actual precursor event, not just a restatement of the symptom.
+
+---
+
 ### Step 1b — Extract Structured Context
 
 Parse and save to `{project_path}/data/{TIMESTAMP}/{TICKET_KEY}/ticket_context.md`:
@@ -250,7 +337,7 @@ Parse and save to `{project_path}/data/{TIMESTAMP}/{TICKET_KEY}/ticket_context.m
   Error Message: {exact error string | "none provided"}
   Job ID:        {if provided | none}
   Workflow:      {workflow name | none}
-  Incident Time: {date + time + timezone | unknown}
+  Incident Time: {date + time + timezone | unknown} {← use {REPORTED_ERROR_TIME} from Step 1a-attach if set, it is more precise than a customer-typed estimate}
   Frequency:     always | intermittent | once
   Regression:    yes (was working before) | no (never worked) | unknown
   Steps Provided: yes | no
@@ -258,6 +345,7 @@ Parse and save to `{project_path}/data/{TIMESTAMP}/{TICKET_KEY}/ticket_context.m
   ATTACHMENTS
   ──────────
   {filename — description, OR "none"}
+  {If a log/error attachment was parsed (Step 1a-attach): "Reported Error Time: {REPORTED_ERROR_TIME} (from {filename}) — pass to /troubleshoot-logs as the search anchor"}
 ╚══════════════════════════════════════════════════════════╝
 ```
 
@@ -343,9 +431,11 @@ Save titles, URLs, and key excerpts to `{project_path}/data/{TIMESTAMP}/{TICKET_
 
 ---
 
-### Step 1f — Priority Mismatch Detection (ISD only)
+### Step 1f — Priority Mismatch & Outage Detection (ISD only)
 
-Scan ticket description for any of these signals:
+Scan ticket description, comments, and Jira `issuetype.name` field for the following signals:
+
+**Priority mismatch signals:**
 
 | Signal | Implication |
 |---|---|
@@ -358,10 +448,27 @@ Scan ticket description for any of these signals:
 | "escalating to you", "need this urgently", "ASAP" | Customer already frustrated |
 | "tried everything", "no workaround" | Customer stuck |
 
-**When detected:**
+**Outage signals (additional check):**
+
+| Signal | Implication |
+|---|---|
+| Jira `issuetype.name` = "Incident", "Problem", or "Outage" | Ticket explicitly typed as outage |
+| "{N} jobs stuck", "{N} workflows affected", "{N} jobs published" where N ≥ 10 | Bulk job failure indicating platform-level outage |
+| "jobs in Running state", "jobs not completing", "jobs hung" combined with volume language | Platform-scope execution failure |
+| "adapter went OFFLINE", "IAG down", "connection broker" | Infrastructure-level failure affecting multiple workflows |
+| "platform is down", "environment is down", "nothing is working" | Total service loss |
+
+**When priority mismatch signals are detected:**
 1. Flag: `"⚠️ Priority Mismatch: filed as {STATED_PRIORITY} but description indicates [{impact}]. Recommend treating as {RECOMMENDED_PRIORITY}."`
 2. Escalate to senior manager immediately
 3. With engineer approval — upgrade priority and post internal triage comment
+
+**When outage signals are detected (in addition to the above):**
+1. Set `outage_flag: true` in `ticket_context.md` (append to the context header block)
+2. Set `issue_type: Outage` in `ticket_context.md` (replacing the default `Functional | Performance` field)
+3. Note in the pre-investigation summary: "⚠️ Outage classification: this ticket will trigger outage summary report generation at Phase 4."
+
+The `outage_flag` is what Phase 4 of the orchestrator reads to decide whether to produce an `outage_summary_report.md` in addition to the standard `diagnostic_report.md`.
 
 ---
 

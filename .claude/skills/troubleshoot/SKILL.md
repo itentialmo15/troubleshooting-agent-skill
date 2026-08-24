@@ -201,6 +201,8 @@ Based on ticket context, platform version, symptom description, and Investigatio
 
 Each sub-skill authenticates itself from `.env` when invoked — the orchestrator does not pre-authenticate.
 
+**If Phase 0 (`/troubleshoot-triage`) parsed a `{REPORTED_ERROR_TIME}` from a ticket attachment** (Step 1a-attach), pass it — not the customer's typed incident time — as the `{incident time}` argument to `/troubleshoot-logs`, and also pass `{ATTACHED_LOG_PATH}` so the sub-skill can correlate the customer's own log excerpt against the platform's logs instead of only filtering by time. This is strictly more precise than a customer's approximate "around 10:30am" estimate.
+
 **Inline IAG Diagnostics (when IAG is implicated but sub-skill is insufficient):**
 
 ```bash
@@ -1095,6 +1097,133 @@ Save to `{project_path}/repro/{ISD_TICKET_KEY}/repro_steps.md`.
 ---
 
 ## Phase 4: Diagnostic Report
+
+**First — check for outage classification:**
+
+Read `data/{TIMESTAMP}/{TICKET_KEY}/ticket_context.md` and look for `outage_flag: true`.
+
+- **If `outage_flag: true`** → produce the standard `diagnostic_report.md` first (see template below), then enter the **Outage Summary Report flow** (Steps 4-OR-1 through 4-OR-5) to additionally produce `outage_summary_report.md`.
+- **If no outage flag** → produce only `diagnostic_report.md` as normal. Skip Steps 4-OR-*.
+
+---
+
+### Outage Summary Report Flow (only when outage_flag: true)
+
+#### Step 4-OR-1 — Confirm outage classification
+
+Present to the engineer:
+```
+⚠️  This ticket was classified as an outage during triage (outage_flag: true).
+
+Produce an Outage Summary Report in addition to the standard diagnostic report?
+  [yes]    — gather inputs and produce outage_summary_report.md
+  [no]     — skip; produce only diagnostic_report.md
+  [manual] — ticket was not actually an outage; clear the flag and continue
+```
+If the engineer answers `manual` or `no`, skip remaining 4-OR steps.
+
+#### Step 4-OR-2 — Gather outage inputs
+
+Pre-fill as many fields as possible from `ticket_context.md`, investigation findings, and Jira comments. Only ask the engineer for what cannot be derived:
+
+| Field | Primary source | Fallback |
+|---|---|---|
+| Incident start time + timezone | Ticket description / comments | Ask engineer |
+| Incident end time (recovery confirmed) | Jira comments | Ask engineer |
+| Number and type of affected jobs/workflows | Ticket description / findings | Ask engineer |
+| Teams involved in joint investigation | Jira comments / ticket | Ask engineer |
+| Recovery action taken | Jira comments / `/troubleshoot-adapters` findings | Ask engineer |
+| Post-recovery validation steps | Investigation findings | Ask engineer |
+| Next steps agreed | Jira comments | Ask engineer to paste or summarize |
+| Call transcript or meeting notes | — | Ask: "Do you have a call transcript or notes to paste in? I will extract the relevant facts." |
+
+**If a call transcript is pasted:** parse it for timeline events (timestamps + what changed), participants, actions taken, what was confirmed after recovery, and next steps agreed. Use extracted content to fill the report fields — do not require the engineer to re-enter information already in the transcript.
+
+#### Step 4-OR-3 — Produce outage_summary_report.md
+
+Save to `{project_path}/data/{TIMESTAMP}/{TICKET_KEY}/outage_summary_report.md`:
+
+```markdown
+# Outage Summary Report — {TICKET_KEY}
+
+**Generated:** {DATE}
+**Customer:** {CUSTOMER}
+**Environment:** {PLATFORM_URL}
+**Incident Window:** {START_TIME} – {END_TIME} ({TIMEZONE})
+**Reported Priority:** {PRIORITY}
+**Affected Components:** {AFFECTED_COMPONENTS}
+
+---
+
+## Overview
+{2–3 sentences: what failed, when it started, scope of impact, and how long it lasted before recovery. Write for a technical manager audience — precise but not jargon-heavy.}
+
+---
+
+## Issue
+
+- {Observed symptom 1 — what users or systems experienced, with approximate count/scope}
+- {Observed symptom 2}
+- {What was working normally — helps bound the scope of the failure}
+- {Secondary component effects that confirmed the blast radius}
+
+---
+
+## Root Cause Symptom
+
+{Plain-English description of what the evidence points to: name the component, the communication path or dependency that degraded, and why these symptoms are consistent with that cause.
+
+Clearly distinguish confirmed root cause from working hypothesis. If the full root cause is still under investigation, state that explicitly and name the next investigation step.}
+
+---
+
+## Outage Recovery
+
+{Who performed the recovery action, what was done, and at what time (include timezone).}
+
+**Post-recovery validation:**
+- {What was tested after recovery to confirm normal operation}
+- {Which workflows or tasks were run as a smoke test}
+- Platform confirmed operating as expected as of {TIME} {TIMEZONE}.
+
+---
+
+## Next Steps
+
+1. {Action item} — **Owner:** {team or person} — **Target:** {date or "ASAP"}
+2. {Action item} — **Owner:** {team or person} — **Target:** {date}
+3. Root Cause Analysis — A new {ISD Problem / ENG} ticket will be opened to investigate the underlying cause. {Brief scope statement.}
+
+---
+
+## Current Status
+
+{One paragraph: state of the incident now — resolved / monitoring / partial recovery. Name what was restored, how it was confirmed, and what remains open (e.g., root cause investigation in progress, gateway logs still to be reviewed).}
+
+---
+
+*Generated by Itential Support Engineering · Troubleshooting Agent · {TICKET_KEY}*
+```
+
+#### Step 4-OR-4 — Present draft and collect edits
+
+Display the complete draft report to the engineer. Ask:
+```
+Review the outage summary report above. Enter any edits or corrections, or type "save" to write it to disk.
+```
+Apply edits, then write the file.
+
+#### Step 4-OR-5 — Offer to post to the ISD ticket
+
+Ask:
+```
+Post this outage summary report as an internal comment on {TICKET_KEY}? [yes / no]
+```
+If yes: post with `commentVisibility: {"type": "role", "value": "Service Desk Team"}`. Present the comment draft before posting (same approval gate as all Jira writes).
+
+---
+
+### Standard Diagnostic Report
 
 Save to `{project_path}/data/{TIMESTAMP}/diagnostic_report.md`.
 

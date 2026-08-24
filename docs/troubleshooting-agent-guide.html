@@ -1213,6 +1213,74 @@ flowchart TD
     </div></div>
   </div>
 
+  <!-- Outage Summary Report -->
+  <div class="section">
+    <div class="section-label">Outage Reports</div>
+    <h2>Outage Summary Report</h2>
+    <p class="desc">When a ticket is classified as a production outage, Phase 4 branches into an additional outage report flow that produces a six-section <code>outage_summary_report.md</code> — a customer and management-facing document that can be posted directly to the ISD ticket as an internal comment.</p>
+
+    <div class="cards" style="margin-bottom:24px;">
+      <div class="card t-red">
+        <div class="icon">OT</div>
+        <h3>Auto-Detection</h3>
+        <p>The triage skill (Step 1f) detects outage signals: bulk job failures (≥10 jobs stuck), Jira issuetype = Incident/Problem, "platform is down", "IAG down", "adapter went OFFLINE". Sets <code>outage_flag: true</code> in <code>ticket_context.md</code>.</p>
+      </div>
+      <div class="card t-orange">
+        <div class="icon">IN</div>
+        <h3>Input Gathering</h3>
+        <p>Phase 4 pre-fills from the ticket and investigation findings. For missing fields, it asks the engineer. Call transcripts or meeting notes can be pasted in — the agent extracts timeline, recovery actions, and next steps automatically.</p>
+      </div>
+      <div class="card t-magenta">
+        <div class="icon">AP</div>
+        <h3>Approval Gate</h3>
+        <p>The report draft is presented to the engineer for review and edits before saving. Posting to the ISD ticket as an internal comment requires a separate explicit approval — same gate as all Jira writes.</p>
+      </div>
+    </div>
+
+    <h3 style="margin-bottom:10px;">Report Sections</h3>
+    <div class="rule-list">
+      <div class="rule-item">
+        <div class="rule-label">Overview</div>
+        <div class="rule-body">2–3 sentence summary: what failed, when it started, scope of impact, and how long it lasted before recovery. Written for a technical manager audience — precise but not jargon-heavy.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Issue</div>
+        <div class="rule-body">Bulleted list of observed symptoms with scope (number of jobs, which components), what was working normally, and secondary system effects that confirmed the blast radius.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Root Cause Symptom</div>
+        <div class="rule-body">Plain-English description of what the evidence points to — component, communication path, and why the symptoms are consistent with that cause. Clearly distinguishes confirmed root cause from working hypothesis.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Outage Recovery</div>
+        <div class="rule-body">Who performed the recovery action, what was done, and at what time (with timezone). Followed by a post-recovery validation checklist — smoke test workflows run and confirmation timestamp.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Next Steps</div>
+        <div class="rule-body">Numbered action items with owner and target date. Always includes a Root Cause Analysis item pointing to the follow-up ISD Problem or ENG ticket to investigate the underlying cause.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Current Status</div>
+        <div class="rule-body">One paragraph: immediate resolution state (resolved / monitoring / partial), what was restored, how it was confirmed, and what remains open (e.g. root cause investigation in progress).</div>
+      </div>
+    </div>
+
+    <h3 style="margin-top:24px; margin-bottom:10px;">Trigger Conditions</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Signal</th><th>Source</th><th>Sets outage_flag</th></tr></thead>
+        <tbody>
+          <tr><td>Jira <code>issuetype.name</code> = "Incident", "Problem", or "Outage"</td><td>Jira ticket field</td><td>Yes</td></tr>
+          <tr><td>≥10 jobs stuck / affected / not completing simultaneously</td><td>Ticket description or comments</td><td>Yes</td></tr>
+          <tr><td>"production is down", "platform is down", "environment is down"</td><td>Ticket text</td><td>Yes</td></tr>
+          <tr><td>"IAG down", "adapter went OFFLINE", "connection broker" instability</td><td>Ticket text</td><td>Yes</td></tr>
+          <tr><td>Standard priority mismatch keywords (P1/S1 escalation signals)</td><td>Ticket text</td><td>Yes (combined with priority flag)</td></tr>
+          <tr><td>Engineer manually types <code>flag as outage</code> at Phase 4 prompt</td><td>Engineer input</td><td>Yes</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- Integrations -->
   <div class="section">
     <div class="section-label">Integrations</div>
@@ -2093,6 +2161,40 @@ SSH_ROLE_1=iap</pre></div>
       <div class="rule-item">
         <div class="rule-label">Sensitive data masking</div>
         <div class="rule-body">All log output shown to the engineer has tokens and passwords masked: first 6 characters + "..." + last 4. Full values are never echoed in session output. This applies even when the log file itself contains the full value.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phase 4 outage branch note -->
+  <div class="section">
+    <h2 id="sk-phase4">&#9632; Phase 4 — Diagnostic Report &amp; Outage Summary</h2>
+    <p class="desc">Phase 4 always produces <code>diagnostic_report.md</code> (engineer-facing findings, hypotheses, access gaps). For outage tickets, it additionally runs the outage report flow and produces <code>outage_summary_report.md</code> (customer/management-facing).</p>
+
+    <div class="cards" style="margin-bottom:20px;">
+      <div class="card t-blue">
+        <div class="icon">DR</div>
+        <h3>diagnostic_report.md</h3>
+        <p>Always produced. Technical: environment snapshot, findings, root cause hypotheses, recommended next steps, access gaps, artifact index.</p>
+      </div>
+      <div class="card t-red">
+        <div class="icon">OR</div>
+        <h3>outage_summary_report.md</h3>
+        <p>Produced only when <code>outage_flag: true</code> (set by triage Step 1f). Six sections: Overview → Issue → Root Cause Symptom → Outage Recovery → Next Steps → Current Status.</p>
+      </div>
+    </div>
+
+    <div class="rule-list">
+      <div class="rule-item">
+        <div class="rule-label">Detection</div>
+        <div class="rule-body">Phase 4 reads <code>ticket_context.md</code> for <code>outage_flag: true</code>. If present, asks the engineer to confirm before entering the outage report flow. Engineer can also manually trigger with <code>flag as outage</code>.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Input gathering</div>
+        <div class="rule-body">Pre-fills from ticket and investigation findings. Asks the engineer for missing fields. Call transcript paste-in supported — the agent extracts timeline, participants, recovery actions, and next steps from the transcript text automatically.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Approval gates</div>
+        <div class="rule-body">Draft is shown for review before saving. Posting to the ISD ticket as an internal comment requires a separate explicit <code>yes</code> — never posted automatically.</div>
       </div>
     </div>
   </div>

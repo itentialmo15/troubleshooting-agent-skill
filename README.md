@@ -52,7 +52,7 @@ Skills live in `.claude/skills/<name>/SKILL.md`. Each is self-contained with all
 | **1** | Ticket Understanding & Triage | Offline only — read ticket, check support status, mine past cases, Confluence search, priority mismatch detection, engineer question list |
 | **2** | Symptom Analysis & Routing | Classify symptom → route to specialist sub-skill → inline diagnostics |
 | **3** | Reproduce & Workaround | Env selection, platform authentication, builder-skills for fix construction |
-| **4** | Diagnostic Report | Findings, evidence, recommended actions |
+| **4** | Diagnostic Report | Findings, evidence, recommended actions. For outage tickets: also produces `outage_summary_report.md` (six-section customer/management-facing report) |
 | **5** | Engineering Escalation | ENG ticket draft → engineer approval → file |
 | **6** | Resolution Learning | Append to `data/known-resolutions.md` and Section 7 of `product-capability-reference.md` |
 | **7** | Manager Escalation | SLA breach or priority mismatch — escalation pack |
