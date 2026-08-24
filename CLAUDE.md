@@ -79,7 +79,10 @@ These apply in every troubleshooting session:
 
 ## Vendor Sync
 
-`vendor/builder-skills/` is a vendored snapshot of workflow-construction helpers from the upstream `itential/builder-skills` repo. These are used in the Constructive Fix Path (Phase 3) to construct fixes and workarounds.
+The sync pulls two things from the upstream `itential/builder-skills` repo:
+
+1. **Helper JSON bundles** → `vendor/builder-skills/` (importable platform asset bundles, create/update/operation templates)
+2. **Builder skill files** → `.claude/skills/` (SKILL.md files for `/builder-agent`, `/qa-agent`, `/itential-lcm`, `/explore`, etc. — loadable by the Skill tool during Phase 3)
 
 **Staleness is checked automatically in two places:**
 - At the start of the Constructive Fix Path (before any builder-skill template import) — the orchestrator runs `--check` and prompts the engineer to sync if behind
@@ -91,13 +94,13 @@ To check staleness manually (no network clone, fast):
 scripts/sync-builder-skills.sh --check [branch]
 ```
 
-To refresh the vendored copy:
+To refresh both vendor helpers and skill files:
 
 ```bash
 scripts/sync-builder-skills.sh [branch]
 ```
 
-After running: review `git diff vendor/builder-skills/` and `vendor/builder-skills/SYNC_CHANGELOG.md`, then commit deliberately. The sync never auto-applies — it surfaces what changed upstream and leaves the commit to you.
+After running: review `git diff vendor/builder-skills/ .claude/skills/` and `vendor/builder-skills/SYNC_CHANGELOG.md`, then commit deliberately. The sync never auto-applies — it surfaces what changed upstream and leaves the commit to you.
 
 If the sync fails (network unavailable, auth error), the script prints the current vendor SHA, date, and a `--check` reminder before exiting non-zero.
 

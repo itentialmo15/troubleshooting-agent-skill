@@ -1699,7 +1699,7 @@ SSH_ROLE_1=iap</pre></div>
   <div class="section">
     <div class="section-label">Reproduction Toolkit</div>
     <h2>Vendor Template Sync — builder-skills</h2>
-    <p class="desc">The <span class="inline-code">vendor/builder-skills/</span> directory holds a committed, sparse snapshot of production-ready workflow templates from the upstream <span class="inline-code">itential/builder-skills</span> repo. Staleness is checked <strong>automatically</strong> — at the start of every Phase 3 (Constructive Fix Path) session and at the end of every Claude Code session via a Stop hook.</p>
+    <p class="desc">The sync pulls <strong>two things</strong> from the upstream <span class="inline-code">itential/builder-skills</span> repo: (1) importable JSON bundles into <span class="inline-code">vendor/builder-skills/</span>, and (2) Claude Code skill files (<span class="inline-code">SKILL.md</span>) into <span class="inline-code">.claude/skills/</span> — making <span class="inline-code">/builder-agent</span>, <span class="inline-code">/qa-agent</span>, <span class="inline-code">/itential-lcm</span>, <span class="inline-code">/explore</span>, and others directly invocable from any troubleshooting session. Staleness is checked <strong>automatically</strong> — at the start of Phase 3 and at the end of every Claude Code session via a Stop hook.</p>
 
     <div class="cards" style="margin-bottom:20px;">
       <div class="card t-magenta">
@@ -1723,8 +1723,8 @@ SSH_ROLE_1=iap</pre></div>
 <span class="comment"># Sync from a specific branch</span>
 <span class="cmd">scripts/sync-builder-skills.sh develop</span>
 
-<span class="comment"># After sync — review what changed before committing</span>
-<span class="cmd">git diff vendor/builder-skills/</span>
+<span class="comment"># After sync — review both destinations before committing</span>
+<span class="cmd">git diff vendor/builder-skills/ .claude/skills/</span>
 <span class="cmd">cat vendor/builder-skills/SYNC_CHANGELOG.md</span></pre></div>
 
     <p style="font-size:12px; color:var(--muted); margin:12px 0;">If the sync fails (network unavailable, auth error), the script prints the current vendor SHA, date, and commit count before exiting — so the engineer always knows where the local copy stands.</p>

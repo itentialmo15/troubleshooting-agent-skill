@@ -156,8 +156,12 @@ See the Contribution tab in the HTML guide for the full 10-step PR workflow.
 
 ## Vendored Builder Skills
 
+The sync pulls two things from upstream:
+- **Helper JSON bundles** → `vendor/builder-skills/` (importable asset bundles, create/update templates)
+- **Builder skill files** → `.claude/skills/` (`/builder-agent`, `/qa-agent`, `/itential-lcm`, `/explore`, etc.)
+
 Staleness is checked **automatically**:
-- **At Phase 3 (Constructive Fix Path)** — before any builder-skill template import, the orchestrator runs a check and prompts to sync if behind
+- **At Phase 3 (Constructive Fix Path)** — before any builder-skill invocation, the orchestrator runs a check and prompts to sync if behind
 - **At session end** — a `Stop` hook prints a staleness report if the vendor copy is out of date
 
 To check manually (fast — no clone):
@@ -165,11 +169,11 @@ To check manually (fast — no clone):
 scripts/sync-builder-skills.sh --check
 ```
 
-To sync:
+To sync both helpers and skills:
 ```bash
 scripts/sync-builder-skills.sh [branch]
 ```
 
-If the sync fails (network down, auth error), the script reports the current vendor SHA, date, and commit count before exiting — so you always know where the local copy stands.
+If the sync fails (network down, auth error), the script reports the current vendor SHA, date, and commit count before exiting.
 
-After a successful sync: review `git diff vendor/builder-skills/` and `vendor/builder-skills/SYNC_CHANGELOG.md` before committing.
+After a successful sync: review `git diff vendor/builder-skills/ .claude/skills/` and `vendor/builder-skills/SYNC_CHANGELOG.md` before committing.
