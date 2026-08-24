@@ -695,17 +695,24 @@ echo "Target: ${PLATFORM_URL}"
 echo "Auth:   ${AUTH_METHOD}"
 ```
 
-**Route by root cause type:**
+**Two triggers — invoke immediately on either:**
+- **Root cause confirmed** — Phase 3 diagnosis identifies a fixable asset issue
+- **Direct engineer request** — engineer asks to mock, build, design, or reproduce any asset
 
-| Root Cause | builder-skill | Action |
+| Request / Root Cause | builder-skill | Action |
 |---|---|---|
-| Workflow structural issue | `/builder-agent` | Build corrected workflow from `helpers/create/create-workflow.json` |
+| Mock or reproduce a workflow (investigation/repro env) | `/builder-agent` | Use `helpers/create/create-workflow.json`; target repro `.env` first |
+| Build or fix any workflow asset | `/builder-agent` | Build corrected workflow; covers structural issues, bad wiring, task errors |
 | JST error | `/builder-agent` | Write corrected script, test with `node -e`, then PUT |
+| Mock or build a command template / MOP | `/itential-mop` | `helpers/create/create-command-template.json` or `helpers/update/update-command-template.json` |
+| Mock or build a JSON Form | `/itential-json-forms` | `helpers/create/create-json-form.json` or `helpers/update/update-json-form.json` |
+| Mock or build a Jinja2 / TextFSM template | `/builder-agent` | `helpers/create/create-template-jinja2.json` or `create-template-textfsm.json` |
+| Mock or build an LCM resource model or lifecycle action | `/itential-lcm` | Reference `vendor/builder-skills/helpers/assets/lcm/lcm-vxlan-fabric-services-project.json` |
+| Import a pre-built platform asset bundle | `/builder-agent` | POST matching JSON from `vendor/builder-skills/helpers/assets/` to `/automation-studio/projects/import` |
+| Mock or build an IAG service (Python/Ansible/OpenTofu) | `/iag` | IAG 5 only — IAG 4 issues: escalate to ENG |
 | Adapter misconfiguration | `/troubleshoot-adapters` fix path | GET → modify → PUT full body (no partial updates) |
-| JSON Form issue | `/itential-json-forms` | `helpers/create/create-json-form.json` or `helpers/update/update-json-form.json` |
-| MOP command template | `/itential-mop` | `helpers/create/create-command-template.json` |
-| LCM `instance` variable missing | `/itential-lcm` | Reference `vendor/builder-skills/helpers/assets/lcm/lcm-vxlan-fabric-services-project.json` |
-| IAG service definition failure | `/iag` | IAG 5 only — IAG 4 issues: escalate to ENG |
+| Free-form platform exploration | `/explore` | Read-only discovery — browse assets, check adapters, discover relationships |
+| Acceptance testing / as-built record | `/qa-agent` | Run after builder-agent delivers — drafts test plan, runs cases, produces `test-report.md` |
 
 **Safety rules:** all platform writes (PUT, PATCH, POST) require **explicit engineer approval** before execution. Confirmation is per-action; a prior approval does not authorize subsequent writes.
 
@@ -879,17 +886,26 @@ scripts/sync-builder-skills.sh --check
   - `skip` → proceed, suppress the check for the rest of this session
 - **Check failed (network unavailable)** → note "staleness unknown, proceeding with existing copy" and continue
 
-When Phase 3 diagnosis confirms a root cause that is a **fixable asset issue** — not a platform bug requiring ENG escalation — offer to construct the fix using the appropriate builder-skill. Present the proposed fix to the engineer and wait for explicit approval before invoking.
+**Two triggers for builder-skill invocation:**
 
-| Root cause type | builder-skill to invoke | Notes |
+1. **Root cause confirmed** — Phase 3 diagnosis identifies a fixable asset issue (routing table below)
+2. **Direct engineer request** — engineer explicitly asks to mock, build, design, or reproduce an asset at any point during the investigation (routing table below — match the asset type to the right skill immediately, without waiting for Phase 3 root cause confirmation)
+
+When either trigger fires: present the proposed action to the engineer and wait for explicit approval before invoking. Then run the staleness check above if not already done this session.
+
+| Request / Root cause type | builder-skill to invoke | Notes |
 |---|---|---|
-| Workflow structural issue (missing error transition, wrong `app` field, non-hex task IDs, broken childJob refs, bad variable wiring) | `/builder-agent` | Most common — covers 80%+ of workflow fixes |
+| **Mock or reproduce a workflow** (for investigation, reproduction env, or workaround validation) | `/builder-agent` | Use `helpers/create/create-workflow.json` as scaffold; target the reproduction `.env` first, then customer `.env` after validation |
+| **Build or design any workflow asset** (new workflow, fix an existing one, structural issue) | `/builder-agent` | Covers missing error transitions, wrong `app` field, non-hex task IDs, broken childJob refs, bad variable wiring |
+| **Mock or build a command template / MOP** | `/itential-mop` | Use `helpers/create/create-command-template.json`; for updates use `helpers/update/update-command-template.json` |
+| **Mock or build a JSON Form** (static, REST-bound, or cascading dropdown) | `/itential-json-forms` | Use `helpers/update/update-json-form.json` for full-replacement PUT |
+| **Mock or build a Jinja2 / TextFSM template** | `/builder-agent` | Use `helpers/create/create-template-jinja2.json` or `create-template-textfsm.json` as scaffold |
+| **Mock or build an LCM resource model or lifecycle action** | `/itential-lcm` | Reference `vendor/builder-skills/helpers/assets/lcm/lcm-vxlan-fabric-services-project.json` for the mandatory `instance` pattern |
+| **Mock or build an IAG service** (Python, Ansible, OpenTofu) | `/iag` | IAG 5 only — for IAG 4 issues escalate to ENG |
+| **Import a pre-built platform asset bundle** (Config Mgmt, Data Manipulation, vendor integration, LCM project) | `/builder-agent` | POST the matching JSON from `vendor/builder-skills/helpers/assets/` to `/automation-studio/projects/import` |
+| **Free-form platform exploration** (browse assets, check adapters, discover relationships) | `/explore` | No fix construction — read-only discovery and summarization |
 | JST script error (missing `return`, type mismatch, async code, null input) | `/builder-agent` | PUT corrected script after `node -e` test passes |
-| Jinja2 / TextFSM template syntax error | `/builder-agent` | Use `helpers/create/create-template-jinja2.json` or `create-template-textfsm.json` as scaffold |
-| JSON Form schema error or REST-bound dropdown issue | `/itential-json-forms` | Use `helpers/update/update-json-form.json` for full-replacement PUT |
-| MOP command template `<!var!>` resolution or analytic mismatch | `/itential-mop` | Use `helpers/create/create-command-template.json` and `helpers/update/update-command-template.json` |
-| LCM action workflow missing `instance` variable or unwired action | `/itential-lcm` | Reference `vendor/builder-skills/helpers/assets/lcm/lcm-vxlan-fabric-services-project.json` for the mandatory `instance` pattern |
-| IAG service definition failure (Python/Ansible/OpenTofu) | `/iag` | IAG 5 only — for IAG 4 issues escalate to ENG |
+| Acceptance testing or as-built record for a delivered fix | `/qa-agent` | Run after builder-agent delivers — drafts test plan, runs cases, produces `test-report.md` |
 
 **Safety rules still apply:** all platform writes (PUT, PATCH, POST to customer environment) require explicit engineer approval before execution. The builder-skill invocation does not bypass the troubleshooting agent's read-only-by-default rules. For production environments, always confirm the change is safe to apply before proceeding.
 
