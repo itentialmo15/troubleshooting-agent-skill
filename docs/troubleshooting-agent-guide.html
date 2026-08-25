@@ -265,7 +265,7 @@
       margin-bottom: 6px;
     }
     .phase-card h3 { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
-    .phase-card p { font-size: 11px; color: var(--muted); line-height: 1.5; }
+    .phase-card p { font-size: 11px; color: var(--muted); line-height: 1.5; overflow-wrap: break-word; word-break: break-word; }
 
     /* ── Rules / Checklist ── */
     .rules { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
@@ -333,6 +333,8 @@
       border: 1px solid var(--border);
       border-radius: 4px;
       padding: 1px 6px;
+      word-break: break-all;
+      overflow-wrap: break-word;
     }
 
     /* ── Note / Warning boxes ── */
