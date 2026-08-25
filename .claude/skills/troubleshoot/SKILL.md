@@ -196,7 +196,7 @@ Based on ticket context, platform version, symptom description, and Investigatio
 | Container OOMKilled / disk full / CPU high | `/troubleshoot-infra {component}` | Sub-skill authenticates from `.env` |
 | Log evidence needed for any issue | `/troubleshoot-logs {component} {incident time}` | Sub-skill authenticates from `.env` |
 | IAG adapter OFFLINE / GatewayManager error | `/troubleshoot-adapters {IAG_ADAPTER_NAME}` | Inline IAG diagnostics follow adapter investigation |
-| Kafka consumer lag | Inline diagnostics in Step 2b (see below) | — |
+| Kafka adapter OFFLINE / consumer lag growing | `/troubleshoot-adapters {KAFKA_ADAPTER_NAME}` | Routes to Phase 4 (Kafka) in the sub-skill |
 | UI slow / API timeouts | Inline diagnostics in Step 2b (see below) + `/troubleshoot-logs` | — |
 
 Each sub-skill authenticates itself from `.env` when invoked — the orchestrator does not pre-authenticate.
@@ -214,19 +214,6 @@ curl -sk "{PLATFORM_URL}/health/adapters?token={TOKEN}" | jq '.[] | select(.name
 ```
 
 Check IAG logs: `docker logs iag-container 2>&1 | grep -i "error\|warn\|fail" | tail -50`
-
-**Inline Kafka Diagnostics:**
-
-```bash
-# Kafka adapter health in IAP
-curl -sk "{PLATFORM_URL}/health/adapters?token={TOKEN}" | jq '.[] | select(.type == "Kafka")'
-
-# Consumer group lag (run from Kafka host)
-kafka-consumer-groups.sh --bootstrap-server {KAFKA_BROKER}:9092 --describe --all-groups 2>/dev/null | grep -v "^$"
-
-# Topic partition details
-kafka-topics.sh --bootstrap-server {KAFKA_BROKER}:9092 --describe --topic {TOPIC_NAME}
-```
 
 **Inline UI/API Latency Diagnostics:**
 
@@ -832,38 +819,17 @@ Follow up with `/troubleshoot-logs iap {INCIDENT_TIME}` to check webserver.log r
 
 ---
 
-### Phase 3i — Kafka Diagnostics (inline)
+### Phase 3i — Kafka Diagnostics
 
-Run when IAP Kafka adapter is OFFLINE or consumer lag is growing.
+Run when IAP Kafka adapter is OFFLINE or consumer lag is growing. Kafka diagnostics are owned by the `/troubleshoot-adapters` sub-skill (Phase 4 — Kafka Adapter Diagnostics). Delegate immediately:
 
-```bash
-# Kafka adapter health in IAP
-curl -sk "{PLATFORM_URL}/health/adapters?token={TOKEN}" \
-  | python3 -c "
-import sys,json
-d=json.load(sys.stdin)
-for a in d.get('results',[]):
-    if 'kafka' in a.get('package_id','').lower() or 'kafka' in a.get('id','').lower():
-        conn = a.get('connection',{}).get('state','?')
-        print(f\"{a['id']}: {a['state']}/{conn}\")
-"
-
-# Broker connectivity
-echo | timeout 5 nc -zv "${KAFKA_BOOTSTRAP%%:*}" "${KAFKA_BOOTSTRAP##*:}" 2>&1
-
-# Consumer group lag
-docker exec apache-kafka kafka-consumer-groups.sh \
-  --bootstrap-server "${KAFKA_BOOTSTRAP}" \
-  --describe --group "${KAFKA_CONSUMER_GROUP}" 2>/dev/null \
-  | awk 'NR==1 || /TOPIC/' | head -20
-
-# Topic partition details
-docker exec apache-kafka kafka-topics.sh \
-  --bootstrap-server "${KAFKA_BOOTSTRAP}" \
-  --describe --topic "${KAFKA_TOPIC}" 2>/dev/null
+```
+/troubleshoot-adapters {KAFKA_ADAPTER_NAME}
 ```
 
-**Thresholds:** consumer lag = 0 ✅ | lag growing steadily = IAP not keeping up ⚠️ | lag > 10k = critical 🔴
+The sub-skill covers: adapter state check, broker TCP connectivity, consumer group lag (with thresholds), topic partition details, IAP log grep, and fix/restart flow — all with the same engineer-approval gates as the standard adapter cycle. No cleanup step is needed (Kafka adapters have no debug settings to reverse).
+
+**Required `.env` fields for Kafka:** `KAFKA_BOOTSTRAP`, `KAFKA_CONSUMER_GROUP`, `KAFKA_TOPIC`. Confirm with engineer if absent before invoking.
 
 ---
 

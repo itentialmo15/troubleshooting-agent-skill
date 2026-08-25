@@ -1,13 +1,13 @@
 ---
 name: troubleshoot-adapters
-description: Troubleshoot IAP adapters — gather settings, compare against sampleProperties, run debug mode (auth_logging/console_level), capture live logs, and clean up after debugging. Covers OFFLINE, wrong data, and auth failure scenarios.
+description: Troubleshoot IAP adapters — gather settings, compare against sampleProperties, run debug mode (auth_logging/console_level), capture live logs, and clean up after debugging. Covers OFFLINE, wrong data, auth failure, and Kafka consumer lag scenarios.
 argument-hint: "[adapter name]"
 ---
 
 # Troubleshoot Adapters
 
-**Owns:** Full adapter diagnostic cycle — gather (settings collection and misconfiguration analysis), debug mode (live log capture during restart), and cleanup (reverse debug settings).
-**Use when:** An adapter is OFFLINE, returning wrong data, failing auth, or when a job error has `IAPerror.source: adapter`.
+**Owns:** Full adapter diagnostic cycle — gather (settings collection and misconfiguration analysis), debug mode (live log capture during restart), and cleanup (reverse debug settings). Also owns Kafka adapter diagnostics: broker connectivity, consumer group lag, and topic partition analysis.
+**Use when:** An adapter is OFFLINE, returning wrong data, failing auth, a job error has `IAPerror.source: adapter`, or a Kafka adapter is OFFLINE / consumer lag is growing.
 
 ---
 
@@ -547,6 +547,157 @@ If adapter is still OFFLINE after cleanup: the underlying issue (wrong host, bad
 
 ---
 
+## Phase 4: Kafka Adapter Diagnostics
+
+Run this phase when the IAP Kafka adapter is OFFLINE or consumer lag is growing. Kafka adapters do not follow the settings GET → PUT debug cycle (they have no `auth_logging` or `console_level` in sampleProperties), so this phase replaces Phase 1–3 for Kafka.
+
+**Prerequisites:** `KAFKA_BOOTSTRAP`, `KAFKA_CONSUMER_GROUP`, and `KAFKA_TOPIC` must be set in `.env` (or confirm values with the engineer if absent).
+
+---
+
+### Step 4a — Identify Kafka Adapter State in IAP
+
+```bash
+# Check Kafka adapter health
+curl -sk "{PLATFORM_URL}/health/adapters?token={TOKEN}" \
+  | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+results = d if isinstance(d, list) else d.get('results', [])
+found = False
+for a in results:
+    if 'kafka' in a.get('package_id','').lower() or 'kafka' in a.get('id','').lower():
+        conn = a.get('connection', {}).get('state', '?')
+        flag = '🔴' if conn != 'ONLINE' else '✅'
+        print(f\"{flag} {a['id']}: {a['state']}/{conn}  ({a.get('package_id','?')})\")
+        found = True
+if not found:
+    print('No Kafka adapters found in /health/adapters response')
+"
+```
+
+Look for: `RUNNING/OFFLINE` (adapter process up but broker unreachable) vs `STOPPED` (adapter process not running — check IAP logs).
+
+---
+
+### Step 4b — Broker Connectivity
+
+```bash
+# TCP reachability to each broker in the bootstrap list
+# KAFKA_BOOTSTRAP may be comma-separated: broker1:9092,broker2:9092
+for broker in $(echo "${KAFKA_BOOTSTRAP}" | tr ',' '\n'); do
+  host="${broker%%:*}"
+  port="${broker##*:}"
+  result=$(echo | timeout 5 nc -zv "${host}" "${port}" 2>&1)
+  echo "${broker}: ${result}"
+done
+```
+
+**What to look for:**
+- `Connection refused` → Kafka broker not running at that address
+- `No route to host` → network path missing (firewall, VPC, security group)
+- `Connection timed out` → port blocked upstream
+
+If broker is unreachable, the adapter will stay OFFLINE regardless of settings. Escalate to customer infra team.
+
+---
+
+### Step 4c — Consumer Group Lag
+
+```bash
+# Check consumer group lag — run from the Kafka host (SSH) or via docker exec
+# SSH deployment
+ssh "${KAFKA_SSH_USER}@${KAFKA_SSH_HOST}" \
+  "kafka-consumer-groups.sh --bootstrap-server ${KAFKA_BOOTSTRAP} \
+   --describe --group ${KAFKA_CONSUMER_GROUP} 2>/dev/null"
+
+# Docker deployment
+docker exec apache-kafka kafka-consumer-groups.sh \
+  --bootstrap-server "${KAFKA_BOOTSTRAP}" \
+  --describe --group "${KAFKA_CONSUMER_GROUP}" 2>/dev/null \
+  | awk 'NR==1 || /TOPIC/' | head -30
+```
+
+**Lag thresholds:**
+
+| LAG value | Status | Action |
+|---|---|---|
+| 0 | ✅ IAP keeping up | No action needed |
+| Steady non-zero | ⚠️ IAP behind | Check IAP CPU/memory — may need scaling |
+| Growing rapidly | 🔴 IAP not consuming | Adapter OFFLINE or consumer thread crashed |
+| > 10,000 | 🔴 Critical backlog | Urgent — jobs/events are accumulating |
+
+---
+
+### Step 4d — Topic Partition Details
+
+```bash
+# SSH deployment
+ssh "${KAFKA_SSH_USER}@${KAFKA_SSH_HOST}" \
+  "kafka-topics.sh --bootstrap-server ${KAFKA_BOOTSTRAP} \
+   --describe --topic ${KAFKA_TOPIC} 2>/dev/null"
+
+# Docker deployment
+docker exec apache-kafka kafka-topics.sh \
+  --bootstrap-server "${KAFKA_BOOTSTRAP}" \
+  --describe --topic "${KAFKA_TOPIC}" 2>/dev/null
+```
+
+Check: leader assignment (no `-1` leader → broker election in progress), replication factor, ISR count. A partition with no ISR or leader = data unavailable.
+
+---
+
+### Step 4e — Kafka Adapter Logs in IAP
+
+```bash
+# Pull IAP application log lines for the Kafka adapter
+# Docker deployment
+docker logs iap-app 2>&1 \
+  | grep -i "kafka\|consumer\|broker\|lag\|connect" \
+  | tail -50
+
+# SSH deployment — adjust log path from /health/applications
+grep -i "kafka\|consumer\|broker\|lag" \
+  /var/log/itential/platform.log 2>/dev/null | tail -50
+```
+
+Look for: connection refused, authentication errors, SSL handshake failures, consumer group rebalance loops.
+
+---
+
+### Step 4f — Fix & Verify
+
+**Adapter OFFLINE due to broker unreachable:**
+- Confirm broker address/port in IAP adapter settings matches what `nc` tested
+- GET adapter settings → update `host`/`bootstrap.servers`/`port` → PUT (engineer approval required) → restart adapter (engineer approval required)
+
+**Consumer lag growing, adapter ONLINE:**
+- Lag growing = IAP consuming but not fast enough → check IAP CPU/memory via `/troubleshoot-infra`
+- Lag stuck (no consumption) = adapter thread issue → restart the Kafka adapter (engineer approval required)
+
+**Restart Kafka adapter:**
+```bash
+# Confirm with engineer before running
+curl -sk -X PUT "{PLATFORM_URL}/adapters/{ADAPTER_NAME}/restart?token={TOKEN}" | jq .
+
+# Verify state after ~15s
+curl -sk "{PLATFORM_URL}/health/adapters?token={TOKEN}" \
+  | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+results = d if isinstance(d, list) else d.get('results', [])
+for a in results:
+    if 'kafka' in a.get('id','').lower():
+        conn = a.get('connection', {}).get('state', '?')
+        flag = '✅ ONLINE' if conn == 'ONLINE' else '⚠️ still OFFLINE'
+        print(f\"{a['id']}: {a['state']}/{conn} {flag}\")
+"
+```
+
+**No cleanup step for Kafka** — Kafka adapters have no debug settings (`auth_logging`, `console_level`) to reverse. Once the adapter is back ONLINE and lag is draining, the investigation is complete.
+
+---
+
 ## Common Adapter Failure Patterns — Quick Reference
 
 | Symptom | Root Cause | Step |
@@ -562,3 +713,7 @@ If adapter is still OFFLINE after cleanup: the underlying issue (wrong host, bad
 | `token_timeout: -1` | No auto-refresh; goes OFFLINE after session expires | Update `token_timeout` to positive ms value |
 | AWS `ASIA` key prefix | Temporary STS creds (expire 1-12h) | Use long-lived IAM key (`AKIA`) |
 | `getToken: success` but OFFLINE | Healthcheck URI wrong | Correct `healthcheck.URI_Path` |
+| **Kafka OFFLINE, broker reachable** | Consumer thread crashed | Restart Kafka adapter (Phase 4f) |
+| **Kafka lag growing, adapter ONLINE** | IAP CPU/memory insufficient or thread blocked | Check infra (Phase 4f) |
+| **Kafka lag stuck at non-zero** | IAP consumer not pulling messages | Restart Kafka adapter (Phase 4f) |
+| **Kafka broker `Connection refused`** | Broker down or wrong bootstrap address | Phase 4b — update adapter settings |
