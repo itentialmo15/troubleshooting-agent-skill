@@ -431,6 +431,58 @@ Save titles, URLs, and key excerpts to `{project_path}/data/{TIMESTAMP}/{TICKET_
 
 ---
 
+### Step 1e-docs — Live Documentation Lookup (docs.itential.com)
+
+**Access method:** `docs.itential.com` uses the Fern framework and returns HTTP 303 for most direct page fetches. Use `WebSearch` with `site:docs.itential.com` to retrieve content reliably. The sitemap at `https://docs.itential.com/sitemap.xml` is directly accessible via `WebFetch` and can reveal subpage URLs for targeted reads.
+
+**Route lookups by ticket signals from Step 1b:**
+
+| Ticket Signal | Docs Section | WebSearch site prefix |
+|---|---|---|
+| Any IAP issue (**always run**) | Platform | `site:docs.itential.com/itential-platform` |
+| IAG5 / GatewayManager / IAG ≥ 5.x | IAG Gateway 5 | `site:docs.itential.com/itential-gateway/5` |
+| IAG4 / AGManager / IAG ≤ 4.x | IAG Gateway 4 | `site:docs.itential.com/itential-gateway/4` |
+| OSS adapter (`adapter-*` package, not IAG) | Open-Source Adapters | `site:docs.itential.com/adapters` |
+| SaaS/cloud customer (`*.itential.io` platform URL) | Itential Cloud | `site:docs.itential.com/itential-cloud` |
+| Cisco NSO / adapter-nso / NSO-related | Cisco NSO | `site:docs.itential.com/cisco-nso` |
+
+**For each applicable section, run 2–3 targeted searches:**
+
+```
+WebSearch("{error term or symptom keyword} site:docs.itential.com/itential-platform")
+WebSearch("{adapter name} configuration site:docs.itential.com/adapters")
+WebSearch("{IAG version} {symptom} site:docs.itential.com/itential-gateway/{4|5}")
+WebSearch("{feature name or API endpoint} site:docs.itential.com/itential-platform")
+```
+
+For any URL returned by WebSearch that looks relevant, use `WebFetch` to read that specific page. If `WebFetch` returns a redirect or minimal content, pull the sitemap for that section and target specific subpage URLs directly.
+
+**Save findings** to `{project_path}/data/{TIMESTAMP}/{TICKET_KEY}/docs_references.md`:
+
+```markdown
+## docs.itential.com References — {TICKET_KEY}
+*Generated: {date} | IAP: {version} | IAG: {version or N/A}*
+
+### Platform (IAP)
+- [{Page Title}]({URL}) — {key excerpt: version requirement, known limitation, config option, API behavior}
+
+### IAG Gateway 5   ← omit if not applicable
+- [{Page Title}]({URL}) — {key excerpt}
+
+### Open-Source Adapters   ← omit if not applicable
+- [{Page Title}]({URL}) — {key excerpt}
+
+### Itential Cloud   ← omit if not applicable
+- [{Page Title}]({URL}) — {key excerpt}
+
+### Cisco NSO   ← omit if not applicable
+- [{Page Title}]({URL}) — {key excerpt}
+```
+
+Include `docs_references.md` path in the pre-investigation summary (Step 1h) and pass it to sub-skills in the Phase 2 invocation message so they can consult live documentation without re-running the searches.
+
+---
+
 ### Step 1f — Priority Mismatch & Outage Detection (ISD only)
 
 Scan ticket description, comments, and Jira `issuetype.name` field for the following signals:
@@ -581,12 +633,20 @@ Produce a tailored checklist. Pre-fill answers already in the ticket; remove ina
 **Version-specific behavioral notes:** *(omit if none)*
 - [{version}] {Component}: {What does NOT exist / apply} — {Diagnostic impact}
 
+**Live docs consulted:** *(omit if Step 1e-docs found nothing applicable)*
+- docs.itential.com/{section} — {page title} — {key finding}
+
 **Investigation plan:**
 1. Phase 2 — Route to {sub-skill} because {reason}
 2. Phase 3 — Reproduce / build workaround in selected environment
 
 **Escalation risk:**
 {None | Monitor — SLA at risk in Xh | ACTION REQUIRED — SLA breached}
+
+**Reference files:**
+- `confluence_references.md` — KB articles and runbooks
+- `docs_references.md` — Live docs.itential.com excerpts *(omit if not generated)*
+- `known_issues.md` — Matched past cases and ENG bugs
 ```
 
 Save to `{project_path}/data/{TIMESTAMP}/{TICKET_KEY}/pre-investigation-summary.md`.
@@ -672,6 +732,15 @@ Note any ISD tickets where customers are affected by this bug — this informs t
 ### Step 1e — Search Confluence (same as ISD)
 
 Same three CQL searches. Save to `confluence_references.md`.
+
+### Step 1e-docs — Live Documentation Lookup (same as ISD)
+
+Same routing table and WebSearch pattern as ISD Step 1e-docs. For IPSO/ENG tickets, focus on:
+- The affected component and IAP/IAG version from Step 1b
+- The specific error term or API endpoint being investigated
+- Any adapter name listed in the bug report
+
+Save findings to `{project_path}/data/{TIMESTAMP}/{TICKET_KEY}/docs_references.md` using the same format as ISD. Pass the path in the engineering pre-investigation summary (Step 1h-eng).
 
 ### Step 1f — Skip (priority mismatch detection is ISD-only)
 

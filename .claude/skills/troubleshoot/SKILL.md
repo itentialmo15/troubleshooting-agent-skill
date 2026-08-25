@@ -201,6 +201,8 @@ Based on ticket context, platform version, symptom description, and Investigatio
 
 Each sub-skill authenticates itself from `.env` when invoked — the orchestrator does not pre-authenticate.
 
+**Before routing — reference live documentation:** If triage produced a `docs_references.md`, consult it now. Version-specific behavior notes, known adapter limitations, and API contract details from `docs.itential.com` refine which sub-skill to invoke and what to instruct it to look for. Pass the path to `docs_references.md` in the sub-skill invocation message so the sub-skill can read it without re-running searches.
+
 **Feature request / ticket type check (run before sub-skill invocation):**
 
 If `ticket_context.md` contains `feature_request_flag: true` (set by triage Step 1f-SR), OR if the symptom analysis in Step 2b determines that the customer is asking for new platform behavior rather than reporting a bug or misconfiguration:

@@ -31,14 +31,14 @@ Each investigation produces per-ticket artifacts under `data/`. Multiple investi
 data/
 ├── <ISO-timestamp>/
 │   └── <TICKET-KEY>/           — ISD-XXXX, IPSO-XXXX, or ENG-XXXX
-│       ├── ticket_context.md       — Jira ticket snapshot and symptom summary
+│       ├── ticket_context.md       — Jira ticket snapshot and symptom summary; flags: outage_flag, service_request_flag, feature_request_flag, problem_ticket_key
 │       ├── pre-investigation-summary.md — Triage output (Phase 1 / troubleshoot-triage)
 │       ├── known_issues.md         — Matched past cases and ENG bugs
 │       ├── confluence_references.md — KB articles and runbooks found
+│       ├── docs_references.md      — Live docs.itential.com excerpts (Step 1e-docs, triage)
 │       ├── diagnostic_report.md   — Findings, evidence, recommended actions (Phase 4)
 │       ├── outage_summary_report.md — Customer/management-facing outage report (Phase 4, outage tickets only)
-│       ├── eng_ticket_draft.md    — ENG ticket draft saved if engineer declines immediate filing (IPSO only)
-│       └── ticket_context.md      — also stores: outage_flag, service_request_flag, feature_request_flag, problem_ticket_key
+│       └── eng_ticket_draft.md    — ENG ticket draft saved if engineer declines immediate filing (IPSO only)
 ├── known-resolutions.md            — Accumulated resolution patterns (append-only)
 ├── product-capability-reference.md — Platform version history, open bugs, components, version behavioral notes
 └── ISD-Triage-Skill-Executive-Brief.md — Business case and case studies

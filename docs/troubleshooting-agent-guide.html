@@ -786,6 +786,7 @@ flowchart TD
       <div class="indent-3"><span class="file">ticket_context.md</span> <span class="comment">← structured ticket context (Phase 1 Step 1b)</span></div>
       <div class="indent-3"><span class="file">known_issues.md</span> <span class="comment">← ISD + ENG similar ticket findings (Phase 1 Step 1d)</span></div>
       <div class="indent-3"><span class="file">confluence_references.md</span> <span class="comment">← KB / runbook excerpts (Phase 1 Step 1e)</span></div>
+      <div class="indent-3"><span class="file">docs_references.md</span> <span class="comment">← live docs.itential.com excerpts (Phase 1 Step 1e-docs)</span></div>
       <div class="indent-3"><span class="file">pre_investigation_summary.md</span> <span class="comment">← hypothesis + plan (Phase 1 Step 1h)</span></div>
       <div class="indent-3"><span class="file">diagnostic_report.md</span> <span class="comment">← full report with findings (Phase 4)</span></div>
       <div class="indent-3"><span class="file">eng_bug_report.md</span> <span class="comment">← ENG bug report draft (Phase 5, if bug confirmed)</span></div>
@@ -1143,6 +1144,154 @@ flowchart TD
       <div class="rule"><div class="rule-text">
         <strong>How does the agent handle IAG vs adapter OFFLINE differently?</strong>
         IAG OFFLINE is almost always <code>token_timeout: -1</code>. The agent checks this first (Phase 3d inline). Adapter OFFLINE could be network, credentials, wrong host, or stub mode — the adapter sub-skill runs a full gather → debug → cleanup cycle with your approval at each step.
+      </div></div>
+    </div>
+  </div>
+
+  <!-- Knowledge Sources & Learning -->
+  <div class="section">
+    <div class="section-label">Knowledge &amp; Learning</div>
+    <h2>How the Agent Learns — Knowledge Sources</h2>
+    <p class="desc">The troubleshooting agent draws from six distinct knowledge layers during every investigation. Understanding what each layer covers — and how to improve it — directly improves diagnosis accuracy and speed.</p>
+
+    <div class="cards" style="margin-bottom:32px;">
+      <div class="card t-purple">
+        <div class="icon">LR</div>
+        <h3>Local Reference Files</h3>
+        <p style="font-size:12px; color:var(--muted); line-height:1.6;">Two manually maintained files in <code>data/</code> that grow with every investigation:</p>
+        <ul style="font-size:12px; color:var(--muted); line-height:1.7; padding-left:16px; margin-top:6px;">
+          <li><code>product-capability-reference.md</code> — IAP version history, EOL dates, open known bugs, per-component behavior, version-specific gotchas (§7). Stamped into every ticket context at triage.</li>
+          <li><code>known-resolutions.md</code> — append-only log of every root cause + fix confirmed across all past investigations. The agent reads it at Phase 1 to spot repeat patterns before touching the platform.</li>
+        </ul>
+      </div>
+      <div class="card t-magenta">
+        <div class="icon">JR</div>
+        <h3>Jira — Live Ticket Mining</h3>
+        <p style="font-size:12px; color:var(--muted); line-height:1.6;">At triage Step 1d, the agent searches both ISD (past support cases) and ENG (engineering bugs) using the error string and component from the current ticket. It extracts:</p>
+        <ul style="font-size:12px; color:var(--muted); line-height:1.7; padding-left:16px; margin-top:6px;">
+          <li>Root-cause comments and resolution steps from resolved ISD tickets</li>
+          <li>Workarounds from ENG bugs whose fix version is ahead of the customer's version</li>
+          <li>Open ENG bugs with linked ISDs (used for Phase 5 escalation)</li>
+        </ul>
+        <p style="font-size:12px; color:var(--muted); margin-top:6px;">Saves to <code>known_issues.md</code>.</p>
+      </div>
+      <div class="card t-orange">
+        <div class="icon">CF</div>
+        <h3>Confluence — KB &amp; Runbooks</h3>
+        <p style="font-size:12px; color:var(--muted); line-height:1.6;">At triage Step 1e, three CQL queries search Confluence for pages matching the error string, component, and symptom keywords. The agent prioritizes:</p>
+        <ul style="font-size:12px; color:var(--muted); line-height:1.7; padding-left:16px; margin-top:6px;">
+          <li>Step-by-step runbooks (titles containing "runbook", "investigation")</li>
+          <li>Incident post-mortems ("root cause", "incident")</li>
+          <li>Version-specific release notes and known-behavior notes</li>
+        </ul>
+        <p style="font-size:12px; color:var(--muted); margin-top:6px;">Saves to <code>confluence_references.md</code>. Passed to sub-skills in the Phase 2 invocation.</p>
+      </div>
+      <div class="card t-olive">
+        <div class="icon">DC</div>
+        <h3>docs.itential.com — Official Docs</h3>
+        <p style="font-size:12px; color:var(--muted); line-height:1.6;">At triage Step 1e-docs, the agent searches the public docs website in real time using <code>WebSearch site:docs.itential.com</code>. Routing is automatic by ticket signals:</p>
+        <ul style="font-size:12px; color:var(--muted); line-height:1.7; padding-left:16px; margin-top:6px;">
+          <li><strong>Platform</strong> — always consulted (IAP behavior, API contracts)</li>
+          <li><strong>IAG 4 or IAG 5</strong> — by detected gateway version</li>
+          <li><strong>Adapters</strong> — for any <code>adapter-*</code> package (OSS)</li>
+          <li><strong>Cloud</strong> — for <code>*.itential.io</code> SaaS customers</li>
+          <li><strong>Cisco NSO</strong> — for adapter-nso / NSO-related issues</li>
+        </ul>
+        <p style="font-size:12px; color:var(--muted); margin-top:6px;">Saves to <code>docs_references.md</code>. Passed to sub-skills in Phase 2.</p>
+      </div>
+      <div class="card t-blue">
+        <div class="icon">PA</div>
+        <h3>Customer Platform — Live Data</h3>
+        <p style="font-size:12px; color:var(--muted); line-height:1.6;">Phase 2 sub-skills connect directly to the customer environment via the platform API and SSH. This provides ground-truth state:</p>
+        <ul style="font-size:12px; color:var(--muted); line-height:1.7; padding-left:16px; margin-top:6px;">
+          <li>Live adapter settings vs. expected <code>sampleProperties</code></li>
+          <li>Failing job details, task-level error arrays, childJob chains</li>
+          <li>MongoDB slow query logs, COLLSCAN counts, replica set state</li>
+          <li>IAP + IAG + LB log excerpts correlated by timestamp</li>
+          <li>Container resource usage (OOMKilled events, disk saturation)</li>
+        </ul>
+      </div>
+      <div class="card t-red">
+        <div class="icon">BS</div>
+        <h3>Builder-Skills Repo — Templates</h3>
+        <p style="font-size:12px; color:var(--muted); line-height:1.6;">Vendored from <code>github.com/itential/builder-skills</code>, these are used in Phase 3 (Constructive Fix Path) when a fix requires building or reproducing a platform asset:</p>
+        <ul style="font-size:12px; color:var(--muted); line-height:1.7; padding-left:16px; margin-top:6px;">
+          <li>Importable JSON bundles for workflows, operations, JSON Forms</li>
+          <li>Invocable SKILL.md files: <code>/builder-agent</code>, <code>/qa-agent</code>, <code>/itential-lcm</code>, etc.</li>
+        </ul>
+        <p style="font-size:12px; color:var(--muted); margin-top:6px;">Staleness-checked before Phase 3. Sync with <code>scripts/sync-builder-skills.sh</code>.</p>
+      </div>
+    </div>
+
+    <!-- Tips section -->
+    <h3 style="margin-bottom:14px; font-size:15px;">Tips to Improve Troubleshooting Capabilities</h3>
+    <p style="font-size:13px; color:var(--muted); line-height:1.7; margin-bottom:16px;">The agent is only as good as the knowledge it can access. These practices directly improve what it finds and how confidently it diagnoses.</p>
+
+    <div class="rules" style="grid-template-columns:1fr; gap:10px;">
+      <div class="rule"><div class="rule-text">
+        <strong>Keep <code>product-capability-reference.md</code> current.</strong>
+        Add a new row to §1b (version history) every time a new IAP release drops. Capture version-specific behavioral differences in §7 — they are stamped onto every ticket context and prevent sub-skills from testing features that don't exist yet in the customer's version. This file is the agent's offline encyclopedia.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Always append to <code>known-resolutions.md</code> at Phase 6.</strong>
+        Every confirmed root cause logged here is immediately available to every future investigation. A two-line entry (symptom pattern → fix + version range) can save 30 minutes on the next ticket with the same error string. The agent prompts you to append at Phase 6 — don't skip it.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Write Confluence runbooks with searchable titles.</strong>
+        The triage CQL queries match on page title and body text. Include the component name (<em>Adapter</em>, <em>MongoDB</em>, <em>IAG</em>), the symptom or error, and a keyword like "runbook", "investigation", or "root cause" in the title. A page titled "adapter-nso OFFLINE investigation runbook" will surface in every NSO adapter ticket; a page titled "NSO notes" will not.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Tag ENG bugs with accurate <code>affectedVersions</code> and <code>fixVersions</code>.</strong>
+        The agent compares these fields against the customer's installed version to determine whether the bug is patched. A bug with no <code>fixVersions</code> and missing <code>affectedVersions</code> is effectively invisible to the triage lookup and won't surface as a known issue even when it matches.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Attach logs to ISD tickets — even partial ones.</strong>
+        Triage Step 1a-attach parses log and error attachments to extract a precise incident timestamp, which becomes the search anchor for <code>/troubleshoot-logs</code>. A customer's "around 10:30am" is far less useful than the exact <code>2026-08-13T10:28:43Z</code> extracted from an attached stack trace.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>File IPSO tickets with complete reproduction steps.</strong>
+        When the agent handles IPSO tickets, it reads the description and all comments to build its initial hypothesis. Sparse IPSO tickets ("adapter breaks sometimes") produce weak triage. Detailed ones ("adapter-cisco-ios fails auth after token_timeout:1800 elapses on IAP 6.3.1, works on 6.3.0") enable a confident version-range analysis and matching ENG bug draft.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Sync builder-skills before Phase 3 work.</strong>
+        Run <code>scripts/sync-builder-skills.sh --check</code> to see if the vendored templates are behind upstream. Stale templates may lack newer operation signatures or JSON Forms schema patterns — the agent will warn you at Phase 3, but syncing proactively avoids the interruption.
+      </div></div>
+    </div>
+  </div>
+
+  <!-- FAQ: Knowledge Sources -->
+  <div class="section">
+    <div class="section-label">FAQ — Knowledge Sources</div>
+    <h2>Frequently Asked Questions — How the Agent Knows What It Knows</h2>
+
+    <div class="rules" style="grid-template-columns: 1fr;">
+      <div class="rule"><div class="rule-text">
+        <strong>Does the agent look at docs.itential.com in real time, or does it use a cached snapshot?</strong>
+        Real time. At triage Step 1e-docs, it runs <code>WebSearch site:docs.itential.com</code> queries against the live public website and fetches the matching pages. The results are saved into <code>docs_references.md</code> in the ticket folder — this is a fresh pull per investigation, not a cached copy.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>How does the agent know if a feature or API exists in the customer's IAP version?</strong>
+        Two sources work together: <code>product-capability-reference.md</code> §7 (version-specific behavioral notes, stamped onto every ticket context at triage) and live docs.itential.com lookups for the customer's exact IAP version. If a feature was introduced in 6.4 and the customer is on 6.2, the behavioral notes flag it as not available and sub-skills skip any diagnostic steps that depend on it.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Which knowledge source has the highest priority when there's a conflict?</strong>
+        Live platform data wins. If the adapter settings pulled directly from the customer's environment contradict what <code>sampleProperties</code> or Confluence says should be there, the live data is the ground truth. The agent notes discrepancies and uses them as diagnostic evidence. <code>docs.itential.com</code> defines expected behavior; the platform API reveals actual behavior.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Can the agent learn from tickets it investigates, or does knowledge only come from what's already written?</strong>
+        It learns through Phase 6 (Resolution Learning). After each confirmed resolution, the agent appends the root cause pattern, the fix, and the IAP version range to <code>data/known-resolutions.md</code>. That entry is immediately available to every future triage — the agent reads <code>known-resolutions.md</code> at Phase 1 before starting any new investigation.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Does it search Confluence automatically, or do I have to ask?</strong>
+        Automatically, at triage Step 1e. Three CQL queries run against Confluence (error string, component runbooks, symptom + post-mortem keywords) for every ISD, IPSO, and ENG ticket. You don't have to prompt it. Results land in <code>confluence_references.md</code> before the agent generates the pre-investigation summary.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>What docs sections does the agent consult for a Cisco NSO adapter ticket?</strong>
+        Both the Adapters section (<code>site:docs.itential.com/adapters</code>) and the Cisco NSO section (<code>site:docs.itential.com/cisco-nso</code>), plus the Platform section (always included). If the ticket also involves IAG, the IAG4 or IAG5 section is added based on the detected gateway version.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>What happens when the agent can't reach docs.itential.com or Confluence?</strong>
+        It fails open and continues the investigation using what it has locally: <code>product-capability-reference.md</code>, <code>known-resolutions.md</code>, and any prior Jira mining results. The pre-investigation summary notes which live lookups were skipped. Platform diagnostics (Phase 2 sub-skills) are not affected — they connect directly to the customer environment, not to external documentation sites.
       </div></div>
     </div>
   </div>
@@ -1954,6 +2103,10 @@ SSH_ROLE_1=iap</pre></div>
       <div class="rule-item">
         <div class="rule-label">Step 1e</div>
         <div class="rule-body">Search Confluence — three CQL queries: error string, component runbooks, post-mortems → <code>confluence_references.md</code>.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Step 1e-docs</div>
+        <div class="rule-body">Live documentation lookup on <strong>docs.itential.com</strong> — routed by ticket signals: Platform docs always; IAG4 or IAG5 by gateway version; Adapter docs for OSS adapters; Cloud docs for SaaS/cloud customers; Cisco NSO docs for adapter-nso. Uses <code>WebSearch site:docs.itential.com</code> (Fern framework blocks direct fetches). Saves page titles, URLs, and key excerpts to <code>docs_references.md</code>. Passed to sub-skills in the Phase 2 invocation message.</div>
       </div>
       <div class="rule-item">
         <div class="rule-label">Step 1f</div>

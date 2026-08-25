@@ -305,6 +305,22 @@ done
 >
 > **Fields requiring extra confirmation:** `host`, `port`, `auth_method`, `credentials`, `ssl.ca` — pause and confirm each before applying
 
+**Docs reference (if not already in triage docs_references.md):**
+
+If the adapter is an OSS adapter (`adapter-*` package other than IAG) and `docs_references.md` does not yet have an Adapters section, run a targeted lookup now:
+
+```
+WebSearch("{adapter package name} configuration site:docs.itential.com/adapters")
+WebSearch("{adapter package name} authentication site:docs.itential.com/adapters")
+```
+
+For `adapter-nso` or Cisco NSO–related adapters, also check:
+```
+WebSearch("{symptom or config key} site:docs.itential.com/cisco-nso")
+```
+
+Append any new findings to `{project_path}/data/{TIMESTAMP}/{TICKET_KEY}/docs_references.md` under the appropriate section. Use the live documentation to validate expected authentication configuration, required properties, and known adapter-specific behaviors before comparing settings in Step 1d.
+
 ---
 
 ## Phase 2: Debug Mode — Live Log Capture
