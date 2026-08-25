@@ -201,6 +201,26 @@ Based on ticket context, platform version, symptom description, and Investigatio
 
 Each sub-skill authenticates itself from `.env` when invoked — the orchestrator does not pre-authenticate.
 
+**Feature request / ticket type check (run before sub-skill invocation):**
+
+If `ticket_context.md` contains `feature_request_flag: true` (set by triage Step 1f-SR), OR if the symptom analysis in Step 2b determines that the customer is asking for new platform behavior rather than reporting a bug or misconfiguration:
+
+Present this offer before routing to any diagnostic sub-skill:
+
+```
+Investigation indicates this ticket describes a feature request or enhancement gap,
+not a bug or platform failure.
+
+Options:
+  [convert]  Convert {TICKET_KEY} to New Feature type — routes to product management
+  [keep]     Keep current type and continue investigating as a support ticket
+  [skip]     Note the signal and proceed without changing the ticket type
+```
+
+- **convert** → call `editJiraIssue`: `{"fields": {"issuetype": {"name": "New Feature"}}}`. Add internal comment: "Ticket type converted from {original_type} to New Feature — investigation determined this is an enhancement request, not a platform bug. Converted by {engineer}." Update `issue_type: New Feature` in `ticket_context.md`. Then close the investigation (no further diagnostic sub-skills needed for a feature request).
+- **keep** → continue routing to diagnostic sub-skills as normal; note in diagnostic report that this may be a feature gap rather than a defect.
+- **skip** → continue without changes.
+
 **If Phase 0 (`/troubleshoot-triage`) parsed a `{REPORTED_ERROR_TIME}` from a ticket attachment** (Step 1a-attach), pass it — not the customer's typed incident time — as the `{incident time}` argument to `/troubleshoot-logs`, and also pass `{ATTACHED_LOG_PATH}` so the sub-skill can correlate the customer's own log excerpt against the platform's logs instead of only filtering by time. This is strictly more precise than a customer's approximate "around 10:30am" estimate.
 
 **Inline IAG Diagnostics (when IAG is implicated but sub-skill is insufficient):**
@@ -1219,6 +1239,68 @@ Ask:
 Post this outage summary report as an internal comment on {TICKET_KEY}? [yes / no]
 ```
 If yes: post with `commentVisibility: {"type": "role", "value": "Service Desk Team"}`. Present the comment draft before posting (same approval gate as all Jira writes).
+
+#### Step 4-OR-6 — Offer to create a Problem ticket for RCA tracking
+
+After Step 4-OR-5 completes (regardless of whether the comment was posted), present this offer:
+
+```
+Would you like to create a Problem ticket linked to {TICKET_KEY} to track the
+Root Cause Analysis (RCA)? Problem tickets allow product and engineering to track
+the investigation through to a permanent fix independently of the customer ticket.
+
+Create Problem ticket? [yes / no]
+```
+
+**If yes:**
+
+1. Pre-fill the Problem ticket draft from outage context:
+
+   ```
+   Summary:    [RCA] {outage ticket summary — stripped of customer-specific detail}
+   Type:       Problem
+   Priority:   {same as {TICKET_KEY}}
+   Components: {same as {TICKET_KEY} if set}
+   Description:
+     Problem ticket created from outage {TICKET_KEY} to track Root Cause Analysis.
+
+     **Outage Summary**
+     {Section 2 "Issue" from outage_summary_report.md — 2-3 sentences}
+
+     **Symptoms / Evidence**
+     {Section 3 "Root Cause Symptom" from outage_summary_report.md}
+
+     **Next Steps for RCA**
+     {Section 4 "Outage Recovery" and Section 5 "Next Steps" from outage_summary_report.md}
+
+     **Source ticket:** {TICKET_KEY}
+   ```
+
+2. Present the draft to the engineer for review:
+   ```
+   Review the Problem ticket draft above. Edit any field, or type "approve" to file.
+   ```
+
+3. On approval: call `createJiraIssue` (Atlassian MCP) with `issuetype: Problem`.
+
+4. Call `createIssueLink` to link Problem → outage ticket:
+   ```json
+   {
+     "type": { "name": "Relates" },
+     "inwardIssue": { "key": "{NEW_PROBLEM_KEY}" },
+     "outwardIssue": { "key": "{TICKET_KEY}" }
+   }
+   ```
+
+5. Add an internal comment to the original outage ticket:
+   ```
+   Problem ticket {NEW_PROBLEM_KEY} created for RCA tracking. [link]
+   ```
+   (commentVisibility: Service Desk Team — same gate as all Jira writes)
+
+6. Save `problem_ticket_key: {NEW_PROBLEM_KEY}` to `ticket_context.md`.
+
+**If no:** continue. Note in `diagnostic_report.md`: "RCA Problem ticket not requested."
 
 ---
 

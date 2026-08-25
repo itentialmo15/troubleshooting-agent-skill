@@ -1220,28 +1220,33 @@ flowchart TD
   <!-- Outage Summary Report -->
   <div class="section">
     <div class="section-label">Outage Reports</div>
-    <h2>Outage Summary Report</h2>
-    <p class="desc">When a ticket is classified as a production outage, Phase 4 branches into an additional outage report flow that produces a six-section <code>outage_summary_report.md</code> — a customer and management-facing document that can be posted directly to the ISD ticket as an internal comment.</p>
+    <h2>Outage Summary Report &amp; Problem Ticket Clone</h2>
+    <p class="desc">When a ticket is classified as a production outage, Phase 4 branches into an additional flow that produces a six-section <code>outage_summary_report.md</code> and offers to create a linked Problem ticket for RCA tracking — so the customer ticket and the root-cause investigation can be managed independently.</p>
 
     <div class="cards" style="margin-bottom:24px;">
       <div class="card t-red">
         <div class="icon">OT</div>
         <h3>Auto-Detection</h3>
-        <p>The triage skill (Step 1f) detects outage signals: bulk job failures (≥10 jobs stuck), Jira issuetype = Incident/Problem, "platform is down", "IAG down", "adapter went OFFLINE". Sets <code>outage_flag: true</code> in <code>ticket_context.md</code>.</p>
+        <p>Triage Step 1f detects outage signals: bulk job failures (≥10 stuck), Jira issuetype = Incident/Problem, "platform is down", "IAG down", "adapter went OFFLINE". Sets <code>outage_flag: true</code> in <code>ticket_context.md</code>.</p>
       </div>
       <div class="card t-orange">
         <div class="icon">IN</div>
         <h3>Input Gathering</h3>
-        <p>Phase 4 pre-fills from the ticket and investigation findings. For missing fields, it asks the engineer. Call transcripts or meeting notes can be pasted in — the agent extracts timeline, recovery actions, and next steps automatically.</p>
+        <p>Phase 4 pre-fills from the ticket and investigation findings. For missing fields, it asks the engineer. Call transcripts can be pasted in — the agent extracts timeline, recovery actions, and next steps automatically.</p>
       </div>
       <div class="card t-magenta">
         <div class="icon">AP</div>
-        <h3>Approval Gate</h3>
-        <p>The report draft is presented to the engineer for review and edits before saving. Posting to the ISD ticket as an internal comment requires a separate explicit approval — same gate as all Jira writes.</p>
+        <h3>Approval Gates</h3>
+        <p>Report draft is reviewed before saving. Posting to ISD and creating the Problem clone each require a separate explicit approval — same gate as all Jira writes. Engineer can approve or skip each step independently.</p>
+      </div>
+      <div class="card t-blue">
+        <div class="icon">PR</div>
+        <h3>Problem Ticket Clone (RCA)</h3>
+        <p>After the outage report, the agent offers to create a Problem ticket pre-filled from the outage context (summary, symptoms, next steps). It links the Problem to the outage ticket and posts a cross-reference comment. Saves <code>problem_ticket_key</code> to <code>ticket_context.md</code>.</p>
       </div>
     </div>
 
-    <h3 style="margin-bottom:10px;">Report Sections</h3>
+    <h3 style="margin-bottom:10px;">Outage Report Sections</h3>
     <div class="rule-list">
       <div class="rule-item">
         <div class="rule-label">Overview</div>
@@ -1261,11 +1266,11 @@ flowchart TD
       </div>
       <div class="rule-item">
         <div class="rule-label">Next Steps</div>
-        <div class="rule-body">Numbered action items with owner and target date. Always includes a Root Cause Analysis item pointing to the follow-up ISD Problem or ENG ticket to investigate the underlying cause.</div>
+        <div class="rule-body">Numbered action items with owner and target date. Always includes a Root Cause Analysis item pointing to the Problem ticket created in Step 4-OR-6 (or a placeholder if the engineer declined).</div>
       </div>
       <div class="rule-item">
         <div class="rule-label">Current Status</div>
-        <div class="rule-body">One paragraph: immediate resolution state (resolved / monitoring / partial), what was restored, how it was confirmed, and what remains open (e.g. root cause investigation in progress).</div>
+        <div class="rule-body">One paragraph: immediate resolution state (resolved / monitoring / partial), what was restored, how it was confirmed, and what remains open (e.g. root cause investigation in progress via Problem ticket).</div>
       </div>
     </div>
 
@@ -1282,6 +1287,50 @@ flowchart TD
           <tr><td>Engineer manually types <code>flag as outage</code> at Phase 4 prompt</td><td>Engineer input</td><td>Yes</td></tr>
         </tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- Ticket Type Conversions -->
+  <div class="section">
+    <div class="section-label">Ticket Management</div>
+    <h2>Ticket Type Conversions</h2>
+    <p class="desc">The agent detects when a ticket's type doesn't match what was filed and offers to convert it — with explicit engineer approval — so the right teams track and prioritize the work. All Jira type changes require a clear 'yes' before execution and include an internal comment explaining the conversion.</p>
+
+    <div class="cards" style="margin-bottom:24px;">
+      <div class="card t-orange">
+        <div class="icon">SR</div>
+        <h3>Service Request → Enhancement Request</h3>
+        <p>Detected in triage (Step 1f-SR) when <code>issuetype = Service Request</code>. Offered immediately after triage. Converts via <code>editJiraIssue</code> so product management can track and prioritize it on the roadmap.</p>
+      </div>
+      <div class="card t-purple">
+        <div class="icon">FR</div>
+        <h3>Any Type → New Feature</h3>
+        <p>Detected during Phase 2 investigation when root cause analysis reveals the customer is requesting new platform behavior — not reporting a bug or misconfiguration. Offered before routing to diagnostic sub-skills.</p>
+      </div>
+      <div class="card t-magenta">
+        <div class="icon">RCA</div>
+        <h3>Outage → Problem Clone</h3>
+        <p>After producing the outage summary report (Phase 4-OR-6), a new Problem ticket is created — pre-filled from the outage context — and linked to the original outage ticket. Separate from the outage ISD ticket so RCA can be tracked to completion independently.</p>
+      </div>
+    </div>
+
+    <div class="rule-list">
+      <div class="rule-item">
+        <div class="rule-label">When offered</div>
+        <div class="rule-body">Service Request → ER: immediately after triage. Feature request: at Phase 2 before sub-skill routing. Problem clone: after outage report is saved (Step 4-OR-6). Each offer is independent — declining one does not affect the others.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Approval gate</div>
+        <div class="rule-body">All type changes and ticket creations require an explicit <strong>yes</strong> from the engineer. The agent presents the exact Jira fields before calling <code>editJiraIssue</code> or <code>createJiraIssue</code>. Declining does not block the investigation.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Audit trail</div>
+        <div class="rule-body">Every type conversion adds an internal Jira comment (Service Desk Team visibility) explaining what changed, why, and who triggered it. Problem ticket key is saved to <code>ticket_context.md</code> for reference throughout the investigation.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Feature request close path</div>
+        <div class="rule-body">If a ticket is confirmed as a feature request and the engineer chooses <strong>convert</strong>, the investigation closes gracefully — no diagnostic sub-skills are invoked for a feature gap. The engineer can also choose <strong>keep</strong> to continue investigating while noting the feature signal in the diagnostic report.</div>
+      </div>
     </div>
   </div>
 

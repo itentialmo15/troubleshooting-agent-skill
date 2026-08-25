@@ -466,9 +466,59 @@ Scan ticket description, comments, and Jira `issuetype.name` field for the follo
 **When outage signals are detected (in addition to the above):**
 1. Set `outage_flag: true` in `ticket_context.md` (append to the context header block)
 2. Set `issue_type: Outage` in `ticket_context.md` (replacing the default `Functional | Performance` field)
-3. Note in the pre-investigation summary: "⚠️ Outage classification: this ticket will trigger outage summary report generation at Phase 4."
+3. Note in the pre-investigation summary: "⚠️ Outage classification: this ticket will trigger outage summary report generation at Phase 4, and will offer a Problem ticket clone for RCA tracking."
 
-The `outage_flag` is what Phase 4 of the orchestrator reads to decide whether to produce an `outage_summary_report.md` in addition to the standard `diagnostic_report.md`.
+The `outage_flag` is what Phase 4 of the orchestrator reads to decide whether to produce an `outage_summary_report.md` and offer a Problem ticket clone.
+
+---
+
+### Step 1f-SR — Service Request & Feature Request Type Checks (ISD only)
+
+Run immediately after Step 1f. Check `issuetype.name` and ticket content for the following and act accordingly. These run as separate offers — each presented to the engineer before proceeding.
+
+#### Service Request → Enhancement Request
+
+If `issuetype.name` == "Service Request" (or similar: "Service", "SR", "Request"):
+
+1. Set `service_request_flag: true` in `ticket_context.md`
+2. Present the following offer:
+
+```
+This ticket is typed as Service Request.
+
+Service Requests that involve changes to platform behavior, configuration workflows,
+or new integration patterns are typically better tracked as Enhancement Requests (ER),
+which are visible to product management and can be prioritized in the roadmap.
+
+Convert {TICKET_KEY} from Service Request → Enhancement Request? [yes / no]
+```
+
+3. **If yes:** call `editJiraIssue` to update the issuetype:
+   ```json
+   { "fields": { "issuetype": { "name": "Enhancement Request" } } }
+   ```
+   Add an internal comment: "Ticket type converted from Service Request to Enhancement Request — {reason from ticket context}. Converted by {engineer} during triage."
+   Update `issue_type: Enhancement Request` in `ticket_context.md`.
+
+4. **If no:** continue with original type. Note in the pre-investigation summary: "Ticket type is Service Request — ER conversion declined."
+
+#### Feature Request Detection
+
+Scan the ticket description, comments, and symptom language for feature request signals:
+
+| Signal | Implication |
+|---|---|
+| "would be nice if", "can you add", "request to add", "new capability" | Feature request, not a bug |
+| "does not currently support", "is there a way to", "can this be enhanced" | Possible feature gap |
+| "enhancement to X", "extend Y to support Z", "add ability to" | Enhancement request |
+| No error, no failure — customer asking for new behavior | Almost certainly a feature request |
+
+If feature request signals are detected:
+
+1. Set `feature_request_flag: true` in `ticket_context.md`
+2. Note in the pre-investigation summary: "⚠️ Feature request signals detected — may need ticket type conversion to New Feature during investigation."
+
+The orchestrator Phase 2 picks this up and offers the conversion when root cause confirms it is indeed a feature request.
 
 ---
 

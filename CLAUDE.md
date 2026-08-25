@@ -37,7 +37,8 @@ data/
 │       ├── confluence_references.md — KB articles and runbooks found
 │       ├── diagnostic_report.md   — Findings, evidence, recommended actions (Phase 4)
 │       ├── outage_summary_report.md — Customer/management-facing outage report (Phase 4, outage tickets only)
-│       └── eng_ticket_draft.md    — ENG ticket draft saved if engineer declines immediate filing (IPSO only)
+│       ├── eng_ticket_draft.md    — ENG ticket draft saved if engineer declines immediate filing (IPSO only)
+│       └── ticket_context.md      — also stores: outage_flag, service_request_flag, feature_request_flag, problem_ticket_key
 ├── known-resolutions.md            — Accumulated resolution patterns (append-only)
 ├── product-capability-reference.md — Platform version history, open bugs, components, version behavioral notes
 └── ISD-Triage-Skill-Executive-Brief.md — Business case and case studies
