@@ -309,3 +309,44 @@ Released: **2026-05-13** (on-prem) / **2026-05-21** (cloud)
 | Version Range | Component | What Applies | What Does NOT Apply / Exist | Diagnostic Impact |
 |---|---|---|---|---|
 | 23.2.x | Platform configuration | `services` array per profile in platform config controls which services start for that profile | `/etc/platform/properties` — this file does not exist in 23.2 deployments | Do not look for, reference, or attempt to read `/etc/platform/properties` when diagnosing 23.2 systems; use the platform config API (`GET /api/v2.0/platform/config`) to inspect service and profile settings instead |
+
+## 8. Cloud Deployment Topology (itential-saas)
+
+**Detection:** `project_type = itential-saas` in Jira, OR platform URL = `*.itential.io`.
+
+### Architecture
+
+| Layer | Who manages it | Access for support engineers |
+|---|---|---|
+| IAP application nodes | **Itential** (cloud-managed) | No direct SSH — use platform API only |
+| IAG (IG4 or IG5) | **Customer** (on-premises) | SSH possible via `.env` SSH_HOST_N targets |
+| MongoDB / Redis | **Itential** (cloud-managed) | Via Mongo URL in `.env` if Itential ops provides it |
+| Adapters / integrations | Itential NATs customer IPs | See NAT section below |
+
+### NAT and IP Whitelisting
+
+Itential operates a NAT layer for all cloud customer adapter and integration traffic. The target system (ServiceNow, NetBox, Cisco NSO, IPAM, ITSM, etc.) sees a **NAT IP assigned by Itential**, not the customer's on-prem IP. Key implications:
+
+- **Adapter OFFLINE for a cloud customer → NAT IP whitelisting is the first diagnostic check.** Confirm the current Itential NAT IP with cloud ops, then verify it is present in the target system's IP allowlist.
+- NAT IP can change after a cloud infrastructure event (IP reallocation, region failover). When a previously working adapter goes OFFLINE without any customer-side change, a NAT IP rotation is the most likely cause.
+- For cloud customers, never ask the customer to whitelist their own on-prem IP on an external target — the traffic will never arrive from that IP.
+
+### SSH Targets in .env for Cloud Customers
+
+`SSH_HOST_N` entries in `.env` should point only to **customer on-premises** infrastructure:
+- IAG hosts (IG4 or IG5 nodes) — `SSH_ROLE_N=gateway`
+- MongoDB / Redis if hosted on customer on-prem (uncommon for cloud customers)
+- Any on-prem jump host or bastion
+
+Never add IAP application node IPs as SSH targets for cloud customers — those nodes are Itential-managed and inaccessible via SSH.
+
+### Diagnostic Constraints Specific to Cloud Customers
+
+| Diagnostic | On-prem | Cloud (itential-saas) |
+|---|---|---|
+| SSH to IAP nodes | ✅ Available | ❌ Not available — Itential-managed |
+| SSH to IAG nodes | ✅ Available | ✅ Available (customer on-prem) |
+| Platform API (`/health`, adapters, jobs) | ✅ | ✅ via `*.itential.io` URL |
+| Container logs (IAP) | Via SSH + `docker logs` | ❌ Not available directly — request from Itential cloud ops |
+| IAG logs | Via SSH to IAG host | ✅ Via SSH to customer on-prem IAG host |
+| Adapter OFFLINE root cause | Network, credentials, config, stub | Same + **NAT IP whitelist first** |

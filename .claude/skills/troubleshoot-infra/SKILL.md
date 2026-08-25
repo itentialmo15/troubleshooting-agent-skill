@@ -11,6 +11,22 @@ argument-hint: "[component: iap|iag|mongodb|redis|kafka|eks|all]"
 
 ---
 
+## Cloud Customer Topology (itential-saas) — Read First
+
+If `cloud_customer_flag: true` is set in `ticket_context.md`, the customer is on Itential-managed cloud (`*.itential.io`). Adjust all SSH and container diagnostics accordingly:
+
+| Target | On-prem | Cloud (itential-saas) |
+|---|---|---|
+| IAP application nodes | SSH available | **No SSH** — Itential-managed; request logs from cloud ops |
+| IAP container logs | `docker logs {container}` via SSH | **Not available directly** — request from cloud ops |
+| IAG nodes | SSH available | SSH available — customer on-prem; use `.env` SSH_HOST_N with `SSH_ROLE=gateway` |
+| MongoDB / Redis | SSH + mongosh / redis-cli | Via URL in `.env` if cloud ops provided credentials |
+| Adapter connectivity (OFFLINE) | Check host/port/creds | **Also check NAT IP whitelist** — Itential NATs adapter traffic; target must whitelist Itential's NAT IP |
+
+For cloud customers, skip all Phase 7 (SSH) steps that target IAP nodes. Limit SSH phases to IAG on-prem hosts and any separately hosted on-prem DB nodes.
+
+---
+
 ## CRITICAL SAFETY RULES
 
 - **Read-only diagnostics** — no `docker rm`, `kubectl delete`, `systemctl restart`, `docker system prune` without explicit user consent

@@ -323,7 +323,8 @@ Parse and save to `{project_path}/data/{TIMESTAMP}/{TICKET_KEY}/ticket_context.m
   ──────────
   IAP Version:   {e.g. 6.3.2 | unknown}
   IAG Version:   {4 | 5 | unknown}
-  Deployment:    Docker | VM | Kubernetes | unknown
+  Deployment:    itential-saas (cloud-managed IAP + on-prem IAG) | Docker | VM | Kubernetes | unknown
+  Project Type:  itential-saas | on-prem | unknown
   OS:            {RHEL 8.x | Ubuntu 22.04 | unknown}
   MongoDB:       {version | unknown}
   Redis:         {version | unknown}
@@ -349,11 +350,25 @@ Parse and save to `{project_path}/data/{TIMESTAMP}/{TICKET_KEY}/ticket_context.m
 ╚══════════════════════════════════════════════════════════╝
 ```
 
+**Cloud customer detection:** If `Project Type = itential-saas` OR platform URL matches `*.itential.io`, set `cloud_customer_flag: true` in `ticket_context.md` and append the following topology block:
+
+```markdown
+## Cloud Customer Topology (itential-saas)
+- IAP: Itential-managed cloud — engineers CANNOT SSH directly to IAP application nodes
+- IAG: Customer on-premises (IG4 or IG5) — SSH to IAG hosts IS possible (targets in .env)
+- Adapters/Integrations: Itential NATs customer IPs — the target system (ServiceNow, NetBox,
+  IPAM, etc.) must whitelist Itential's NAT IP, NOT the customer's on-prem IP
+- Adapter OFFLINE for cloud customer: FIRST suspect is NAT IP change or missing whitelist entry
+  on the target system. Confirm NAT IP with Itential cloud ops before asking customer to whitelist.
+- SSH_HOST_N in .env for cloud customers should ONLY be IAG on-prem hosts, MongoDB/Redis hosts,
+  or other on-prem infrastructure — never IAP application nodes
+```
+
 ---
 
-### Step 1c — Platform Support Status Check & Version-Specific Behavioral Notes
+### Step 1c — Platform Support Status Check, Version Notes & Cloud Topology
 
-Read `data/product-capability-reference.md` and run both checks against the customer's IAP version:
+Read `data/product-capability-reference.md` and run the following checks against the customer's IAP version and deployment type:
 
 **Part A — Support Status (Section 1 of reference)**
 ```
@@ -375,6 +390,20 @@ Scan Section 7 for rows matching the customer's IAP version. For each match, app
 ```
 
 No matches → no block. These notes must be included in the pre-investigation summary (Step 1h) and in any sub-skill invocation message passed by the orchestrator in Phase 2.
+
+**Part C — Cloud Topology Notes (Section 8 of reference, itential-saas customers only)**
+
+If `cloud_customer_flag: true` (set in Step 1b), read Section 8 of `product-capability-reference.md` and append to `ticket_context.md`:
+
+```markdown
+## Cloud Customer Topology (itential-saas)
+- IAP: Itential-managed cloud — no SSH to IAP nodes
+- IAG: Customer on-premises (IG{4|5}) — SSH available via .env targets
+- Adapters: Itential NATs customer IPs — target systems must whitelist Itential NAT IP
+- Adapter OFFLINE → first hypothesis: NAT IP change or missing whitelist entry
+```
+
+Include this block in the pre-investigation summary and pass `cloud_customer_flag: true` to all sub-skill invocations in Phase 2.
 
 ---
 

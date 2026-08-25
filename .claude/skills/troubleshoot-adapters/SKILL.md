@@ -45,6 +45,18 @@ curl -sk -X POST "{PLATFORM_URL}/oauth/token" \
 
 ## Phase 1: Gather — Settings Collection & Analysis
 
+**Cloud customer check (read ticket_context.md first):** If `cloud_customer_flag: true` is set in `ticket_context.md`, the customer is on `itential-saas` — Itential-managed cloud IAP with on-premises IAG. Apply these constraints for every step in this skill:
+
+| Scenario | Cloud customer (itential-saas) note |
+|---|---|
+| Adapter OFFLINE | **First check: Itential NAT IP whitelisting.** Itential NATs all adapter/integration traffic. The target system must whitelist Itential's NAT IP, not the customer's on-prem IP. Confirm current NAT IP with cloud ops before any settings changes. |
+| SSH to IAP nodes | Not available — IAP is Itential-managed. Cannot run `docker logs`, `pm2 logs`, or host-level commands on IAP nodes. Request logs from Itential cloud ops. |
+| SSH to IAG | Available — IAG runs on customer on-prem. SSH targets in `.env` for cloud customers are IAG hosts. |
+| Adapter settings API | Available — use platform API via `*.itential.io` URL as normal. |
+| sampleProperties fetch | Available — use `npm show {package_id} dist-tags.latest` + package registry as normal. |
+
+If the adapter was ONLINE and went OFFLINE without a customer-side change → lead with NAT IP rotation as the hypothesis before investigating credentials or host/port settings.
+
 ### Step 1a — Identify Adapter
 
 If the user hasn't specified an adapter name, list all adapters with health:

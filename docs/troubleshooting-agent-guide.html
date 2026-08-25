@@ -1145,6 +1145,10 @@ flowchart TD
         <strong>How does the agent handle IAG vs adapter OFFLINE differently?</strong>
         IAG OFFLINE is almost always <code>token_timeout: -1</code>. The agent checks this first (Phase 3d inline). Adapter OFFLINE could be network, credentials, wrong host, or stub mode — the adapter sub-skill runs a full gather → debug → cleanup cycle with your approval at each step.
       </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>How does the agent behave differently for cloud (itential-saas) customers vs on-prem?</strong>
+        For cloud customers (<code>project_type = itential-saas</code> or <code>*.itential.io</code> URL), the agent detects the deployment at triage and stamps a cloud topology block into <code>ticket_context.md</code>. All sub-skills then adjust: no SSH to IAP nodes (Itential-managed), SSH to IAG on-prem hosts is still available, and adapter OFFLINE diagnostics lead with the Itential NAT IP whitelist check before credentials or settings. See the <em>Itential Cloud Customers</em> section for the full capability matrix.
+      </div></div>
     </div>
   </div>
 
@@ -1293,6 +1297,63 @@ flowchart TD
         <strong>What happens when the agent can't reach docs.itential.com or Confluence?</strong>
         It fails open and continues the investigation using what it has locally: <code>product-capability-reference.md</code>, <code>known-resolutions.md</code>, and any prior Jira mining results. The pre-investigation summary notes which live lookups were skipped. Platform diagnostics (Phase 2 sub-skills) are not affected — they connect directly to the customer environment, not to external documentation sites.
       </div></div>
+    </div>
+  </div>
+
+  <!-- Cloud Customer Topology -->
+  <div class="section">
+    <div class="section-label">Cloud Customers</div>
+    <h2>Itential Cloud Customers (itential-saas) — Topology &amp; Diagnostics</h2>
+    <p class="desc">When <code>project_type = itential-saas</code> or the platform URL is <code>*.itential.io</code>, the agent automatically detects a cloud deployment and adjusts every diagnostic step. Understanding this topology prevents misguided troubleshooting steps.</p>
+
+    <div class="cards" style="margin-bottom:28px;">
+      <div class="card t-purple">
+        <div class="icon">☁</div>
+        <h3>IAP — Itential-Managed Cloud</h3>
+        <p style="font-size:12px; color:var(--muted); line-height:1.6;">IAP runs on Itential's cloud infrastructure. Support engineers <strong>cannot SSH</strong> to IAP application nodes. All IAP diagnostics use the platform API (<code>*.itential.io</code>). Container logs from IAP nodes must be requested from Itential cloud ops.</p>
+      </div>
+      <div class="card t-magenta">
+        <div class="icon">IG</div>
+        <h3>IAG — Customer On-Premises</h3>
+        <p style="font-size:12px; color:var(--muted); line-height:1.6;">IAG4 or IAG5 is installed and managed by the customer on their own premises. SSH to IAG hosts <strong>is available</strong> via <code>SSH_HOST_N</code> entries in <code>.env</code> (use <code>SSH_ROLE=gateway</code>). IAG connects outbound to cloud IAP.</p>
+      </div>
+      <div class="card t-orange">
+        <div class="icon">NA</div>
+        <h3>Adapters — Itential NAT Layer</h3>
+        <p style="font-size:12px; color:var(--muted); line-height:1.6;">All adapter and integration traffic from cloud IAP is routed through <strong>Itential's NAT layer</strong>. The target system (ServiceNow, NetBox, Cisco NSO, IPAM, ITSM, etc.) sees Itential's NAT IP — not the customer's on-prem IP. The target must whitelist the Itential NAT IP.</p>
+      </div>
+    </div>
+
+    <h3 style="margin-bottom:12px; font-size:14px;">Adapter OFFLINE on Cloud — Diagnostic Priority</h3>
+    <div class="rules" style="grid-template-columns:1fr; gap:8px; margin-bottom:24px;">
+      <div class="rule"><div class="rule-text">
+        <strong>1. Confirm the current Itential NAT IP with cloud ops</strong> — before any other adapter diagnostic step for a cloud customer. The target system sees only this IP; the customer's on-prem IP is irrelevant.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>2. Verify the NAT IP is in the target system's allowlist</strong> — ask the customer to check firewall/IP allowlist rules on ServiceNow, NetBox, or whichever system the adapter connects to.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>3. NAT IP rotation is the most common cause of sudden OFFLINE</strong> — if the adapter was working and went OFFLINE with no customer-side change, a NAT IP change from a cloud infrastructure event is the most likely cause. Check this before settings or credentials.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>4. Never ask the customer to whitelist their own on-prem IP</strong> — adapter traffic leaves from Itential's cloud, never from the customer's on-prem network.
+      </div></div>
+    </div>
+
+    <h3 style="margin-bottom:12px; font-size:14px;">Diagnostic Capability Matrix</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Diagnostic</th><th>On-Premises Customer</th><th>itential-saas Customer</th></tr></thead>
+        <tbody>
+          <tr><td>SSH to IAP nodes</td><td>✅ Available</td><td>❌ Itential-managed — request from cloud ops</td></tr>
+          <tr><td>IAP container logs (<code>docker logs</code>)</td><td>✅ Via SSH</td><td>❌ Not available directly — request from cloud ops</td></tr>
+          <tr><td>SSH to IAG nodes</td><td>✅ Available</td><td>✅ Available — customer on-prem IAG hosts</td></tr>
+          <tr><td>IAG logs</td><td>✅ Via SSH to IAG host</td><td>✅ Via SSH to customer on-prem IAG host</td></tr>
+          <tr><td>Platform API (<code>/health</code>, adapters, jobs)</td><td>✅</td><td>✅ Via <code>*.itential.io</code> URL</td></tr>
+          <tr><td>Adapter OFFLINE root cause</td><td>Network / credentials / config / stub</td><td>Same + <strong>NAT IP whitelist first</strong></td></tr>
+          <tr><td>SSH targets in <code>.env</code></td><td>IAP, IAG, MongoDB, Redis nodes</td><td>IAG on-prem, on-prem DB nodes only — no IAP</td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
 
