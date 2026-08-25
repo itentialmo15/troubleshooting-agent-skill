@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 PreToolUse hook for Bash commands.
-Blocks MongoDB writes, Redis writes, service/container restarts, and
-git staging of customer investigation data — all without explicit engineer
-consent. Exit 2 = block; exit 0 = allow.
+Blocks MongoDB writes, Redis writes, service/container restarts, platform
+adapter/application PUT writes, and git staging of customer investigation data
+— all without explicit engineer consent. Exit 2 = block; exit 0 = allow.
 """
 import json, re, sys
 
@@ -17,6 +17,37 @@ cmd = data.get("tool_input", {}).get("command", "")
 # For git commands only check the git-staging rule, not DB/restart patterns —
 # commit messages and branch names can legitimately contain pattern strings.
 IS_GIT_CMD = bool(re.match(r"\s*git\s+", cmd))
+
+# ── Compound check: curl PUT to adapter or application settings ───────────────
+# Must match BOTH (a) curl with PUT method AND (b) an adapter/application path.
+# Checked before the pattern-loop because it requires AND logic across two patterns.
+if not IS_GIT_CMD:
+    _is_curl_put = (
+        re.search(r"\bcurl\b", cmd)
+        and re.search(r"(-X\s+PUT|--request\s+PUT)", cmd, re.IGNORECASE)
+    )
+    if _is_curl_put:
+        # Adapter or application settings write
+        if re.search(r"/adapters/[^/\s]+(?!/restart)|/applications/[^/\s]+", cmd):
+            print(
+                "BLOCKED — PUT to adapter or application properties detected.\n"
+                "Safety rule: Modifying adapter or application settings requires\n"
+                "explicit engineer approval before execution.\n"
+                "Present the exact settings diff to the engineer, get a clear 'yes',\n"
+                "then re-run this command with consent documented."
+            )
+            print(f"\nCommand that triggered this guard:\n  {cmd[:300]}")
+            sys.exit(2)
+        # API-level adapter restart via platform endpoint
+        if re.search(r"/adapters/[^/\s]+/restart", cmd):
+            print(
+                "BLOCKED — Platform API adapter restart detected.\n"
+                "Safety rule: Never restart an adapter via the platform API without\n"
+                "explicit engineer consent. Present the restart plan, wait for a clear\n"
+                "'yes', then re-run this command."
+            )
+            print(f"\nCommand that triggered this guard:\n  {cmd[:300]}")
+            sys.exit(2)
 
 RULES = [
     # ── MongoDB writes ─────────────────────────────────────────────────────
