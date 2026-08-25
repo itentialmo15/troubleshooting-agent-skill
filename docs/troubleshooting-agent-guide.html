@@ -584,7 +584,8 @@ flowchart TD
     SS --> LG["/troubleshoot-logs<br/>Docker, SSH,<br/>K8s, CloudWatch"]
 
     MAIN -->|"Phase 3 — auth after env select"| P3["Reproduce & Workaround<br/>.env selection → auth<br/>builder-skills for fixes"]
-    P3 --> BS["vendor/builder-skills/<br/>Workflow Templates<br/>Local or Customer env"]
+    P3 --> BS["vendor/builder-skills/<br/>JSON Helper Bundles"]
+    P3 --> SK[".claude/skills/<br/>/builder-agent /qa-agent<br/>/itential-lcm /explore …"]
 
     MAIN -->|"Phase 4"| RPT["diagnostic_report.md<br/>ticket_context.md<br/>known_issues.md"]
     MAIN -->|"Phase 6"| RES["known-resolutions.md<br/>Resolution Library"]
@@ -665,56 +666,57 @@ flowchart TD
   <!-- Builder Skills / Vendor Templates -->
   <div class="section">
     <div class="section-label">Reproduction Toolkit</div>
-    <h2>Vendor Workflow Templates — builder-skills</h2>
-    <p class="desc">Phase 3 (Reproduce &amp; Workaround) uses a curated, vendored library of production-ready Itential workflow templates from <span class="inline-code">vendor/builder-skills/</span>. Instead of building reproduction workflows from scratch, the agent imports these templates directly into the selected environment — spinning up a realistic scenario in minutes. The library is maintained upstream at <span class="inline-code">github.com/itential/builder-skills</span> and refreshed on demand via <span class="inline-code">scripts/sync-builder-skills.sh</span>.</p>
+    <h2>builder-skills — Templates &amp; Invocable Agents</h2>
+    <p class="desc">The sync pulls <strong>two things</strong> from <span class="inline-code">github.com/itential/builder-skills</span>: (1) importable JSON bundles into <span class="inline-code">vendor/builder-skills/</span>, and (2) Claude Code skill files into <span class="inline-code">.claude/skills/</span>. This means Phase 3 can both <em>import a pre-built asset</em> and <em>invoke a specialist agent</em> (e.g. <span class="inline-code">/builder-agent</span>, <span class="inline-code">/qa-agent</span>, <span class="inline-code">/itential-lcm</span>) directly from the troubleshooting session — without switching repos or tools.</p>
 
     <div class="cards">
+      <div class="card t-magenta">
+        <div class="icon">&#x1F916;</div>
+        <h3>Invocable Skills (.claude/skills/)</h3>
+        <p>After sync, these builder-skills agents are available in every troubleshooting session via the Skill tool. Invoked on <strong>two triggers</strong>: root cause confirmed, or engineer directly requests to mock/build/design any asset.</p>
+        <span class="tag">/builder-agent</span><span class="tag">/qa-agent</span><span class="tag">/itential-lcm</span><span class="tag">/itential-mop</span><span class="tag">/explore</span><span class="tag">/iag</span>
+      </div>
       <div class="card t-orange">
         <div class="icon">&#x2699;</div>
         <h3>Platform Core Utilities</h3>
-        <p>Four importable projects covering the most common platform operations used in customer workflows: Configuration Management (backup, push, diff), Data Manipulation (21 transformations), Email (SMTP), and Regex Operations.</p>
+        <p>Four importable JSON projects for the most common platform operations: Configuration Management (backup, push, diff), Data Manipulation (21 transformations), Email (SMTP), and Regex Operations.</p>
         <span class="tag">Config Mgmt</span><span class="tag">Data Manipulation</span><span class="tag">Email</span><span class="tag">Regex</span>
       </div>
       <div class="card t-blue">
         <div class="icon">&#x1F4E6;</div>
         <h3>Vendor Integrations</h3>
-        <p>Pre-built, platform-tested workflow bundles for common enterprise integrations. Import these into the repro Docker stack to reconstruct adapter-specific failures without hand-crafting payloads or guessing field names.</p>
+        <p>Pre-built, platform-tested workflow bundles for common enterprise integrations. Import into the repro Docker stack to reconstruct adapter-specific failures without hand-crafting payloads.</p>
         <span class="tag">Cisco IOS</span><span class="tag">Juniper</span><span class="tag">Arista</span><span class="tag">NetBox</span><span class="tag">ServiceNow</span><span class="tag">Infoblox</span>
       </div>
       <div class="card t-purple">
         <div class="icon">&#x1F504;</div>
         <h3>LCM Resource Models</h3>
-        <p>Lifecycle Manager resource model exports and their backing workflow projects. Used to reproduce LCM action failures — fan device lifecycle, port turn-up, VXLAN fabric, IP blocking, interface provisioning. Import via the LCM endpoint, not Automation Studio.</p>
+        <p>Lifecycle Manager resource model exports and their backing workflow projects. Reproduce LCM action failures — fan device lifecycle, port turn-up, VXLAN fabric, IP blocking, interface provisioning.</p>
         <span class="tag">LCM</span><span class="tag">Resource Models</span><span class="tag">Action Workflows</span>
-      </div>
-      <div class="card t-magenta">
-        <div class="icon">&#x1F5C2;</div>
-        <h3>Workflow Scaffold</h3>
-        <p><span class="inline-code">helpers/create/create-workflow.json</span> — the bare workflow scaffold with start/end tasks and correct structure. Used when the failing workflow must be rebuilt from scratch rather than imported from an existing template.</p>
-        <span class="tag">Scaffold</span><span class="tag">Phase 4</span>
       </div>
     </div>
 
     <div style="margin-top: 24px;">
-      <div class="subsection-label">How Phase 3 Uses builder-skills</div>
+      <div class="subsection-label">On-Demand Builder-Skill Invocation</div>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">The troubleshooting agent routes to a builder-skill on either trigger — no need to wait for full Phase 3 root cause confirmation.</p>
       <div class="rules">
         <div class="rule"><div class="rule-text">
-          <strong>Identify the template</strong> — Based on ticket context (adapter type, workflow pattern, LCM action), the agent picks the matching <span class="inline-code">vendor/builder-skills/helpers/assets/</span> file that closest matches the customer's failing scenario.
+          <strong>Trigger 1 — Root cause confirmed</strong> — Phase 3 diagnosis identifies a fixable asset issue. The agent offers to construct the fix via the appropriate builder-skill and waits for engineer approval before invoking.
         </div></div>
         <div class="rule"><div class="rule-text">
-          <strong>Import into the Docker stack</strong> — The selected JSON is POSTed to <span class="inline-code">POST /automation-studio/projects/import</span> on the local Docker IAP instance. This creates the project, workflows, templates, and transformations in one atomic call.
+          <strong>Trigger 2 — Direct engineer request</strong> — Engineer asks to mock, build, design, or reproduce any asset at any point in the investigation. Examples: "mock this workflow", "build a test command template", "reproduce the failing JSON form". The agent routes immediately to the right skill.
         </div></div>
         <div class="rule"><div class="rule-text">
-          <strong>Configure to match customer</strong> — Adapter instance names, host/port, auth settings are updated to mirror the customer's environment config (from ticket context and adapter gather phase).
+          <strong>Routing by asset type</strong> — Workflows and templates → <span class="inline-code">/builder-agent</span> · JSON Forms → <span class="inline-code">/itential-json-forms</span> · MOP / command templates → <span class="inline-code">/itential-mop</span> · LCM models → <span class="inline-code">/itential-lcm</span> · IAG services → <span class="inline-code">/iag</span> · Free-form exploration → <span class="inline-code">/explore</span> · Acceptance testing / as-built → <span class="inline-code">/qa-agent</span>
         </div></div>
         <div class="rule"><div class="rule-text">
-          <strong>Trigger and capture</strong> — The failing workflow is run. The resulting job ID, error array, and logs are captured as reproduction evidence and attached to the ENG bug report.
+          <strong>Reproduce first, then apply</strong> — The agent targets the reproduction <span class="inline-code">.env</span> (Docker local) first. Once the fix is validated, it applies to the customer environment using the customer <span class="inline-code">.env</span>. All platform writes require explicit engineer approval.
         </div></div>
         <div class="rule"><div class="rule-text">
-          <strong>Keeping templates current</strong> — Run <span class="inline-code">scripts/sync-builder-skills.sh</span> to pull the latest from upstream. Review <span class="inline-code">git diff vendor/builder-skills/</span> before committing — never auto-apply without review.
+          <strong>Keeping skills and templates current</strong> — Run <span class="inline-code">scripts/sync-builder-skills.sh</span> to pull the latest from upstream. Review <span class="inline-code">git diff vendor/builder-skills/ .claude/skills/</span> before committing — never auto-apply without review.
         </div></div>
         <div class="rule"><div class="rule-text">
-          <strong>Manifest audit trail</strong> — <span class="inline-code">vendor/builder-skills/SYNC_MANIFEST.json</span> records the upstream commit SHA, branch, and sync timestamp. Always matches what's vendored so there's no ambiguity about template provenance.
+          <strong>Manifest audit trail</strong> — <span class="inline-code">vendor/builder-skills/SYNC_MANIFEST.json</span> records the upstream commit SHA, branch, and sync timestamp for both helper bundles and skill files. Always matches what's vendored — no ambiguity about provenance.
         </div></div>
       </div>
     </div>
@@ -893,7 +895,7 @@ flowchart TD
       <div class="rule"><div class="rule-text"><strong>~2 min</strong> — Searches Confluence for KB articles, runbooks, and post-mortems matching the error string.</div></div>
       <div class="rule"><div class="rule-text"><strong>~3 min</strong> — Presents pre-investigation summary: hypothesis, support status, known issue match, engineer question list, investigation plan.</div></div>
       <div class="rule"><div class="rule-text"><strong>~5 min</strong> — Phase 2: routes to right sub-skill(s). Sub-skills authenticate themselves and run diagnostics.</div></div>
-      <div class="rule"><div class="rule-text"><strong>~10-30 min</strong> — Phase 3: reproduce and build workarounds in your chosen environment using builder-skills.</div></div>
+      <div class="rule"><div class="rule-text"><strong>~10-30 min</strong> — Phase 3: reproduce and build workarounds using builder-skills agents (<span class="inline-code">/builder-agent</span>, <span class="inline-code">/itential-lcm</span>, etc.) and/or import pre-built asset bundles from <span class="inline-code">vendor/builder-skills/</span>. Can also be triggered on-demand by asking to mock or build any asset type.</div></div>
     </div>
 
     <div class="warning" style="margin-top:20px;"><strong>Priority Mismatch Detection:</strong> If the agent detects that a low-priority ticket (P3/P4) contains language indicating a production outage, blocked team, or time-critical deadline — it escalates to senior management <em>before</em> investigation begins (Phase 1 Step 1f), not after. This is intentional and by design.</div>
@@ -1737,7 +1739,7 @@ SSH_ROLE_1=iap</pre></div>
         <strong>Sparse checkout only</strong> — the sync script pulls only the specific paths the troubleshooting agent needs: <span class="inline-code">helpers/create/</span>, <span class="inline-code">helpers/update/</span>, <span class="inline-code">helpers/assets/*.json</span>, <span class="inline-code">helpers/assets/lcm/*.json</span>, and <span class="inline-code">AGENTS.md</span>. Never widened to the full repo.
       </div></div>
       <div class="rule"><div class="rule-text">
-        <strong>Never auto-commit the sync</strong> — always run <span class="inline-code">git diff vendor/builder-skills/</span> after sync. The changelog surfaces which files changed upstream. Review for breaking changes (removed fields, renamed tasks) before relying on them.
+        <strong>Never auto-commit the sync</strong> — always run <span class="inline-code">git diff vendor/builder-skills/ .claude/skills/</span> after sync. The changelog reports helper and skill changes separately. Review for breaking changes (removed fields, renamed tasks, skill API changes) before relying on them.
       </div></div>
       <div class="rule"><div class="rule-text">
         <strong>Manifest is ground truth</strong> — <span class="inline-code">SYNC_MANIFEST.json</span> records <span class="inline-code">synced_commit</span>, <span class="inline-code">synced_commit_date</span>, and <span class="inline-code">synced_at</span>. If an ENG escalation references a workflow template, include the manifest's commit SHA as provenance.
@@ -1749,7 +1751,7 @@ SSH_ROLE_1=iap</pre></div>
         <strong>What's in helpers/assets/</strong> — Platform utilities (Config Mgmt, Data Manipulation, Email, Regex), vendor integrations (Cisco IOS, Juniper JunOS, Arista EOS, NetBox, Infoblox NIOS DDI, ServiceNow), LCM models (VXLAN fabric, port turn-up, IP blocking, interface provisioning, fan device lifecycle). Each file is a complete importable project bundle.
       </div></div>
       <div class="rule"><div class="rule-text">
-        <strong>AGENTS.md context</strong> — The vendored <span class="inline-code">AGENTS.md</span> is the upstream builder-skills agent guide. Load it when Phase 3 needs patterns beyond the troubleshooting SKILL.md — it covers the full delivery lifecycle (spec → build → test) for workflow construction.
+        <strong>AGENTS.md context</strong> — The vendored <span class="inline-code">AGENTS.md</span> is the upstream builder-skills skill router and delivery lifecycle guide. The synced skill files in <span class="inline-code">.claude/skills/</span> are the primary interface; load <span class="inline-code">AGENTS.md</span> for the full spec→build→test lifecycle reference when doing multi-stage fix construction beyond the troubleshooting scope.
       </div></div>
     </div>
   </div>
@@ -2002,7 +2004,7 @@ SSH_ROLE_1=iap</pre></div>
       </div>
       <div class="rule-item">
         <div class="rule-label">Fix path</div>
-        <div class="rule-body">After root cause is confirmed: invoke builder-skill (Gap I/J) to construct a corrected settings payload. Present the diff to the engineer before any PUT to the adapter.</div>
+        <div class="rule-body">After root cause is confirmed, or if engineer directly requests: invoke <span class="inline-code">/builder-agent</span> to construct a corrected settings payload. Present the diff to the engineer before any PUT to the adapter.</div>
       </div>
     </div>
   </div>
