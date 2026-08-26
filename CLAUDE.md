@@ -14,7 +14,7 @@ One orchestrator skill delegates to a triage sub-skill (Phase 1) and six special
 |-------|--------|--------|
 | **Orchestrator** | `/troubleshoot ISD-XXXX` | Full investigation lifecycle; delegates Phase 1 to triage sub-skill, Phase 2 to specialist sub-skills |
 | **Triage** | `/troubleshoot-triage ISD-XXXX` | Phase 1 triage for ISD, IPSO, and ENG tickets — offline only. Resume check, `--list`, `--auto` mode, IPSO→ENG promotion |
-| Adapters | `/troubleshoot-adapters` | Settings comparison, debug mode (auth_logging + console_level), cleanup; Phase 4 owns Kafka adapter OFFLINE / consumer lag |
+| Adapters | `/troubleshoot-adapters` | Settings comparison, debug mode (auth_logging + console_level), cleanup; Phase 4 owns Kafka adapter OFFLINE / consumer lag; Phase 5 inspects OSS adapter source from GitLab (error.json, package.json, adapter code) — derived findings only, no code recorded |
 | Workflows | `/troubleshoot-workflows` | Job error analysis, task failures, JST errors, import failures, childJob chains |
 | Jobs | `/troubleshoot-jobs` | Stuck/errored jobs, slow-job baseline comparison, parent-child chain traversal |
 | Databases | `/troubleshoot-databases` | MongoDB (slow queries, COLLSCAN, replica set), Redis (eviction, Bull queues), ElastiCache |

@@ -1,6 +1,6 @@
 ---
 name: troubleshoot-adapters
-description: Troubleshoot IAP adapters — gather settings, compare against sampleProperties, run debug mode (auth_logging/console_level), capture live logs, and clean up after debugging. Covers OFFLINE, wrong data, auth failure, and Kafka consumer lag scenarios.
+description: Troubleshoot IAP adapters — gather settings, compare against sampleProperties, run debug mode (auth_logging/console_level), capture live logs, clean up after debugging, and inspect OSS adapter source from GitLab for error code mapping, auth pattern analysis, and reproduction step construction. Covers OFFLINE, wrong data, auth failure, Kafka consumer lag, and GitLab source inspection scenarios.
 argument-hint: "[adapter name]"
 ---
 
@@ -151,6 +151,8 @@ except:
     print('sampleProperties: ⚠️ not available (private adapter or network issue)')
 " 2>/dev/null
 ```
+
+> **GitLab deeper inspection available:** If `sampleProperties` is unavailable, incomplete, or the gather report leaves root cause unclear after Step 1d, run **Phase 5 (GitLab Source Inspection)** to fetch and analyze `error.json`, `package.json`, and the adapter source directly from `https://gitlab.com/itentialopensource/adapters/{REPO_NAME}`. Phase 5 produces derived findings only — no code is saved or shared.
 
 ### Step 1d — Compare Live Settings vs sampleProperties
 
@@ -745,3 +747,289 @@ for a in results:
 | **Kafka lag growing, adapter ONLINE** | IAP CPU/memory insufficient or thread blocked | Check infra (Phase 4f) |
 | **Kafka lag stuck at non-zero** | IAP consumer not pulling messages | Restart Kafka adapter (Phase 4f) |
 | **Kafka broker `Connection refused`** | Broker down or wrong bootstrap address | Phase 4b — update adapter settings |
+| **Unknown error code in logs** | Error not in Quick Reference | Phase 5b — fetch error.json from GitLab |
+| **sampleProperties unavailable** | Private adapter or npm fetch failed | Phase 5 — fetch direct from GitLab |
+| **Settings correct but OFFLINE** | Subtle code-level auth/path mismatch | Phase 5d — inspect adapter source |
+| **Need repro steps for ENG ticket** | Requires min-config + trigger steps | Phase 5e — construct reproduction steps |
+
+---
+
+## Phase 5: GitLab Source Inspection
+
+**When to run:**
+- Phase 1 gather + sampleProperties compare did NOT resolve the root cause
+- Error string in logs does not match any known pattern in the Quick Reference table
+- Engineer asks to build reproduction steps or confirm expected adapter behavior
+- Settings look correct but adapter is still OFFLINE or returning wrong data
+
+**CRITICAL PRIVACY RULES — enforce for every step in this phase:**
+- **Never save any code** (function bodies, imports, class definitions, file contents) to any file on disk
+- **Never include code in Jira comments, engineer messages, or customer communications**
+- **Never paste code excerpts into gather_report.md, diagnostic_report.md, or any output file**
+- `sampleProperties.json` values (config schema, not code) **may** be saved and referenced — they are expected adapter configuration, appropriate to compare against live settings
+- `error.json` error-code-to-description mappings **may** be saved (they are error catalog entries, not code)
+- Everything else from adapter source files — analyze in memory only; record only the derived insight, not the source
+
+---
+
+### Step 5a — Resolve GitLab Repository
+
+Derive the adapter's GitLab repo path from the package_id extracted in Step 1b:
+
+```python
+# Derive GitLab repo path from package_id
+# @itentialopensource/adapter-servicenow → adapter-servicenow
+import re
+package_id = "{package_id}"   # e.g. @itentialopensource/adapter-servicenow
+repo_name = package_id.split("/")[-1]   # adapter-servicenow
+gitlab_base = f"https://gitlab.com/itentialopensource/adapters/{repo_name}"
+api_base    = f"https://gitlab.com/api/v4/projects/itentialopensource%2Fadapters%2F{repo_name}"
+print(f"GitLab repo: {gitlab_base}")
+print(f"API base:    {api_base}")
+```
+
+Verify the repo exists:
+```bash
+curl -s "https://gitlab.com/api/v4/projects/itentialopensource%2Fadapters%2F{REPO_NAME}" \
+  | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+if 'id' in d:
+    print(f'✅ Found: {d[\"name\"]}  (id={d[\"id\"]}, default_branch={d[\"default_branch\"]})')
+    print(f'   URL: {d[\"web_url\"]}')
+    print(f'   Last activity: {d.get(\"last_activity_at\",\"unknown\")}')
+else:
+    print('❌ Repo not found — may be private or wrong package name')
+    print(d)
+"
+```
+
+Store the project `id` and `default_branch` for subsequent file fetches. Use `default_branch` (typically `master` or `main`) in all raw URL patterns.
+
+---
+
+### Step 5b — Fetch and Analyze `error.json`
+
+`error.json` maps internal error codes to human-readable descriptions. Use it to map the customer's error string to a root cause. This file is **config/catalog data, not code** — its content may be referenced in analysis.
+
+```bash
+curl -s "https://gitlab.com/itentialopensource/adapters/{REPO_NAME}/-/raw/{DEFAULT_BRANCH}/error.json" \
+  -o /tmp/{ADAPTER_NAME}_errors.json 2>/dev/null
+
+python3 -c "
+import json, sys
+
+try:
+    errors = json.load(open('/tmp/{ADAPTER_NAME}_errors.json'))
+except Exception as e:
+    print(f'error.json not available: {e}')
+    sys.exit(0)
+
+# Search for the customer's error term in the error catalog
+search_terms = ['{ERROR_TERM}', '{SYMPTOM_KEYWORD}']   # fill from ticket_context
+print(f'== error.json: {len(errors)} error codes defined ==')
+matches = []
+for code, entry in errors.items():
+    haystack = json.dumps(entry).lower()
+    if any(t.lower() in haystack for t in search_terms if t):
+        matches.append((code, entry))
+
+if matches:
+    print(f'MATCHING error codes ({len(matches)} found):')
+    for code, entry in matches:
+        print(f'  {code}')
+        print(f'    summary:     {entry.get(\"summary\",\"\")}')
+        print(f'    description: {entry.get(\"description\",\"\")}')
+        print(f'    category:    {entry.get(\"category\",\"\")}')
+        print()
+else:
+    print('No matching error codes found for search terms')
+    # List all category buckets to guide investigation
+    cats = {}
+    for code, entry in errors.items():
+        c = entry.get('category','unknown')
+        cats[c] = cats.get(c, 0) + 1
+    print('Error categories in this adapter:', cats)
+"
+```
+
+Save only the matched error-code entries (not the full file) to the gather report supplement — they are diagnostic catalog data, not code.
+
+---
+
+### Step 5c — Fetch and Analyze `package.json`
+
+`package.json` reveals the adapter's declared version, Node.js engine requirement, and dependencies. Dependency versions can explain compatibility failures.
+
+```bash
+curl -s "https://gitlab.com/itentialopensource/adapters/{REPO_NAME}/-/raw/{DEFAULT_BRANCH}/package.json" \
+  | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Name:     {d.get(\"name\")}')
+print(f'Version:  {d.get(\"version\")}')
+print(f'Engine:   {d.get(\"engines\",{}).get(\"node\",\"any\")}')
+print(f'Main:     {d.get(\"main\",\"index.js\")}')
+print()
+print('Key dependencies:')
+for dep, ver in (d.get('dependencies') or {}).items():
+    if any(k in dep for k in ('axios','got','node-fetch','request','https','tls','ssl','oauth','jwt')):
+        print(f'  {dep}: {ver}')
+print()
+print('Adapter entry point (for Step 5d):', d.get('main','adapter.js'))
+" 2>/dev/null
+```
+
+**Do not save the full package.json.** Note the entry point filename for Step 5d.
+
+---
+
+### Step 5d — Fetch and Inspect Adapter Source (In-Memory Only)
+
+Fetch the main adapter source file and inspect it entirely in memory. Extract only derived facts — authentication patterns, supported auth methods, required properties, connection logic. **Never write source code to any file or output.**
+
+```bash
+ENTRY_POINT="${ADAPTER_MAIN_FILE:-adapter.js}"   # from Step 5c
+
+curl -s "https://gitlab.com/itentialopensource/adapters/{REPO_NAME}/-/raw/{DEFAULT_BRANCH}/${ENTRY_POINT}" \
+  | python3 -c "
+import sys, re
+
+src = sys.stdin.read()
+lines = src.splitlines()
+total = len(lines)
+print(f'Source loaded: {total} lines (not saved, not recorded)')
+print()
+
+# ── 1. Auth method detection ─────────────────────────────────────────────
+auth_methods = re.findall(
+    r'auth_method['\''\"]\s*[=:=!]+\s*['\''\"]([\w_]+)['\''\"]\s*[|)\]}]',
+    src, re.IGNORECASE)
+auth_switch  = re.findall(
+    r'case\s+['\''\"]([\w_]+)[''\"].*?:',
+    src)
+all_am = sorted(set(auth_methods + auth_switch))
+print(f'Detected auth_method values: {all_am}')
+
+# ── 2. Required property detection ───────────────────────────────────────
+req = re.findall(
+    r'(?:required|mandatory)\s*[=:]+\s*(?:true|\[([^\]]+)\])',
+    src, re.IGNORECASE)
+req_fields = re.findall(
+    r'if\s*\(!\s*(?:this\.)?(?:props?\.)?([a-zA-Z_][\w.]+)\s*\)',
+    src)
+print(f'Likely required properties: {sorted(set(req_fields))[:20]}')
+
+# ── 3. Base path / endpoint patterns ─────────────────────────────────────
+paths = re.findall(
+    r'(?:base_path|basePath|baseUrl|url)\s*[+=]+\s*['\''\"](/[^\s'\''\";]+)['\''\"']',
+    src)
+print(f'API path patterns detected: {sorted(set(paths))[:10]}')
+
+# ── 4. Token refresh pattern ──────────────────────────────────────────────
+has_refresh = bool(re.search(r'refresh.?token|token.?refresh|getToken|renewToken', src, re.IGNORECASE))
+print(f'Token refresh logic present: {has_refresh}')
+
+# ── 5. SSL/TLS handling ───────────────────────────────────────────────────
+ssl_patterns = re.findall(
+    r'(?:rejectUnauthorized|accept_invalid_cert|tlsOptions|agentOptions)\s*[=:]+\s*(\S+)',
+    src)
+print(f'SSL/TLS options detected: {ssl_patterns}')
+
+# ── 6. Suspicious patterns ────────────────────────────────────────────────
+hard_timeout = re.findall(r'timeout\s*[=:]+\s*(\d+)', src)
+if hard_timeout:
+    print(f'Hardcoded timeouts (ms): {hard_timeout[:5]}')
+
+swallowed = len(re.findall(r'catch\s*\([^)]*\)\s*\{[^}]*\}', src))
+if swallowed > 3:
+    print(f'Silent catch blocks: {swallowed} — errors may be swallowed without logging')
+
+print()
+print('Code inspection complete. No source recorded.')
+"
+```
+
+Capture only the printed derived findings. Do not write the source file to disk, do not pipe it to a log file, do not include raw code in any output.
+
+---
+
+### Step 5e — Construct Reproduction Steps
+
+Using the derived findings from Steps 5b–5d plus the live settings from Step 1b, generate concrete reproduction steps. These steps are safe to include in investigation notes and engineer communication — they describe configuration and workflow actions, not code.
+
+```markdown
+## Adapter Reproduction Steps — {ADAPTER_NAME}
+**Generated from:** GitLab source analysis (Phase 5) + live settings (Phase 1)
+**Adapter version:** {package version from Step 5c}
+**Auth method (source):** {detected from Step 5d}
+
+### Minimum Configuration to Reproduce
+1. Deploy IAP {IAP_VERSION} with adapter package `{package_id}` installed
+2. Configure adapter with these minimum properties:
+   ```json
+   {
+     "host": "{customer host or placeholder}",
+     "port": {port},
+     "authentication": {
+       "auth_method": "{detected auth_method}",
+       "username": "{placeholder}",
+       "password": "{placeholder}"
+     },
+     "ssl": { "enabled": {true|false} },
+     "stub": false
+   }
+   ```
+   ← Required properties identified from source analysis: {req_fields}
+
+### Steps to Trigger the Issue
+1. Start the adapter — confirm it reaches ONLINE state
+2. Run a workflow task that calls `{affected endpoint or action}`
+3. Expected: {correct behavior from docs/sampleProperties}
+4. Actual (per ticket): {customer's observed error}
+
+### Validation
+- Check adapter logs for: {matched error codes from Step 5b}
+- Compare token_timeout: {live value} vs expected: {sample value}
+- Verify auth_method: {live value} vs detected in source: {Step 5d value}
+```
+
+**Do not include** code snippets, function names, internal class names, or file paths from the adapter source in reproduction steps sent to engineering or customers.
+
+---
+
+### Step 5f — Update Gather Report with Source Findings
+
+Append to `{project_path}/data/{TIMESTAMP}/{TICKET_KEY}/gather_report.md`:
+
+```markdown
+## Phase 5 — GitLab Source Analysis
+**Repo:** https://gitlab.com/itentialopensource/adapters/{REPO_NAME}
+**Version inspected:** {package.json version}
+**Analysis timestamp:** {YYYY-MM-DD HH:MM UTC}
+
+### Auth Method Support (from source)
+Detected supported auth_method values: {list from Step 5d}
+Live adapter auth_method: {from Step 1b}
+→ {match / mismatch / unsupported value}
+
+### Error Code Match (from error.json)
+{Matched error code entries — icode, summary, category only}
+→ Root cause signal: {derived conclusion}
+
+### Required Properties (from source)
+Identified required fields: {list from Step 5d}
+Missing in live config: {cross-referenced against Step 1b settings}
+
+### Source Flags
+- Token refresh logic: {yes/no}
+- Silent catch blocks: {count — if > 3, note as potential log-suppression risk}
+- Hardcoded timeouts: {list, if any}
+- SSL/TLS options: {detected values}
+
+### Reproduction Steps
+{Content from Step 5e — no code, configuration and actions only}
+```
+
+**Remind:** No source code is written to this file. Only the derived findings above.
+
