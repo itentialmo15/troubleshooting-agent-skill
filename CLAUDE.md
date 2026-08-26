@@ -20,6 +20,7 @@ One orchestrator skill delegates to a triage sub-skill (Phase 1) and six special
 | Databases | `/troubleshoot-databases` | MongoDB (slow queries, COLLSCAN, replica set), Redis (eviction, Bull queues), ElastiCache |
 | Infrastructure | `/troubleshoot-infra` | CPU/memory/disk, containers (OOMKilled), EKS, SSH multi-host, network |
 | Logs | `/troubleshoot-logs` | IAP/IAG/MongoDB/Redis/LB log collection and cross-component timestamp correlation |
+| **Contribute** | `/contribute [ISD-XXXX \| scan \| version-note \| skill-fix \| known-bug ENG-XXXX]` | Reads closed investigation artifacts, generates formatted resolution entries / version notes / skill fixes, presents for engineer approval, and opens a GitHub PR — full git branch → write → diff → commit → push → PR flow |
 
 Skills live in `.claude/skills/<skill-name>/SKILL.md`. Each SKILL.md is self-contained — it includes all curl commands, phase-by-phase instructions, gotchas, and cleanup steps.
 

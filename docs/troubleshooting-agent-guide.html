@@ -2563,6 +2563,83 @@ SSH_ROLE_1=iap</pre></div>
      ══════════════════════════════════════════════════════════════ -->
 <div id="tab-contrib" class="tab-content">
 
+  <!-- /contribute skill -->
+  <div class="section">
+    <div class="section-label">Automated Contribution</div>
+    <h2>/contribute — One Command, Full PR</h2>
+    <p class="desc">The <span class="inline-code">/contribute</span> sub-skill automates the entire knowledge-loop contribution flow. It reads your closed investigation artifacts, generates properly formatted entries, presents them for your approval, and opens a GitHub PR — without you touching git.</p>
+
+    <div class="cards" style="margin-bottom:24px;">
+      <div class="card t-magenta">
+        <div class="icon">IS</div>
+        <h3>/contribute ISD-XXXX</h3>
+        <p style="font-size:12px; color:var(--muted); line-height:1.6;">Reads <code>diagnostic_report.md</code> from that ticket's investigation folder, generates a resolution entry (symptom, root cause, detection hints, workaround, verification), and appends to <code>known-resolutions.md</code>. Duplicate-checks before appending.</p>
+      </div>
+      <div class="card t-purple">
+        <div class="icon">SC</div>
+        <h3>/contribute scan</h3>
+        <p style="font-size:12px; color:var(--muted); line-height:1.6;">Scans all investigation folders in <code>data/</code>, lists which have diagnostic reports, and lets you select tickets to batch-contribute in a single PR. Best for end-of-sprint bulk contribution.</p>
+      </div>
+      <div class="card t-orange">
+        <div class="icon">VN</div>
+        <h3>/contribute version-note</h3>
+        <p style="font-size:12px; color:var(--muted); line-height:1.6;">Prompts for version range, component, and behavioral fact, then appends a §7 row to <code>product-capability-reference.md</code>. Cite the ISD ticket that surfaced the fact for traceability.</p>
+      </div>
+      <div class="card t-olive">
+        <div class="icon">SF</div>
+        <h3>/contribute skill-fix {name}</h3>
+        <p style="font-size:12px; color:var(--muted); line-height:1.6;">Describe the improvement to a sub-skill (e.g. "troubleshoot-adapters"). The agent drafts the change, presents the diff, and opens a PR targeting the skill file. Good for gotchas discovered during a case.</p>
+      </div>
+      <div class="card t-blue">
+        <div class="icon">KB</div>
+        <h3>/contribute known-bug ENG-XXXX</h3>
+        <p style="font-size:12px; color:var(--muted); line-height:1.6;">Fetches the ENG ticket, formats a §5 known-bug row (affected versions, fix version, workaround), and appends to <code>product-capability-reference.md</code>. Makes the bug visible to all future triage investigations.</p>
+      </div>
+      <div class="card t-red">
+        <div class="icon">ENG</div>
+        <h3>/contribute ENG-XXXX</h3>
+        <p style="font-size:12px; color:var(--muted); line-height:1.6;">Same as <code>known-bug</code> shorthand — fetches the ENG ticket and appends it to the known-bug catalog. Use after confirming a bug is confirmed and has a fix version or workaround documented.</p>
+      </div>
+    </div>
+
+    <h3 style="margin-bottom:12px; font-size:14px;">What the skill does — step by step</h3>
+    <div class="rule-list" style="margin-bottom:28px;">
+      <div class="rule-item">
+        <div class="rule-label">Preflight</div>
+        <div class="rule-body">Checks git status for uncommitted changes, confirms <code>gh</code> CLI is authenticated, and identifies the contributing engineer from git config. Warns if working tree has unsaved changes that might be at risk.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Generate</div>
+        <div class="rule-body">Reads <code>diagnostic_report.md</code>, <code>ticket_context.md</code>, and <code>pre-investigation-summary.md</code> from the ticket's investigation folder. Generates the fully formatted resolution entry with all required sections. Checks for existing duplicate entry before proceeding.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Preview &amp; approve</div>
+        <div class="rule-body">Presents the full proposed content for engineer review. You can approve, edit inline, skip the ticket, or abort the session. Nothing is written to disk until you explicitly approve.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Branch &amp; write</div>
+        <div class="rule-body">Pulls latest <code>main</code>, creates a <code>contrib/{your-name}-{date}</code> branch, and appends the approved content to the target file. Multiple contributions in one session share a single branch and PR.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Diff &amp; final approval</div>
+        <div class="rule-body">Shows the exact <code>git diff --staged</code> output before committing. If the staged diff includes any file other than the two shared knowledge files (or an approved skill file), the session aborts automatically.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">PR creation</div>
+        <div class="rule-body">Commits with a structured message listing every ticket contributed, pushes the branch, and runs <code>gh pr create</code> with a pre-filled PR body including ticket references and a reviewer checklist. Prints the PR URL when done.</div>
+      </div>
+    </div>
+
+    <div class="rules" style="grid-template-columns:1fr; gap:8px; margin-bottom:32px;">
+      <div class="rule"><div class="rule-text">
+        <strong>Customer data never leaves the investigation folder.</strong> The skill stages only <code>data/known-resolutions.md</code> and <code>data/product-capability-reference.md</code> (shared knowledge files). Investigation folders (<code>data/{timestamp}/</code>) are gitignored and never staged or committed.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Use <code>/contribute scan</code> at end of sprint.</strong> The scan mode lists all investigation folders with completed diagnostic reports and lets you select which to batch-contribute. One PR per sprint is cleaner than one per ticket and easier to review.
+      </div></div>
+    </div>
+  </div>
+
   <div class="section">
     <div class="section-label">Contribution</div>
     <h2>Contributing Back — PR-Based Knowledge Loop</h2>
@@ -2583,7 +2660,7 @@ SSH_ROLE_1=iap</pre></div>
     </div>
 
     <!-- Step by step -->
-    <h3 style="margin-top:8px; margin-bottom:12px;">Step-by-Step: Opening a Contribution PR</h3>
+    <h3 style="margin-top:8px; margin-bottom:12px;">Step-by-Step: Manual PR (reference — use <span style="color:#EC1E7F">/contribute</span> instead)</h3>
 
     <div class="table-wrap">
       <table>
