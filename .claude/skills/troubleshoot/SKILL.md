@@ -30,7 +30,7 @@ argument-hint: "[ISD ticket key or brief issue description]"
 - **No MongoDB writes** — read-only queries only
 - **No Redis writes** — no SET, DEL, FLUSHDB
 - **Never post comments to ISD tickets without explicit engineer consent** — present the draft comment and wait for approval before posting
-- **All ISD comments must be internal** — always set `commentVisibility: {"type": "role", "value": "Service Desk Team"}` on every `addCommentToJiraIssue` call. Never post a public/customer-visible comment on ISD tickets
+- **All ISD comments must be internal** — ISD is a Jira Service Management (JSM) project. The classic `visibility: {"type": "role", "value": "Service Desk Team"}` field on `/rest/api/3/issue/{key}/comment` is a **silent no-op on JSM** — it returns HTTP 201 with no error but posts the comment fully public (`jsdPublic: true`). Always post via `POST {JIRA_URL}/rest/servicedeskapi/request/{TICKET_KEY}/comment` with `{"body": "...", "public": false}` instead (see Step 2b for the verified pattern), and verify by re-fetching the comment and checking `jsdPublic == false`. Never post a public/customer-visible comment on ISD tickets
 - **Never create ENG tickets without explicit engineer consent** — present the draft bug report and wait for approval before filing
 - **Never link issues, transition tickets, or update any Jira fields** without explicit engineer consent
 - **Never restart services, adapters, or containers** without explicit user consent
@@ -122,7 +122,7 @@ After reading `.env`, check which groups are missing and tell the user:
 
 The **Itential Product Support Investigation Protocol** (8 sections) is not a phase — it is a communication standard that runs throughout the entire investigation lifecycle. Apply it at every phase. Every interaction with the customer must follow it.
 
-**Never treat this as a one-time questionnaire.** At any point — Phase 1 through Phase 6 — if a section is incomplete, contradicted by new findings, or a gap is surfaced by a sub-skill, update it and post an internal ISD comment (`commentVisibility: {"type": "role", "value": "Service Desk Team"}`).
+**Never treat this as a one-time questionnaire.** At any point — Phase 1 through Phase 6 — if a section is incomplete, contradicted by new findings, or a gap is surfaced by a sub-skill, update it and post an internal ISD comment via the servicedesk API (`public: false` — see Step 2b).
 
 | Section | What it covers | When it's primarily addressed |
 |---|---|---|
@@ -659,35 +659,31 @@ Before closing the questionnaire phase, verify all 8 sections are documented on 
 
 Compose the questionnaire from the unanswered sections above and post it as a Jira comment. Only ask what the ticket has not already answered.
 
+**ISD is a Jira Service Management (JSM) project — use the servicedesk API, not the classic comment API.** The classic `/rest/api/3/issue/{key}/comment` endpoint's `visibility: {"type": "role", ...}` field is a silent no-op on JSM projects: it returns HTTP 201 with no error, but the comment posts fully public/customer-visible (`jsdPublic: true`). Always post via the servicedesk endpoint with `"public": false` instead, and always verify afterward.
+
 ```bash
 # Compose targeted questions from sections not yet answered in the ticket
-# Then post as a comment
+# Then post as an internal note via the Service Desk API (plain text body — no ADF wrapping needed)
 
-curl -s -X POST "${JIRA_URL}/rest/api/3/issue/${TICKET_KEY}/comment" \
+curl -s -X POST "${JIRA_URL}/rest/servicedeskapi/request/${TICKET_KEY}/comment" \
   -u "${JIRA_USER}:${JIRA_API_TOKEN}" \
   -H "Accept: application/json" \
   -H "Content-Type: application/json" \
-  -d "{
-    \"body\": {
-      \"type\": \"doc\",
-      \"version\": 1,
-      \"content\": [{
-        \"type\": \"paragraph\",
-        \"content\": [{\"type\": \"text\", \"text\": \"{QUESTIONNAIRE_TEXT}\"}]
-      }]
-    },
-    \"visibility\": {\"type\": \"role\", \"value\": \"Service Desk Team\"}
-  }"
+  -d "{\"body\": \"${QUESTIONNAIRE_TEXT}\", \"public\": false}"
+
+# Verify it actually posted internal (do this after every ISD comment post):
+curl -s "${JIRA_URL}/rest/api/3/issue/${TICKET_KEY}/comment" \
+  -u "${JIRA_USER}:${JIRA_API_TOKEN}" -H "Accept: application/json" \
+  | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+c=d['comments'][-1]
+assert c.get('jsdPublic') == False, '⚠️ COMMENT POSTED PUBLIC — jsdPublic is not false!'
+print('OK — comment', c['id'], 'is internal (jsdPublic: false)')
+"
 ```
 
-If using Atlassian MCP (preferred):
-```
-mcp__claude_ai_Atlassian_MCP__addCommentToJiraIssue(
-  issueIdOrKey: "{ISD_TICKET_KEY}",
-  commentBody: "{QUESTIONNAIRE_TEXT}",
-  commentVisibility: {"type": "role", "value": "Service Desk Team"}
-)
-```
+If using Atlassian MCP: verify whether the MCP tool's `commentVisibility`/similar parameter actually maps to the JSM `public` flag for this instance before relying on it — do not assume role-based visibility works on a JSM project just because the MCP tool accepts the parameter. When in doubt, use the curl pattern above, which is verified to work.
 
 **Questionnaire opening line to use:**
 > "Thank you for raising this issue. To help us investigate efficiently, we have a few questions. We will begin our investigation in parallel and will update this ticket as we progress."
@@ -1240,7 +1236,7 @@ Ask:
 ```
 Post this outage summary report as an internal comment on {TICKET_KEY}? [yes / no]
 ```
-If yes: post with `commentVisibility: {"type": "role", "value": "Service Desk Team"}`. Present the comment draft before posting (same approval gate as all Jira writes).
+If yes: post via the servicedesk API with `"public": false` (see Step 2b — the classic API's `visibility` block is a no-op on JSM). Present the comment draft before posting (same approval gate as all Jira writes).
 
 #### Step 4-OR-6 — Offer to create a Problem ticket for RCA tracking
 
@@ -1298,7 +1294,7 @@ Create Problem ticket? [yes / no]
    ```
    Problem ticket {NEW_PROBLEM_KEY} created for RCA tracking. [link]
    ```
-   (commentVisibility: Service Desk Team — same gate as all Jira writes)
+   (servicedesk API, `public: false` — see Step 2b; same approval gate as all Jira writes)
 
 6. Save `problem_ticket_key: {NEW_PROBLEM_KEY}` to `ticket_context.md`.
 
@@ -1624,20 +1620,13 @@ $(if [ -n "{WORKAROUND}" ]; then echo "Workaround (if not yet on fix version): {
 
 ENG Ticket: {ENG_TICKET_KEY or 'N/A — no platform bug identified'}"
 
-curl -s -X POST "${JIRA_URL}/rest/api/3/issue/${TICKET_KEY}/comment" \
+curl -s -X POST "${JIRA_URL}/rest/servicedeskapi/request/${TICKET_KEY}/comment" \
   -u "${JIRA_USER}:${JIRA_API_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d "{\"body\": {\"type\": \"doc\", \"version\": 1, \"content\": [{\"type\": \"paragraph\", \"content\": [{\"type\": \"text\", \"text\": \"${RESOLUTION_COMMENT}\"}]}]}, \"visibility\": {\"type\": \"role\", \"value\": \"Service Desk Team\"}}"
+  -d "{\"body\": \"${RESOLUTION_COMMENT}\", \"public\": false}"
 ```
 
-If using Atlassian MCP:
-```
-mcp__claude_ai_Atlassian_MCP__addCommentToJiraIssue(
-  issueIdOrKey: "{ISD_TICKET_KEY}",
-  commentBody: "{RESOLUTION_COMMENT}",
-  commentVisibility: {"type": "role", "value": "Service Desk Team"}
-)
-```
+**ISD is a JSM project** — use `/rest/servicedeskapi/request/{key}/comment` with `"public": false`, not the classic `/rest/api/3/issue/{key}/comment` with a `visibility` block (that field is a silent no-op on JSM — see Step 2b for the full verified pattern and post-verification check). Always verify `jsdPublic == false` after posting.
 
 ---
 
@@ -1732,15 +1721,12 @@ priority they selected:**
    )
    ```
 
-4. **Post a triage comment on the ticket** explaining the priority change:
-   ```
-   mcp__claude_ai_Atlassian_MCP__addCommentToJiraIssue(
-     issueIdOrKey: "{ISD_TICKET_KEY}",
-     commentBody: "Priority upgraded from {OLD} to {NEW} based on triage review.
-   The customer's description indicates [blocking/production impact summary].
-   Senior management has been notified. Investigation is in progress.",
-     commentVisibility: {"type": "role", "value": "Service Desk Team"}
-   )
+4. **Post a triage comment on the ticket** explaining the priority change — use the servicedesk API (`public: false`), not the classic API's `visibility` block, which is a no-op on JSM (see Step 2b):
+   ```bash
+   curl -s -X POST "${JIRA_URL}/rest/servicedeskapi/request/${ISD_TICKET_KEY}/comment" \
+     -u "${JIRA_USER}:${JIRA_API_TOKEN}" \
+     -H "Content-Type: application/json" \
+     -d "{\"body\": \"Priority upgraded from {OLD} to {NEW} based on triage review. The customer's description indicates [blocking/production impact summary]. Senior management has been notified. Investigation is in progress.\", \"public\": false}"
    ```
 
 ---
@@ -1850,21 +1836,12 @@ This ticket has been escalated to management.
 {Specific ask from manager}
 ```
 
-Post via Jira:
+Post via Jira — ISD is a JSM project, so use the servicedesk API with `"public": false` (the classic API's `visibility` block is a silent no-op on JSM — see Step 2b):
 ```bash
-curl -s -X POST "${JIRA_URL}/rest/api/3/issue/${TICKET_KEY}/comment" \
+curl -s -X POST "${JIRA_URL}/rest/servicedeskapi/request/${TICKET_KEY}/comment" \
   -u "${JIRA_USER}:${JIRA_API_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d "{\"body\": {\"type\": \"doc\", \"version\": 1, \"content\": [{\"type\": \"paragraph\", \"content\": [{\"type\": \"text\", \"text\": \"{ESCALATION_COMMENT}\"}]}]}, \"visibility\": {\"type\": \"role\", \"value\": \"Service Desk Team\"}}"
-```
-
-Or via Atlassian MCP:
-```
-mcp__claude_ai_Atlassian_MCP__addCommentToJiraIssue(
-  issueIdOrKey: "{ISD_TICKET_KEY}",
-  commentBody: "{ESCALATION_COMMENT}",
-  commentVisibility: {"type": "role", "value": "Service Desk Team"}
-)
+  -d "{\"body\": \"{ESCALATION_COMMENT}\", \"public\": false}"
 ```
 
 ---
