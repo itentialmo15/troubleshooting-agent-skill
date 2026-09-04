@@ -12,7 +12,7 @@ argument-hint: "[TICKET-KEY | --list] [--auto]"
 
 ## CRITICAL SAFETY RULES
 
-- **All Jira comments must be internal** — always set `commentVisibility: {"type": "role", "value": "Service Desk Team"}` on every `addCommentToJiraIssue` call
+- **All Jira comments must be internal** — ISD (and IPSO) are Jira Service Management (JSM) projects. The classic `visibility: {"type": "role", "value": "Service Desk Team"}` field on `/rest/api/3/issue/{key}/comment` is a **silent no-op on JSM** — it returns HTTP 201 with no error but posts the comment fully public (`jsdPublic: true`). Always post via `POST {JIRA_URL}/rest/servicedeskapi/request/{TICKET_KEY}/comment` with `{"body": "...", "public": false}` instead, and verify by re-fetching the comment and checking `jsdPublic == false`
 - **Never post comments without engineer approval** — present the draft and wait for explicit approval before posting (unless `--auto` flag is active)
 - **Never create ENG tickets without explicit engineer approval** — present the draft and wait (unless `--auto` is active)
 - **Read-only Jira queries only** — no field edits, no transitions, no priority changes without explicit consent
@@ -636,8 +636,8 @@ Produce a tailored checklist. Pre-fill answers already in the ticket; remove ina
 13. [ ] Adapter settings export (if adapter-related)
 ```
 
-**Interactive mode:** Present to engineer and wait for approval before posting as internal ISD comment (`Service Desk Team` visibility).
-**`--auto` mode:** Post directly without waiting.
+**Interactive mode:** Present to engineer and wait for approval before posting as an internal ISD comment via the servicedesk API (`public: false` — see CRITICAL SAFETY RULES above; the classic API's `visibility` block is a no-op on JSM).
+**`--auto` mode:** Post directly without waiting, using the same servicedesk API pattern.
 
 ---
 
