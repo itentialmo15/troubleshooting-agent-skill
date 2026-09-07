@@ -407,3 +407,45 @@ Use `GET /operations-manager/jobs/{id}` (single-job-by-ID) for each job of inter
 **Verification:**
 No platform-side fix. Confirm workarounds work for the customer's use case by testing `GET /operations-manager/jobs/{id}` and client-side `parent.job` filtering against their job set.
 
+
+---
+
+### [ISD-9544] IAG local admin locked out — no SMTP configured for self-service password reset
+
+| Field | Value |
+|-------|-------|
+| **Ticket** | ISD-9544 |
+| **ENG Bug** | N/A |
+| **Component** | IAG — Local AAA / admin account access |
+| **Platform Version** | IAG 2023.1 / 4.x line (confirmed) |
+| **Severity** | S4 — single admin account locked out, no broader outage |
+
+**Symptom:**
+Admin locked out of the IAG web GUI. The documented email-based self-service password reset (docs.itential.com/itential-gateway/4/local-password-reset) does not deliver a reset email because SMTP is not configured on the on-prem instance. Customer has SSH access to the IAG host but no other recovery path.
+
+**Root Cause:**
+IAG's local AAA store is a SQLite database at `/var/lib/automation-gateway/automation-gateway.db`. The self-service reset flow depends on SMTP being configured to deliver the reset email; when SMTP isn't configured (common on on-prem installs without a mail relay), the flow silently produces no email and no error, leaving the customer unable to regain access. Confirmed by: customer applied the CLI workaround below and regained access successfully.
+
+**Detection Hints:**
+- Customer reports "no reset email arrives" after following the documented self-service reset docs
+- Customer has SSH/CLI access to the IAG host but not the GUI
+- Worth asking about SMTP configuration proactively before assuming an application bug
+
+**Workaround (immediate):**
+Reset the local admin password hash directly via SQLite CLI (tested on RHEL 8.10, IAG 2023.1/4.x line):
+```
+yum install sqlite -y
+cd /var/lib/automation-gateway
+sqlite3 automation-gateway.db
+
+-- Backup current hash first
+SELECT password_hash FROM account WHERE name = "admin@itential";
+
+-- Set a temporary known password hash (pbkdf2:sha512 format)
+UPDATE account SET password_hash = '<pbkdf2:sha512:...>' WHERE name = "admin@itential";
+```
+No service restart required — the account table is checked on next login attempt.
+
+**Verification:**
+1. Customer logs into the IAG GUI with the temporary password
+2. Customer is prompted/able to set a new permanent password after login
