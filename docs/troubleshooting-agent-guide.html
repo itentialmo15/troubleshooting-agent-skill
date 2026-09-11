@@ -800,11 +800,14 @@ flowchart TD
       <div class="indent-3"><span class="file">repro_steps.md</span> <span class="comment">← reproduction steps + evidence (Phase 3)</span></div>
       <div class="indent-3"><span class="file">docker-compose.yml</span> <span class="comment">← version-matched stack (Phase 3 local repro)</span></div>
       <div class="indent-1"><span class="dir">vendor/</span></div>
-      <div class="indent-2"><span class="dir">builder-skills/</span> <span class="comment">← vendored from github.com/itential/builder-skills</span></div>
+      <div class="indent-2"><span class="dir">builder-skills/</span> <span class="comment">← vendored from github.com/itential/builder-skills (public)</span></div>
       <div class="indent-3"><span class="dir">helpers/assets/</span> <span class="comment">← importable workflow projects (platform + vendor integrations)</span></div>
       <div class="indent-3"><span class="dir">helpers/assets/lcm/</span> <span class="comment">← LCM resource model exports + backing workflow projects</span></div>
       <div class="indent-3"><span class="dir">helpers/create/</span> <span class="comment">← bare workflow scaffold (create-workflow.json)</span></div>
       <div class="indent-3"><span class="file">SYNC_MANIFEST.json</span> <span class="comment">← upstream commit SHA + sync timestamp</span></div>
+      <div class="indent-3"><span class="file">SYNC_CHANGELOG.md</span> <span class="comment">← diff history per sync run</span></div>
+      <div class="indent-2"><span class="dir">platform-skills/</span> <span class="comment">← metadata for gitlab.com/itential/platform-engineering/platform-claude-skills (private)</span></div>
+      <div class="indent-3"><span class="file">SYNC_MANIFEST.json</span> <span class="comment">← vendored commit SHA + sync timestamp (skills land in .claude/skills/)</span></div>
       <div class="indent-3"><span class="file">SYNC_CHANGELOG.md</span> <span class="comment">← diff history per sync run</span></div>
       <div class="indent-1"><span class="file">.env</span> <span class="comment">← credentials (never committed to git)</span></div>
       <div class="indent-1"><span class="file">.auth.json</span> <span class="comment">← cached auth token (50 min TTL)</span></div>
@@ -874,8 +877,14 @@ flowchart TD
 <span class="key">JIRA_URL</span>=<span class="val">https://itential.atlassian.net</span>
 <span class="key">JIRA_USER</span>=<span class="val">you@itential.com</span>
 <span class="key">JIRA_API_TOKEN</span>=<span class="val">your-token</span>     <span class="comment"># id.atlassian.com → Profile → Security → API tokens</span>
-<span class="key">JIRA_PROJECTS</span>=<span class="val">ENG,ISD</span></pre></div>
+<span class="key">JIRA_PROJECTS</span>=<span class="val">ENG,ISD</span>
+
+<span class="section-hdr"># ── Platform Skills — operational skill library (private GitLab) ──</span>
+<span class="key">GITLAB_TOKEN</span>=<span class="val">your-deploy-token</span>  <span class="comment"># GitLab Deploy Token with read_repository scope</span>
+                              <span class="comment"># Create: platform-claude-skills → Settings → Repository → Deploy tokens</span>
+                              <span class="comment"># Then run: scripts/sync-platform-skills.sh</span></pre></div>
     <div class="note" style="margin-top:8px;">The agent will tell you which optional variables unlock deeper diagnostics (MongoDB, Redis, SSH, Kubernetes, IAG, Slack) — see the Admin Guide for the full reference. Start with the minimum and add as needed.</div>
+    <div class="note" style="margin-top:8px;border-color:var(--orange);"><strong>Platform Skills (optional but recommended):</strong> Adding <span class="inline-code">GITLAB_TOKEN</span> and running <span class="inline-code">scripts/sync-platform-skills.sh</span> unlocks five deep-diagnostic skills: <span class="inline-code">/mongodb</span> (scored life report), <span class="inline-code">/redis</span> (scored life report), <span class="inline-code">/prometheus</span> (PromQL metrics), <span class="inline-code">/itential-platform</span> (IAP admin), and <span class="inline-code">/itential-gateway</span> (IAG admin). Ask your team lead for the Deploy Token value.</div>
 
     <!-- Step 5: Run -->
     <h3 style="margin-top:24px; margin-bottom:10px;"><span style="color:#ec1e7f">Step 5</span> — Run Your First Investigation</h3>
@@ -960,7 +969,33 @@ flowchart TD
       <div class="subskill">Phase 3i (inline)</div>
       <div class="what">Kafka adapter health, broker connectivity, consumer group lag, topic partition details</div>
     </div>
+    <div class="routing-row" style="border-left:3px solid var(--orange);">
+      <div class="symptom">MongoDB replica issue, pool saturation &gt;80%, elections detected</div>
+      <div class="subskill" style="color:var(--orange);">/mongodb <span style="font-size:10px;color:var(--muted);">(platform skill)</span></div>
+      <div class="what">Scored HEALTHY/DEGRADED/CRITICAL life report: topology, oplog window, slow ops, index gaps, disk</div>
+    </div>
+    <div class="routing-row" style="border-left:3px solid var(--orange);">
+      <div class="symptom">Redis eviction, sentinel issues, blocked_clients, memory &gt;80%</div>
+      <div class="subskill" style="color:var(--orange);">/redis <span style="font-size:10px;color:var(--muted);">(platform skill)</span></div>
+      <div class="what">Scored life report: sentinel topology, memory, keyspace hit ratio, slow log, persistence state</div>
+    </div>
+    <div class="routing-row" style="border-left:3px solid var(--orange);">
+      <div class="symptom">CPU spike, OOM, container restarts — need time-series analysis</div>
+      <div class="subskill" style="color:var(--orange);">/prometheus <span style="font-size:10px;color:var(--muted);">(platform skill)</span></div>
+      <div class="what">PromQL range queries scoped to incident window; firing alerts, CPU/heap/task-rate stat tables</div>
+    </div>
+    <div class="routing-row" style="border-left:3px solid var(--orange);">
+      <div class="symptom">IAP process health, adapter list, job worker control (deep admin)</div>
+      <div class="subskill" style="color:var(--orange);">/itential-platform <span style="font-size:10px;color:var(--muted);">(platform skill)</span></div>
+      <div class="what">Supplements /troubleshoot-jobs; reads IAP creds from .env; full admin view</div>
+    </div>
+    <div class="routing-row" style="border-left:3px solid var(--orange);">
+      <div class="symptom">IAG health, service list, etcd cluster state</div>
+      <div class="subskill" style="color:var(--orange);">/itential-gateway <span style="font-size:10px;color:var(--muted);">(platform skill)</span></div>
+      <div class="what">Supplements inline IAG diagnostics; reads IAG creds from .env</div>
+    </div>
   </div>
+  <div class="note" style="margin-top:4px;border-color:var(--orange);"><strong>Platform Skills</strong> (orange rows above) require <span class="inline-code">GITLAB_TOKEN</span> in <span class="inline-code">.env</span> and a one-time <span class="inline-code">scripts/sync-platform-skills.sh</span> run. See the Admin Guide → Vendor Sync for setup.</div>
 
   <hr class="section-divider" />
 
@@ -2019,6 +2054,73 @@ SSH_ROLE_1=iap</pre></div>
 
   <hr class="section-divider" />
 
+  <!-- Vendor Sync — platform-skills -->
+  <div class="section">
+    <div class="section-label">Vendor Sync</div>
+    <h2>Vendor Sync — platform-skills (Private GitLab)</h2>
+    <p class="desc">The <span class="inline-code">platform-claude-skills</span> repo (<a href="https://gitlab.com/itential/platform-engineering/platform-claude-skills" target="_blank" style="color:var(--pink-soft);">gitlab.com/itential/platform-engineering/platform-claude-skills</a>) provides five deep-diagnostic skills for MongoDB, Redis, Prometheus, IAP, and IAG. Because the repo is private, it requires a GitLab Deploy Token to sync.</p>
+
+    <h3 style="margin-top:20px;color:var(--pink-soft);">One-Time Authentication Setup</h3>
+    <ol style="margin:10px 0 16px 20px;color:var(--muted);line-height:1.9;font-size:14px;">
+      <li>Ask your team lead for the <strong>platform-claude-skills Deploy Token</strong> (read-only, <code>read_repository</code> scope). It is shared via 1Password or Vault — never Slack.</li>
+      <li>Add it to your repo <span class="inline-code">.env</span> file:
+        <pre style="margin:6px 0 10px;"><span class="key">GITLAB_TOKEN</span>=<span class="val">your-deploy-token-value</span></pre>
+      </li>
+      <li>Run the initial sync:
+        <pre style="margin:6px 0 10px;">bash scripts/sync-platform-skills.sh</pre>
+      </li>
+      <li>Review the diff and commit:
+        <pre style="margin:6px 0 10px;">git diff .claude/skills/
+git add vendor/platform-skills/ .claude/skills/mongodb/ .claude/skills/redis/ .claude/skills/prometheus/ .claude/skills/itential-platform/ .claude/skills/itential-gateway/
+git commit -m "chore: sync platform-skills from upstream"</pre>
+      </li>
+    </ol>
+
+    <h3 style="margin-top:20px;color:var(--pink-soft);">Creating a New Deploy Token (admins only)</h3>
+    <ol style="margin:10px 0 16px 20px;color:var(--muted);line-height:1.9;font-size:14px;">
+      <li>Go to <strong>platform-claude-skills → Settings → Repository → Deploy tokens</strong> on GitLab.</li>
+      <li>Create a token with name <code>troubleshooting-agent-readonly</code>, scope <strong>read_repository</strong> only. No expiry required for team tokens.</li>
+      <li>Distribute the token value securely (1Password or Vault) — not Slack or email.</li>
+    </ol>
+
+    <div class="rules" style="margin-top:16px;">
+      <div class="rule"><div class="rule-text">
+        <strong>Staleness is checked automatically</strong> — at the end of every Claude Code session the <span class="inline-code">check-platform-skills-staleness.py</span> Stop hook reads <span class="inline-code">vendor/platform-skills/SYNC_MANIFEST.json</span>, calls <span class="inline-code">git ls-remote</span> to compare with upstream <span class="inline-code">master</span>, and prints a staleness report if behind. Always exits 0 so it never blocks session completion.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>No commit count</strong> — unlike builder-skills (which uses the GitHub compare API for ahead-by count), platform-skills staleness reports show "out of date" with the two SHAs but no commit count. This avoids GitLab API auth complexity.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Staleness check manually</strong> — run <span class="inline-code">scripts/sync-platform-skills.sh --check</span> at any time. Exits 0 (current), 1 (stale), or 2 (check failed — network/token issue, not an error that blocks work).
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Companion files co-locate with SKILL.md</strong> — unlike builder-skills (which puts JSON helpers in <span class="inline-code">vendor/builder-skills/helpers/</span>), platform-skills companion files (shell scripts, reference docs for MongoDB offline collection, etc.) land alongside their <span class="inline-code">SKILL.md</span> in <span class="inline-code">.claude/skills/&lt;name&gt;/</span>. They are tightly coupled to their skill.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Never auto-commit the sync</strong> — always run <span class="inline-code">git diff .claude/skills/</span> after sync. Review for breaking changes (removed phases, renamed credential keys) before committing.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Manifest location</strong> — <span class="inline-code">vendor/platform-skills/SYNC_MANIFEST.json</span> records <span class="inline-code">synced_commit</span>, <span class="inline-code">synced_commit_date</span>, and <span class="inline-code">synced_at</span>. The actual skill files live in <span class="inline-code">.claude/skills/</span>, not in the vendor directory.
+      </div></div>
+    </div>
+
+    <h3 style="margin-top:20px;color:var(--pink-soft);">Platform Skills Available After Sync</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Skill</th><th>Invoke</th><th>Credentials (.env)</th><th>When to Use</th></tr></thead>
+        <tbody>
+          <tr><td><strong>/mongodb</strong></td><td><code>/mongodb</code></td><td><code>MONGO_URL</code></td><td>Replica issues, pool saturation &gt;80%, elections, scored assessment needed</td></tr>
+          <tr><td><strong>/redis</strong></td><td><code>/redis</code></td><td><code>REDIS_HOST / REDIS_PORT / REDIS_PASSWORD</code></td><td>Eviction, sentinel issues, blocked_clients, memory &gt;80%</td></tr>
+          <tr><td><strong>/prometheus</strong></td><td><code>/prometheus</code></td><td><code>PROMETHEUS_URL</code> + optional basic/bearer auth vars</td><td>Time-series CPU/memory/task-rate analysis scoped to incident window</td></tr>
+          <tr><td><strong>/itential-platform</strong></td><td><code>/itential-platform</code></td><td><code>PLATFORM_URL, CLIENT_ID, CLIENT_SECRET</code></td><td>Deep IAP admin: process health, adapter/application list, job worker control</td></tr>
+          <tr><td><strong>/itential-gateway</strong></td><td><code>/itential-gateway</code></td><td><code>IAG_URL, IAG_USER, IAG_PASS</code></td><td>IAG health, logs, service list, etcd cluster state</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
   <!-- Known Bugs Quick Reference -->
   <div class="section">
     <div class="section-label">Known Bugs</div>
@@ -2554,6 +2656,53 @@ SSH_ROLE_1=iap</pre></div>
         </tr>
       </tbody>
     </table>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Platform Skills Reference -->
+  <div class="section">
+    <h2 id="sk-platform">Platform Skills — Deep-Diagnostic Library</h2>
+    <p class="desc">Five operational skills vendored from <span class="inline-code">platform-claude-skills</span> (private GitLab). Requires <span class="inline-code">GITLAB_TOKEN</span> in <span class="inline-code">.env</span> and an initial <span class="inline-code">scripts/sync-platform-skills.sh</span> run. See Admin Guide → Vendor Sync for setup.</p>
+
+    <h3 style="margin-top:20px;">/mongodb — MongoDB Life Report</h3>
+    <p class="desc" style="margin-bottom:8px;">Produces a scored HEALTHY / DEGRADED / CRITICAL life report for a MongoDB cluster. Invoke after <span class="inline-code">/troubleshoot-databases</span> surfaces replica or pool saturation issues.</p>
+    <div class="rules">
+      <div class="rule"><div class="rule-text"><strong>Credentials:</strong> <span class="inline-code">MONGO_URL</span> in <span class="inline-code">.env</span> (e.g. <code>mongodb://user:pass@host:27017/admin?replicaSet=rs0</code>)</div></div>
+      <div class="rule"><div class="rule-text"><strong>Report covers:</strong> replica set topology, oplog window, connection pool, slow operations, index gaps, disk usage</div></div>
+      <div class="rule"><div class="rule-text"><strong>Air-gapped environments:</strong> use companion scripts <span class="inline-code">.claude/skills/mongodb/offline-collect-cluster.sh</span> and <span class="inline-code">offline-collect-node.sh</span> to gather data offline; see <span class="inline-code">OFFLINE-COLLECTION.md</span> for the full workflow</div></div>
+      <div class="rule"><div class="rule-text"><strong>When to invoke:</strong> replica member not PRIMARY/RECOVERING, pool saturation &gt;80%, elections detected, engineer requests scored assessment</div></div>
+    </div>
+
+    <h3 style="margin-top:20px;">/redis — Redis Life Report</h3>
+    <p class="desc" style="margin-bottom:8px;">Produces a scored HEALTHY / DEGRADED / CRITICAL life report for a Redis instance or Sentinel cluster.</p>
+    <div class="rules">
+      <div class="rule"><div class="rule-text"><strong>Credentials:</strong> <span class="inline-code">REDIS_HOST</span>, <span class="inline-code">REDIS_PORT</span>, <span class="inline-code">REDIS_PASSWORD</span> in <span class="inline-code">.env</span></div></div>
+      <div class="rule"><div class="rule-text"><strong>Report covers:</strong> Sentinel topology, memory utilization, keyspace hit ratio, slow log, persistence state (RDB/AOF), blocked_clients</div></div>
+      <div class="rule"><div class="rule-text"><strong>When to invoke:</strong> memory used &gt;80% of maxmemory, evicted_keys &gt;0, sentinel topology issues, persistent blocked_clients</div></div>
+    </div>
+
+    <h3 style="margin-top:20px;">/prometheus — Metrics Query</h3>
+    <p class="desc" style="margin-bottom:8px;">Executes PromQL range queries scoped to the incident time window from <span class="inline-code">ticket_context.md</span>.</p>
+    <div class="rules">
+      <div class="rule"><div class="rule-text"><strong>Credentials:</strong> <span class="inline-code">PROMETHEUS_URL</span> required; optional <span class="inline-code">PROMETHEUS_BASIC_AUTH_USER</span>/<span class="inline-code">PROMETHEUS_BASIC_AUTH_PASS</span> for basic auth, or source <span class="inline-code">vault-env.sh</span> for Vault-sourced bearer tokens</div></div>
+      <div class="rule"><div class="rule-text"><strong>Capabilities:</strong> firing alerts, ad-hoc PromQL, CPU/heap/task-rate stat tables, TSDB cardinality report</div></div>
+      <div class="rule"><div class="rule-text"><strong>When to invoke:</strong> sustained high CPU, node nearing OOM, container restarts correlating with resource pressure, or when you need time-series confirmation of a trend seen in infra diagnostics</div></div>
+    </div>
+
+    <h3 style="margin-top:20px;">/itential-platform — IAP Admin</h3>
+    <p class="desc" style="margin-bottom:8px;">Deep administrative view of IAP — complements <span class="inline-code">/troubleshoot-jobs</span> for worker-level visibility.</p>
+    <div class="rules">
+      <div class="rule"><div class="rule-text"><strong>Credentials:</strong> <span class="inline-code">PLATFORM_URL</span>, <span class="inline-code">CLIENT_ID</span>, <span class="inline-code">CLIENT_SECRET</span> (or <span class="inline-code">AUTH_METHOD=basic</span> equivalents) in <span class="inline-code">.env</span></div></div>
+      <div class="rule"><div class="rule-text"><strong>Capabilities:</strong> process health, adapter / application / integration list, job worker control (pause/resume), active job queue depth</div></div>
+    </div>
+
+    <h3 style="margin-top:20px;">/itential-gateway — IAG Admin</h3>
+    <p class="desc" style="margin-bottom:8px;">IAG health, logs, and service management — complements the inline IAG diagnostics in the orchestrator.</p>
+    <div class="rules">
+      <div class="rule"><div class="rule-text"><strong>Credentials:</strong> <span class="inline-code">IAG_URL</span>, <span class="inline-code">IAG_USER</span>, <span class="inline-code">IAG_PASS</span> in <span class="inline-code">.env</span></div></div>
+      <div class="rule"><div class="rule-text"><strong>Capabilities:</strong> IAG health endpoint, recent log tail, service list, etcd cluster membership and leader election state</div></div>
+    </div>
   </div>
 
 </div><!-- /tab-subskills -->
