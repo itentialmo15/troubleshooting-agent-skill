@@ -13,8 +13,10 @@
 data/[0-9]*/
 data/repro/
 
-# Office lock files
+# Office / presentation files
 ~$*
+*.pptx
+*.ppt
 
 # OS
 .DS_Store
