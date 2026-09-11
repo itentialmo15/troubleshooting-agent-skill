@@ -81,30 +81,70 @@ These apply in every troubleshooting session:
 
 ## Vendor Sync
 
-The sync pulls two things from the upstream `itential/builder-skills` repo:
+Two external skill libraries are vendored into this repo. Neither is a live dependency —
+syncs are on-demand, pull only specific paths, and always leave the commit to you.
+
+### builder-skills (GitHub — public)
+
+Pulls two things from `https://github.com/itential/builder-skills`:
 
 1. **Helper JSON bundles** → `vendor/builder-skills/` (importable platform asset bundles, create/update/operation templates)
 2. **Builder skill files** → `.claude/skills/` (SKILL.md files for `/builder-agent`, `/qa-agent`, `/itential-lcm`, `/explore`, etc. — loadable by the Skill tool during Phase 3)
+
+**No authentication required** — the GitHub repo is public.
 
 **Staleness is checked automatically in two places:**
 - At the start of the Constructive Fix Path (before any builder-skill template import) — the orchestrator runs `--check` and prompts the engineer to sync if behind
 - At the end of every Claude Code session — the `Stop` hook prints a staleness report if the vendor copy is out of date
 
-To check staleness manually (no network clone, fast):
-
 ```bash
-scripts/sync-builder-skills.sh --check [branch]
+scripts/sync-builder-skills.sh --check [branch]   # fast staleness check
+scripts/sync-builder-skills.sh [branch]            # full sync
 ```
 
-To refresh both vendor helpers and skill files:
+After running: review `git diff vendor/builder-skills/ .claude/skills/` and `vendor/builder-skills/SYNC_CHANGELOG.md`, then commit deliberately.
 
-```bash
-scripts/sync-builder-skills.sh [branch]
+### platform-skills (GitLab — private)
+
+Pulls operational platform skills from `https://gitlab.com/itential/platform-engineering/platform-claude-skills`:
+
+- **Skill files + companion scripts/docs** → `.claude/skills/` (SKILL.md files for `/mongodb`, `/redis`, `/prometheus`, `/itential-platform`, `/itential-gateway`, `/themis-aws-deploy`, etc.)
+- Companion files (shell scripts, reference docs, tfvars) land **adjacent to their SKILL.md** — no separate vendor helpers directory
+
+**Authentication required:** the GitLab repo is private. Add a Deploy Token to `.env`:
+
+```
+GITLAB_TOKEN=<deploy-token-value>
 ```
 
-After running: review `git diff vendor/builder-skills/ .claude/skills/` and `vendor/builder-skills/SYNC_CHANGELOG.md`, then commit deliberately. The sync never auto-applies — it surfaces what changed upstream and leaves the commit to you.
+To create a Deploy Token: GitLab → `platform-claude-skills` → Settings → Repository →
+Deploy tokens (name: `troubleshooting-agent`, scope: `read_repository`). Share via
+1Password or Vault — this token is read-only and scoped to this repo only.
 
-If the sync fails (network unavailable, auth error), the script prints the current vendor SHA, date, and a `--check` reminder before exiting non-zero.
+**Staleness is checked automatically at every session end** — the `Stop` hook
+(`check-platform-skills-staleness.py`) compares the vendored SHA to upstream.
+Within a session, the orchestrator's Phase 2b Platform Skills Staleness Gate runs
+`--check` before invoking any platform skill for the first time.
+
+```bash
+scripts/sync-platform-skills.sh --check [branch]   # fast staleness check (requires GITLAB_TOKEN in .env)
+scripts/sync-platform-skills.sh [branch]            # full sync
+```
+
+After running: review `git diff .claude/skills/` and `vendor/platform-skills/SYNC_CHANGELOG.md`, then commit deliberately.
+
+**Troubleshooting-relevant skills** (wired into diagnostic routing):
+
+| Skill | Domain | Wired into |
+|-------|---------|------------|
+| `/mongodb` | Full MongoDB replica set life report (scored HEALTHY/DEGRADED/CRITICAL) | `troubleshoot-databases` Step 1k |
+| `/redis` | Full Redis Sentinel life report (scored HEALTHY/DEGRADED/CRITICAL) | `troubleshoot-databases` Step 2i |
+| `/prometheus` | PromQL metrics analysis: CPU, heap, task rate, alerts, TSDB | `troubleshoot-infra` Phase 3x |
+| `/itential-platform` | IAP admin: adapters, applications, job workers (29 tasks) | `troubleshoot` Phase 2b routing |
+| `/itential-gateway` | IAG admin: health, logs, etcd cluster | `troubleshoot` Phase 2b routing |
+
+Other skills in the library (`/deployer-inventory`, `/perf-test-analysis`, `/perflab`,
+`/themis-aws-deploy`) are synced and available but not wired into troubleshooting routing.
 
 ## Spec → Skill Relationship
 

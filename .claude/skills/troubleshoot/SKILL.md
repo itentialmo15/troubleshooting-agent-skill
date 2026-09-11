@@ -20,6 +20,18 @@ argument-hint: "[ISD ticket key or brief issue description]"
 | `/troubleshoot-infra` | CPU, memory, disk, FDs, container crashes, EKS, network connectivity |
 | `/troubleshoot-logs` | Log collection from IAP, IAG, MongoDB, Redis, LB — any deployment type |
 
+**Platform skills (from `platform-claude-skills`) — invoke for deep operational diagnostics:**
+
+| Platform Skill | When to invoke |
+|----------------|----------------|
+| `/itential-platform` | Deep IAP admin: adapter list, application status, job worker control (29 tasks) — supplements `/troubleshoot-jobs` when IAP-layer health is suspected |
+| `/itential-gateway` | IAG admin: health, logs, service list, etcd cluster — supplements inline IAG diagnostics when IAG itself (not the adapter) is the issue |
+| `/mongodb` | Full MongoDB replica set life report (scored HEALTHY/DEGRADED/CRITICAL) — invoke after `/troubleshoot-databases` surfaces replica or connection pool issues |
+| `/redis` | Full Redis Sentinel life report (scored HEALTHY/DEGRADED/CRITICAL) — invoke after `/troubleshoot-databases` surfaces eviction, sentinel topology, or persistence issues |
+| `/prometheus` | PromQL-based metrics analysis — invoke alongside `/troubleshoot-infra` when `PROMETHEUS_URL` is available and time-series evidence is needed |
+
+Platform skills require `GITLAB_TOKEN` in `.env` to sync. Run `scripts/sync-platform-skills.sh` to pull them before first use. See the **Platform Skills Staleness Gate** in Phase 2 Step 2b below.
+
 **Never duplicate what a sub-skill already covers.** Invoke the sub-skill and synthesize its output.
 
 ---
@@ -98,6 +110,11 @@ JIRA_URL=https://itential.atlassian.net
 JIRA_USER=you@itential.com
 JIRA_API_TOKEN=               # id.atlassian.net → Security → API tokens
 JIRA_PROJECTS=ENG,ISD
+
+# ── Platform Skills (platform-claude-skills sync) ──────────────────────────
+GITLAB_TOKEN=                 # GitLab Deploy Token — read_repository scope
+                              # Create: platform-claude-skills → Settings → Repository → Deploy tokens
+                              # Run: scripts/sync-platform-skills.sh  (once after adding token)
 
 # ── Slack (for escalation messages) ───────────────────────────
 SLACK_SUPPORT_CHANNEL=#isd-support
@@ -198,6 +215,37 @@ Based on ticket context, platform version, symptom description, and Investigatio
 | IAG adapter OFFLINE / GatewayManager error | `/troubleshoot-adapters {IAG_ADAPTER_NAME}` | Inline IAG diagnostics follow adapter investigation |
 | Kafka adapter OFFLINE / consumer lag growing | `/troubleshoot-adapters {KAFKA_ADAPTER_NAME}` | Routes to Phase 4 (Kafka) in the sub-skill |
 | UI slow / API timeouts | Inline diagnostics in Step 2b (see below) + `/troubleshoot-logs` | — |
+
+**Platform Skills Staleness Gate**
+
+Before invoking any platform skill (`/itential-platform`, `/itential-gateway`, `/mongodb`,
+`/redis`, `/prometheus`), check that the skill files are current — once per session:
+
+```bash
+scripts/sync-platform-skills.sh --check
+```
+
+- **Up to date** → proceed to routing.
+- **Out of date** → present to engineer:
+  ```
+  ⚠️  platform-skills is out of date. Sync to get the latest diagnostic skills?
+  [yes / no / skip]
+  ```
+  - `yes` → run `scripts/sync-platform-skills.sh`, show changed files, proceed
+  - `no` → proceed with existing copy; note "using stale platform-skills copy" in `diagnostic_report.md`
+  - `skip` → proceed, suppress the check for the rest of this session
+- **Check failed** (no `GITLAB_TOKEN`, network unavailable) → note "staleness unknown,
+  proceeding with existing copy" and continue — do not block the investigation
+
+**Platform skill routing** (after diagnostic sub-skill surfaces a signal):
+
+| Signal from diagnostic sub-skill | Platform skill | Trigger condition |
+|---|---|---|
+| `/troubleshoot-databases` finds replica lag, elections, or pool saturation > 80% | `/mongodb` | Invoke for scored life report and oplog/contention analysis |
+| `/troubleshoot-databases` finds eviction, sentinel topology issue, or `blocked_clients` > 0 | `/redis` | Invoke for scored life report and keyspace/persistence analysis |
+| `/troubleshoot-infra` finds sustained CPU > 2× cores or memory pressure on IAP nodes | `/prometheus` | Invoke if `PROMETHEUS_URL` set; pass incident time window for scoped range queries |
+| `/troubleshoot-jobs` finds WFE workers not processing or adapter application unhealthy | `/itential-platform` | Invoke for IAP application status, job worker counts, and event-loop lag check |
+| IAG is implicated as the failure point (not just the adapter it hosts) | `/itential-gateway` | Invoke for IAG health, etcd cluster status, service list, and log tail |
 
 Each sub-skill authenticates itself from `.env` when invoked — the orchestrator does not pre-authenticate.
 
