@@ -37,7 +37,7 @@ VENDOR_DIR="${REPO_ROOT}/vendor/platform-skills"
 SKILLS_DIR="${REPO_ROOT}/.claude/skills"
 MANIFEST="${VENDOR_DIR}/SYNC_MANIFEST.json"
 CHANGELOG="${VENDOR_DIR}/SYNC_CHANGELOG.md"
-ENV_FILE="${REPO_ROOT}/.env"
+ENV_FILE="${ENV_FILE:-${REPO_ROOT}/.env}"
 
 # ── Load GITLAB_TOKEN from .env ───────────────────────────────────────────────
 

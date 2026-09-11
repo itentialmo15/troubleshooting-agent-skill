@@ -1,0 +1,79 @@
+# ============================================================
+# Themis Run Variables
+# Edit this file before each run.
+# Claude reads it directly — nothing is prompted interactively.
+# ============================================================
+#
+# Var routing (handled by scripts/apply_run_vars.py):
+#   redis_*     -> redis group_vars
+#   mongodb_*   -> mongodb group_vars
+#   platform_*  -> platform group_vars
+#   gateway_*   -> gateway group_vars
+#   (no prefix) -> group_vars/all
+#
+# Skill-consumed keys (architecture, os, etc.) are NOT
+# forwarded to Ansible — they drive provisioning only.
+#
+# Do NOT set *_pki_src_dir vars here — managed by Step 4b.
+# ============================================================
+
+
+# ---- Run parameters (skill-consumed, not passed to Ansible) ----
+architecture:            # aio | minimal | ha2 | asa
+os:                   # rocky8 | rocky9 | rhel8 | rhel9 | al2023 | oracle9
+themis_root: ""             # absolute path to checked-out Themis repo
+owner: ""                   # AWS resource owner tag (used in tofu -var owner=)
+deployer_repo: ""           # absolute path to local itential.deployer checkout
+tls_repo: ""                # absolute path to local itential.tls checkout
+aws_profile: pe-team-sbx    # AWS CLI profile name for this environment
+ssh_key_path:   # path to SSH private key for EC2 access
+deployment_scope: full      # full | redis | mongodb | platform | gateway | none
+certify_scope: full         # none | full | redis | mongodb | platform
+artifacts_retention_days: 30
+
+
+# ---- Credentials (forwarded to group_vars/all) ----
+repository_username: ""
+repository_password: ""
+
+
+# ---- TLS (uncomment to override deployer defaults) ----
+# redis_tls_enabled: true
+# mongodb_tls_enabled: true
+# platform_webserver_https_enabled: true
+# gateway_https_enabled: true
+
+
+# ---- Install paths (uncomment to override deployer defaults) ----
+# redis_install_dir: /opt/redis
+# mongodb_install_dir: /opt/mongodb
+# platform_install_dir: /opt/platform
+
+
+# ---- Gateway (uncomment to deploy Gateway/IAG) ----
+# Gateway deploy is skipped automatically (not failed) if gateway_release is unset,
+# even when deployment_scope is full. gateway_whl_file is a local wheel filename,
+# resolved relative to <deployer_repo>/playbooks/files/ by the gateway role.
+# gateway_release: "4.4"
+# gateway_whl_file: automation_gateway-4.4.46-py3-none-any.whl
+
+
+# ---- Platform release (uncomment to override themis's pinned default) ----
+# themis's own inventories/common/platform_common.yml and platform_site_common.yml
+# pin these to a fixed release (currently 6 / 6.3.4) for every architecture regardless
+# of this file. Set both here to test a different release — platform_release alone is
+# not enough, since platform_packages must point at that release's actual RPM URLs.
+# platform_release: 6
+# platform_packages:
+#   - https://registry.aws.itential.com/repository/PLATFORM/Platform%206/Platform%206.4.0/itential-platform-6.4.0-1.noarch.rpm
+#   - https://registry.aws.itential.com/repository/CONFIG/Configuration%20Manager%206/Configuration%20Manager%206.4.0/itential-configuration_manager-6.4.0-1.noarch.rpm
+#   - https://registry.aws.itential.com/repository/LIFECYCLE/Lifecycle%20Manager%206/Lifecycle%20Manager%206.4.0/itential-lifecycle_manager-6.4.0-1.noarch.rpm
+#   - https://registry.aws.itential.com/repository/SERVICE/Service%20Manager%206/Service%20Manager%206.4.0/itential-service_management-6.4.0.x86_64.rpm
+#   - https://registry.aws.itential.com/repository/GATEWAY-MANAGER/Gateway%20Manager/itential-gateway_manager-1.0.8.noarch.rpm
+#   - https://registry.aws.itential.com/repository/INVENTORY-MANAGER/Inventory%20Manager/itential-inventory-manager-1.0.7.noarch.rpm
+
+
+# ---- Any other deployer variable ----
+# Add any itential.deployer variable here using its full name.
+# It will be routed to the correct group_vars by prefix.
+# key: value
