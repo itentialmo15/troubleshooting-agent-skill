@@ -532,7 +532,7 @@
         <div class="phase-num">3</div>
         <div class="phase-label">Auth Here</div>
         <h3>Reproduce &amp; Workaround</h3>
-        <p>Discovers all <span class="inline-code">.env</span> and <span class="inline-code">.env.*</span> files. If multiple exist, presents a numbered list showing each environment's <span class="inline-code">PLATFORM_URL</span> and asks engineer to choose. Authenticates with selected env. Reproduces root cause. Invokes builder-skills for workarounds in the same environment. <em>Optionally</em> invokes platform skills (<span class="inline-code">/mongodb</span>, <span class="inline-code">/redis</span>, <span class="inline-code">/prometheus</span>, <span class="inline-code">/itential-platform</span>, <span class="inline-code">/itential-gateway</span>) to validate the reproduction environment's component health before or after reproducing the issue.</p>
+        <p>Discovers all <span class="inline-code">.env</span> and <span class="inline-code">.env.*</span> files. If multiple exist, presents a numbered list showing each environment's <span class="inline-code">PLATFORM_URL</span> and asks engineer to choose. Authenticates with selected env. Reproduces root cause. Invokes builder-skills for workarounds in the same environment. <em>Optionally</em> invokes platform skills (<span class="inline-code">/mongodb</span>, <span class="inline-code">/redis</span>, <span class="inline-code">/prometheus</span>, <span class="inline-code">/itential-platform</span>, <span class="inline-code">/itential-gateway</span>) to validate the reproduction environment's component health before or after reproducing the issue. For VM / bare-metal reproduction, pulls platform RPMs from JFrog using <span class="inline-code">scripts/pull-platform-rpms.sh</span> (requires <span class="inline-code">JFROG_TOKEN</span>).</p>
       </div>
       <div class="phase-card">
         <div class="phase-num">4</div>
@@ -885,9 +885,14 @@ flowchart TD
 <span class="section-hdr"># ── Platform Skills — operational skill library (private GitLab) ──</span>
 <span class="key">GITLAB_TOKEN</span>=<span class="val">your-deploy-token</span>  <span class="comment"># GitLab Deploy Token with read_repository scope</span>
                               <span class="comment"># Create: platform-claude-skills → Settings → Repository → Deploy tokens</span>
-                              <span class="comment"># Then run: scripts/sync-platform-skills.sh</span></pre></div>
+                              <span class="comment"># Then run: scripts/sync-platform-skills.sh</span>
+<span class="section-hdr"># ── JFrog — platform RPM downloads ───────────────────────────────</span>
+<span class="key">JFROG_TOKEN</span>=<span class="val">your-identity-token</span> <span class="comment"># JFrog Identity Token (per-engineer, not shared)</span>
+                              <span class="comment"># Generate: itential.jfrog.io → User Profile → Generate Identity Token</span>
+                              <span class="comment"># Then run: scripts/pull-platform-rpms.sh --version {IAP_VERSION}</span></pre></div>
     <div class="note" style="margin-top:8px;">The agent will tell you which optional variables unlock deeper diagnostics (MongoDB, Redis, SSH, Kubernetes, IAG, Slack) — see the Admin Guide for the full reference. Start with the minimum and add as needed.</div>
     <div class="note" style="margin-top:8px;border-color:var(--orange);"><strong>Platform Skills (optional but recommended):</strong> Adding <span class="inline-code">GITLAB_TOKEN</span> and running <span class="inline-code">scripts/sync-platform-skills.sh</span> unlocks five deep-diagnostic skills: <span class="inline-code">/mongodb</span> (scored life report), <span class="inline-code">/redis</span> (scored life report), <span class="inline-code">/prometheus</span> (PromQL metrics), <span class="inline-code">/itential-platform</span> (IAP admin), and <span class="inline-code">/itential-gateway</span> (IAG admin). Ask your team lead for the Deploy Token value.</div>
+    <div class="note" style="margin-top:8px;border-color:#3d9be8;"><strong>JFrog RPMs (optional — VM / bare-metal reproduction):</strong> Adding <span class="inline-code">JFROG_TOKEN</span> enables <span class="inline-code">scripts/pull-platform-rpms.sh</span> to download platform RPMs for VM-based reproduction environments or to feed the Ansible deployer. Generate your own token at <span class="inline-code">itential.jfrog.io → User Profile → Generate Identity Token</span>.</div>
 
     <!-- Step 5: Run -->
     <h3 style="margin-top:24px; margin-bottom:10px;"><span style="color:#ec1e7f">Step 5</span> — Run Your First Investigation</h3>
@@ -2119,6 +2124,77 @@ git commit -m "chore: sync platform-skills from upstream"</pre>
           <tr><td><strong>/itential-gateway</strong></td><td><code>/itential-gateway</code></td><td><code>IAG_URL, IAG_USER, IAG_PASS</code></td><td>IAG health, logs, service list, etcd cluster state</td></tr>
         </tbody>
       </table>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- JFrog RPM Repository -->
+  <div class="section">
+    <div class="section-label">RPM Downloads</div>
+    <h2>JFrog RPM Repository — Platform Packages</h2>
+    <p class="desc">Platform RPMs for on-prem / VM deployments are hosted at <span class="inline-code">itential.jfrog.io</span>. Use <span class="inline-code">scripts/pull-platform-rpms.sh</span> to browse and download them for local reproduction environments or to feed the Ansible deployer.</p>
+
+    <h3 style="margin-top:20px;color:var(--pink-soft);">Authentication Setup</h3>
+    <ol style="margin:10px 0 16px 20px;color:var(--muted);line-height:1.9;font-size:14px;">
+      <li>Generate a <strong>JFrog Identity Token</strong>: <span class="inline-code">itential.jfrog.io → User Profile → Generate Identity Token</span>. This is a per-engineer token — not shared via 1Password.</li>
+      <li>Add it to your <span class="inline-code">.env</span>:
+        <pre style="margin:6px 0 10px;"><span class="key">JFROG_TOKEN</span>=<span class="val">your-identity-token</span></pre>
+      </li>
+      <li>Verify the token works:
+        <pre style="margin:6px 0 10px;">bash scripts/pull-platform-rpms.sh --check</pre>
+      </li>
+    </ol>
+
+    <h3 style="margin-top:20px;color:var(--pink-soft);">JFrog Repo Map — Version Routing</h3>
+    <p class="desc" style="margin-bottom:8px;">Version routing is automatic — the script detects the era from the version string.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>JFrog Repo</th><th>Component</th><th>Version Scope</th></tr></thead>
+        <tbody>
+          <tr><td><code>itential-config-service-files</code></td><td>Platform (all components — legacy single repo)</td><td>23.2.x / 2023.x and below</td></tr>
+          <tr><td><code>PLATFORM</code></td><td>Platform core RPM</td><td>6.x+ (P6)</td></tr>
+          <tr><td><code>FLOWAI</code></td><td>FlowAI app</td><td>6.x+ (P6)</td></tr>
+          <tr><td><code>CONFIG</code></td><td>Configuration Manager</td><td>6.x+ (P6)</td></tr>
+          <tr><td><code>GATEWAY-MANAGER</code></td><td>Gateway Manager RPM</td><td>All versions</td></tr>
+          <tr><td><code>INVENTORY-MANAGER</code></td><td>Inventory Manager</td><td>All versions</td></tr>
+          <tr><td><code>SERVICE</code></td><td>Service Manager app</td><td>All versions</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:20px;color:var(--pink-soft);">Pull Commands</h3>
+    <div class="code-block"><pre><span class="comment"># Verify token</span>
+<span class="cmd">scripts/pull-platform-rpms.sh</span> --check
+
+<span class="comment"># Browse available files for a version (no download)</span>
+<span class="cmd">scripts/pull-platform-rpms.sh</span> --version 6.4.0 --list
+
+<span class="comment"># Download all P6 components to repro/rpms/6.4.0/</span>
+<span class="cmd">scripts/pull-platform-rpms.sh</span> --version 6.4.0
+
+<span class="comment"># Download specific components only</span>
+<span class="cmd">scripts/pull-platform-rpms.sh</span> --version 6.4.0 --components platform,config,gateway-manager
+
+<span class="comment"># Legacy version (auto-routes to itential-config-service-files)</span>
+<span class="cmd">scripts/pull-platform-rpms.sh</span> --version 23.2.1 --list
+
+<span class="comment"># Custom output directory</span>
+<span class="cmd">scripts/pull-platform-rpms.sh</span> --version 6.4.0 --out-dir repro/ISD-9999/rpms</pre></div>
+
+    <div class="rules" style="margin-top:16px;">
+      <div class="rule"><div class="rule-text">
+        <strong>Browse-first pattern</strong> — the script uses the JFrog AQL API to discover the exact file path for each version rather than guessing the directory structure. Run <span class="inline-code">--list</span> first to confirm a version exists before downloading.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Output</strong> — RPMs download to <span class="inline-code">repro/rpms/{VERSION}/</span> by default (override with <span class="inline-code">--out-dir</span>). A <span class="inline-code">JFROG_MANIFEST.json</span> is written alongside with filenames, sha256 checksums, and download timestamp.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Docker vs RPMs</strong> — Docker image (<span class="inline-code">registry.itential.com/itential-platform:{version}</span>) is faster for local workflow/adapter/UI reproduction. RPMs are for full OS-level reproduction on a VM, upgrade path testing, or feeding the Ansible deployer (<span class="inline-code">platform_packages</span> in <span class="inline-code">run-vars.yml</span>).
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Deployer integration</strong> — pre-downloaded RPM paths can be supplied as <span class="inline-code">platform_packages: file:///path/to/rpm</span> in <span class="inline-code">run-vars.yml</span> so the Ansible deployer nodes do not need direct JFrog access. See <span class="inline-code">/themis-aws-deploy</span> skill.
+      </div></div>
     </div>
   </div>
 

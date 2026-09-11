@@ -33,8 +33,10 @@ artifacts_retention_days: 30
 
 
 # ---- Credentials (forwarded to group_vars/all) ----
+# JFrog Identity Token auth (preferred): leave username blank, set password to JFROG_TOKEN from .env.
+# Legacy Nexus auth: set both username and password (for older deployer configs).
 repository_username: ""
-repository_password: ""
+repository_password: ""   # JFROG_TOKEN value — itential.jfrog.io Identity Token
 
 
 # ---- TLS (uncomment to override deployer defaults) ----
@@ -65,12 +67,16 @@ repository_password: ""
 # not enough, since platform_packages must point at that release's actual RPM URLs.
 # platform_release: 6
 # platform_packages:
-#   - https://registry.aws.itential.com/repository/PLATFORM/Platform%206/Platform%206.4.0/itential-platform-6.4.0-1.noarch.rpm
-#   - https://registry.aws.itential.com/repository/CONFIG/Configuration%20Manager%206/Configuration%20Manager%206.4.0/itential-configuration_manager-6.4.0-1.noarch.rpm
-#   - https://registry.aws.itential.com/repository/LIFECYCLE/Lifecycle%20Manager%206/Lifecycle%20Manager%206.4.0/itential-lifecycle_manager-6.4.0-1.noarch.rpm
-#   - https://registry.aws.itential.com/repository/SERVICE/Service%20Manager%206/Service%20Manager%206.4.0/itential-service_management-6.4.0.x86_64.rpm
-#   - https://registry.aws.itential.com/repository/GATEWAY-MANAGER/Gateway%20Manager/itential-gateway_manager-1.0.8.noarch.rpm
-#   - https://registry.aws.itential.com/repository/INVENTORY-MANAGER/Inventory%20Manager/itential-inventory-manager-1.0.7.noarch.rpm
+#   # JFrog (itential.jfrog.io) — current RPM source. Use scripts/pull-platform-rpms.sh to
+#   # discover exact paths: scripts/pull-platform-rpms.sh --version 6.4.0 --list
+#   - https://itential.jfrog.io/artifactory/PLATFORM/<path-from-list>/itential-platform-6.4.0-1.noarch.rpm
+#   - https://itential.jfrog.io/artifactory/CONFIG/<path-from-list>/itential-configuration_manager-6.4.0-1.noarch.rpm
+#   - https://itential.jfrog.io/artifactory/SERVICE/<path-from-list>/itential-service_management-6.4.0.x86_64.rpm
+#   - https://itential.jfrog.io/artifactory/GATEWAY-MANAGER/<path-from-list>/itential-gateway_manager-1.0.8.noarch.rpm
+#   - https://itential.jfrog.io/artifactory/INVENTORY-MANAGER/<path-from-list>/itential-inventory-manager-1.0.7.noarch.rpm
+#   # Or pre-download locally and pass file:// paths:
+#   #   scripts/pull-platform-rpms.sh --version 6.4.0 --out-dir /tmp/rpms
+#   #   - file:///tmp/rpms/itential-platform-6.4.0-1.noarch.rpm
 
 
 # ---- Any other deployer variable ----

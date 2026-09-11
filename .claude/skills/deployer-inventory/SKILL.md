@@ -130,7 +130,7 @@ Use `AskUserQuestion` for multiple-choice questions (max 4 options per question)
 - `platform_release` goes in `all.vars`.
 - The following iag5 global vars always go in `all.vars`:
   - `ansible_user: <ANSIBLE-USER>`
-  - `repository_username: <NEXUS-USERNAME>` and `repository_password: <NEXUS-PASSWORD>` with a vault note
+  - `repository_username: ""` (leave blank when using JFrog token auth) and `repository_password: <JFROG_TOKEN>` — JFrog Identity Token from `.env`; previously Nexus credentials, now JFrog (`itential.jfrog.io`). Add a vault note.
   - `gateway_secrets_encrypt_key: <ENCRYPT-KEY>` with comment: `# IAG5 secrets encryption key — 64-char hex string. / #  - example command to generate key: 'openssl rand -hex 32'`
   - `gateway_pki_src_dir: <PKI-DIR>` with comment: `# Local directory on the control node containing IAG5 TLS certificate files.`
 - Do NOT include `mongodb_replication_enabled: true` — replication is inferred from the presence of the `mongodb_replica` group.

@@ -63,6 +63,10 @@ SSH_USER_1=...
 SSH_KEY_PATH_1=...
 SSH_ROLE_1=...             # label: iap | mongo | redis | gateway
 JIRA_API_TOKEN=...         # for Jira MCP write operations
+GITLAB_TOKEN=...           # GitLab Deploy Token — pull platform-claude-skills (read_repository)
+JFROG_TOKEN=...            # JFrog Identity Token — pull platform RPMs from itential.jfrog.io
+                           #   Generate: itential.jfrog.io → User Profile → Generate Identity Token
+                           #   Used by: scripts/pull-platform-rpms.sh, deployer-inventory skill
 ```
 
 Auth tokens are cached in `.auth.json` (gitignored). The orchestrator reuses a token if it is less than 50 minutes old and `platform_url` matches; otherwise it re-authenticates silently.
@@ -145,6 +149,46 @@ After running: review `git diff .claude/skills/` and `vendor/platform-skills/SYN
 
 Other skills in the library (`/deployer-inventory`, `/perf-test-analysis`, `/perflab`,
 `/themis-aws-deploy`) are synced and available but not wired into troubleshooting routing.
+
+### JFrog RPM Repository (itential.jfrog.io)
+
+Platform RPMs for on-prem / VM deployments are hosted on JFrog. Use
+`scripts/pull-platform-rpms.sh` to download them for local reproduction environments
+or to feed into the Ansible deployer (`platform_packages` in `run-vars.yml`).
+
+**Authentication:** per-engineer JFrog Identity Token (not shared). Generate at
+`itential.jfrog.io → User Profile → Generate Identity Token`. Add to `.env` as `JFROG_TOKEN`.
+
+**Version routing (automatic — detected from version string):**
+
+| JFrog Repo | Component | Version scope |
+|---|---|---|
+| `itential-config-service-files` | Platform (legacy, all components) | 23.2.x / 2023.x and below |
+| `PLATFORM` | Platform core RPM | 6.x+ (P6) |
+| `FLOWAI` | FlowAI app | 6.x+ (P6) |
+| `CONFIG` | Configuration Manager | 6.x+ (P6) |
+| `GATEWAY-MANAGER` | Gateway Manager RPM | All versions |
+| `INVENTORY-MANAGER` | Inventory Manager | All versions |
+| `SERVICE` | Service Manager app | All versions |
+
+```bash
+scripts/pull-platform-rpms.sh --check                          # verify token
+scripts/pull-platform-rpms.sh --version 6.4.0 --list          # browse without downloading
+scripts/pull-platform-rpms.sh --version 6.4.0                 # download all P6 components
+scripts/pull-platform-rpms.sh --version 6.4.0 --components platform,config,gateway-manager
+scripts/pull-platform-rpms.sh --version 23.2.1                # auto-routes to legacy repo
+```
+
+RPMs download to `repro/rpms/{VERSION}/` by default (override with `--out-dir`).
+A `JFROG_MANIFEST.json` is written alongside the RPMs with filenames, sha256 checksums,
+and download timestamp.
+
+**When to use RPMs vs Docker image:**
+- **Docker image** (`registry.itential.com/itential-platform:{version}`) — fast local
+  repro for workflow/adapter/UI issues; no OS-level reproduction needed
+- **RPMs** — when the issue requires a full OS-level install (init scripts, systemd,
+  file permissions, upgrade path), or when reproducing on a VM that matches the
+  customer's bare-metal topology via the Ansible deployer (`/themis-aws-deploy` skill)
 
 ## Spec → Skill Relationship
 

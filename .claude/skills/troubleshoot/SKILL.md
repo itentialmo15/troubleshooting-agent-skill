@@ -115,6 +115,9 @@ JIRA_PROJECTS=ENG,ISD
 GITLAB_TOKEN=                 # GitLab Deploy Token — read_repository scope
                               # Create: platform-claude-skills → Settings → Repository → Deploy tokens
                               # Run: scripts/sync-platform-skills.sh  (once after adding token)
+JFROG_TOKEN=                  # JFrog Identity Token — pull platform RPMs from itential.jfrog.io
+                              # Generate: itential.jfrog.io → User Profile → Generate Identity Token
+                              # Run: scripts/pull-platform-rpms.sh --version {IAP_VERSION}
 
 # ── Slack (for escalation messages) ───────────────────────────
 SLACK_SUPPORT_CHANNEL=#isd-support
@@ -1117,6 +1120,53 @@ echo "Membership patched."
 If the failing scenario requires a **workflow repair or custom build** beyond the imported template, invoke `/builder-agent` with the ticket's root cause and the imported project as context. The builder-agent has full knowledge of task schemas, variable wiring rules, and import patterns.
 
 If the asset type is a **JSON Form, MOP command template, or LCM action workflow**, invoke the matching specialist skill (`/itential-json-forms`, `/itential-mop`, `/itential-lcm`) to construct or repair it within the Docker environment.
+
+---
+
+### Step 4b.6 — Alternative: RPM-Based Reproduction (VM / Bare-Metal) [optional, when `JFROG_TOKEN` is set]
+
+Skip this step if the Docker path (Step 4b) is sufficient. Use the RPM path when:
+- The issue requires a full OS-level install (systemd services, file permissions, upgrade path)
+- Reproducing on a VM that matches the customer's bare-metal topology via the Ansible deployer
+- The Docker image is unavailable for the specific patch version
+
+**Pull platform RPMs from JFrog:**
+
+```bash
+# Verify token first (one-time check per session)
+scripts/pull-platform-rpms.sh --check
+
+# Browse available files for this version without downloading
+scripts/pull-platform-rpms.sh --version {IAP_VERSION} --list
+
+# Download all components (auto-routes to correct JFrog repos)
+scripts/pull-platform-rpms.sh --version {IAP_VERSION} --out-dir repro/{ISD_TICKET_KEY}/rpms
+```
+
+**Version routing (automatic):**
+- `23.2.x` / `2023.x` and below → `itential-config-service-files` (single legacy repo)
+- `6.x+` (P6) → per-component repos: `PLATFORM`, `CONFIG`, `GATEWAY-MANAGER`, `INVENTORY-MANAGER`, `SERVICE`, `FLOWAI`
+
+**Download specific components only (P6):**
+```bash
+scripts/pull-platform-rpms.sh --version {IAP_VERSION} \
+  --components platform,config,gateway-manager \
+  --out-dir repro/{ISD_TICKET_KEY}/rpms
+```
+
+**After download, RPMs land in `repro/{ISD_TICKET_KEY}/rpms/` with a `JFROG_MANIFEST.json`.**
+
+Install directly on a local VM:
+```bash
+sudo dnf install repro/{ISD_TICKET_KEY}/rpms/*.rpm
+```
+
+Or pass the paths as `platform_packages` in `run-vars.yml` to feed the Ansible deployer
+(see `/themis-aws-deploy` skill for the full VM deployment workflow).
+
+**If `JFROG_TOKEN` is missing:** the script exits with instructions to generate one at
+`itential.jfrog.io → User Profile → Generate Identity Token`. This is a per-engineer
+token — not shared via 1Password.
 
 ---
 
