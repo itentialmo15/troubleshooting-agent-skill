@@ -532,7 +532,7 @@
         <div class="phase-num">3</div>
         <div class="phase-label">Auth Here</div>
         <h3>Reproduce &amp; Workaround</h3>
-        <p>Discovers all <span class="inline-code">.env</span> and <span class="inline-code">.env.*</span> files. If multiple exist, presents a numbered list showing each environment's <span class="inline-code">PLATFORM_URL</span> and asks engineer to choose. Authenticates with selected env. Reproduces root cause. Invokes builder-skills for workarounds in the same environment.</p>
+        <p>Discovers all <span class="inline-code">.env</span> and <span class="inline-code">.env.*</span> files. If multiple exist, presents a numbered list showing each environment's <span class="inline-code">PLATFORM_URL</span> and asks engineer to choose. Authenticates with selected env. Reproduces root cause. Invokes builder-skills for workarounds in the same environment. <em>Optionally</em> invokes platform skills (<span class="inline-code">/mongodb</span>, <span class="inline-code">/redis</span>, <span class="inline-code">/prometheus</span>, <span class="inline-code">/itential-platform</span>, <span class="inline-code">/itential-gateway</span>) to validate the reproduction environment's component health before or after reproducing the issue.</p>
       </div>
       <div class="phase-card">
         <div class="phase-num">4</div>
@@ -588,6 +588,7 @@ flowchart TD
     MAIN -->|"Phase 3 — auth after env select"| P3["Reproduce & Workaround<br/>.env selection → auth<br/>builder-skills for fixes"]
     P3 --> BS["vendor/builder-skills/<br/>JSON Helper Bundles"]
     P3 --> SK[".claude/skills/<br/>/builder-agent /qa-agent<br/>/itential-lcm /explore …"]
+    P3 -.->|"optional — validate<br/>repro environment"| PS["platform-skills<br/>/mongodb  /redis  /prometheus<br/>/itential-platform  /itential-gateway<br/><i>requires GITLAB_TOKEN in .env</i>"]
 
     MAIN -->|"Phase 4"| RPT["diagnostic_report.md<br/>ticket_context.md<br/>known_issues.md"]
     MAIN -->|"Phase 6"| RES["known-resolutions.md<br/>Resolution Library"]
@@ -606,6 +607,8 @@ flowchart TD
     style RPT fill:#0a1a0a,stroke:#b8c22e,color:#e9eaf2
     style RES fill:#0a1a0a,stroke:#b8c22e,color:#e9eaf2
     style BS fill:#1a120a,stroke:#f27a1e,color:#e9eaf2
+    style SK fill:#1a120a,stroke:#f27a1e,color:#e9eaf2
+    style PS fill:#1a1209,stroke:#f5a623,stroke-width:2px,stroke-dasharray:5 3,color:#f5c842
       </div>
     </div>
   </div>
