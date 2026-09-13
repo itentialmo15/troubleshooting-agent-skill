@@ -19,6 +19,11 @@
 #   P6 (6.x+)                          → PLATFORM, FLOWAI, CONFIG,
 #                                         GATEWAY-MANAGER, INVENTORY-MANAGER,
 #                                         SERVICE  (filter by --components)
+#   IAG4 (any version)                 → automation-gateway  (--components iag4)
+#   IAG5 (any version)                 → gateway5            (--components iag5)
+#
+# IAG4/IAG5 are always routed to their specific repos regardless of version era.
+# They are not included in the default all-components pull — specify explicitly.
 #
 # Usage:
 #   scripts/pull-platform-rpms.sh --version 6.4.0
@@ -27,6 +32,9 @@
 #   scripts/pull-platform-rpms.sh --version 6.4.0 --list    (no download)
 #   scripts/pull-platform-rpms.sh --check                    (verify token)
 #   scripts/pull-platform-rpms.sh --version 6.4.0 --out-dir /tmp/my-rpms
+#   scripts/pull-platform-rpms.sh --version 4.4.46 --components iag4 --list
+#   scripts/pull-platform-rpms.sh --version 4.4.46 --components iag4
+#   scripts/pull-platform-rpms.sh --version 1.2.0  --components iag5 --list
 #
 # Exit codes:
 #   0 = success / token valid / up to date
@@ -134,7 +142,21 @@ else
   LEGACY=false
 fi
 
-# P6 repo map: component name → JFrog repo key
+# iag4/iag5 are always routed to their own repos — not affected by version era.
+# If the only components requested are iag4/iag5, skip LEGACY routing entirely.
+ALL_GATEWAY_ONLY=false
+if [[ -n "${COMPONENTS}" ]]; then
+  _non_gw=false
+  IFS=',' read -ra _clist <<< "${COMPONENTS}"
+  for _c in "${_clist[@]}"; do
+    _c="${_c// /}"
+    [[ "${_c}" != "iag4" && "${_c}" != "iag5" ]] && _non_gw=true && break
+  done
+  [[ "${_non_gw}" == false ]] && ALL_GATEWAY_ONLY=true
+fi
+
+# Component name → JFrog repo key
+# iag4/iag5 are always routed to their specific repos, regardless of version era.
 declare -A REPO_MAP
 REPO_MAP=(
   [platform]="PLATFORM"
@@ -143,15 +165,25 @@ REPO_MAP=(
   [gateway-manager]="GATEWAY-MANAGER"
   [inventory-manager]="INVENTORY-MANAGER"
   [service]="SERVICE"
+  [iag4]="automation-gateway"
+  [iag5]="gateway5"
 )
 
 # Build the list of repos to query
 declare -a REPOS_TO_QUERY
-if [[ "${LEGACY}" == true ]]; then
+if [[ "${ALL_GATEWAY_ONLY}" == true ]]; then
+  # iag4/iag5 only — bypass LEGACY routing, use their own repos directly
+  REPOS_TO_QUERY=()
+  IFS=',' read -ra COMP_LIST <<< "${COMPONENTS}"
+  for c in "${COMP_LIST[@]}"; do
+    c="${c// /}"
+    [[ -n "${REPO_MAP[$c]+_}" ]] && REPOS_TO_QUERY+=("${REPO_MAP[$c]}")
+  done
+elif [[ "${LEGACY}" == true ]]; then
   REPOS_TO_QUERY=("itential-config-service-files")
 else
   if [[ -z "${COMPONENTS}" ]]; then
-    # Default: all P6 components
+    # Default: all P6 platform components (iag4/iag5 excluded from default pull)
     REPOS_TO_QUERY=("PLATFORM" "CONFIG" "GATEWAY-MANAGER" "INVENTORY-MANAGER" "SERVICE" "FLOWAI")
   else
     REPOS_TO_QUERY=()

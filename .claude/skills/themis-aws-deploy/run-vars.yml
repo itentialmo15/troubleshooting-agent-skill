@@ -36,7 +36,10 @@ artifacts_retention_days: 30
 # JFrog Identity Token auth (preferred): leave username blank, set password to JFROG_TOKEN from .env.
 # Legacy Nexus auth: set both username and password (for older deployer configs).
 repository_username: ""
-repository_password: ""   # JFROG_TOKEN value — itential.jfrog.io Identity Token
+repository_password: ""   # PASTE your JFROG_TOKEN value here (from .env JFROG_TOKEN=...)
+                          # NOT read from .env automatically — copy the token value manually.
+                          # If left blank AND JFROG_TOKEN is set in .env, /themis-aws-deploy
+                          # will auto-populate this from .env so the deployer can pull RPMs.
 
 
 # ---- TLS (uncomment to override deployer defaults) ----
@@ -54,10 +57,20 @@ repository_password: ""   # JFROG_TOKEN value — itential.jfrog.io Identity Tok
 
 # ---- Gateway (uncomment to deploy Gateway/IAG) ----
 # Gateway deploy is skipped automatically (not failed) if gateway_release is unset,
-# even when deployment_scope is full. gateway_whl_file is a local wheel filename,
-# resolved relative to <deployer_repo>/playbooks/files/ by the gateway role.
+# even when deployment_scope is full.
+#
+# gateway_whl_file is a local wheel filename resolved relative to
+# <deployer_repo>/playbooks/files/. The gateway role hard-fails if this file is missing.
+#
+# Auto-pull: if JFROG_TOKEN is set in .env and gateway_whl_file is blank or missing,
+# /themis-aws-deploy will search automation-gateway on JFrog for files matching
+# gateway_release, download the .whl to <deployer_repo>/playbooks/files/, and set
+# gateway_whl_file automatically. No manual placement needed when JFROG_TOKEN is present.
+#
 # gateway_release: "4.4"
 # gateway_whl_file: automation_gateway-4.4.46-py3-none-any.whl
+#   ↑ The .whl must exist at <deployer_repo>/playbooks/files/<gateway_whl_file>
+#     OR JFROG_TOKEN must be set for auto-pull from itential.jfrog.io/automation-gateway
 
 
 # ---- Platform release (uncomment to override themis's pinned default) ----

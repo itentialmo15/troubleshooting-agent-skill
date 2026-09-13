@@ -2324,6 +2324,27 @@ git commit -m "chore: sync platform-skills from upstream"</pre>
       </table>
     </div>
 
+    <h3 style="margin-top:24px;color:var(--pink-soft);">AWS Account Setup</h3>
+    <p style="margin:0 0 10px;">The skill defaults to the <code>pe-team-sbx</code> AWS SSO profile maintained by the PE team. Engineers on a different account must add three lines to <code>.env</code> — the skill reads them at Step 1 and generates a runtime <code>tfvars-overrides/auto-account.tfvars</code> override automatically.</p>
+
+    <p style="margin:0 0 6px;"><strong>Verify pe-team-sbx access:</strong></p>
+    <div class="code-block"><pre><span class="cmd">aws sso login --profile pe-team-sbx</span>
+<span class="cmd">aws sts get-caller-identity --profile pe-team-sbx</span></pre></div>
+
+    <p style="margin:10px 0 6px;"><strong>Custom account — add to <code>.env</code>:</strong></p>
+    <div class="code-block"><pre><span class="comment"># EC2 key pair that exists in your account + region (e.g. us-east-1)</span>
+<span class="key">AWS_KEY_NAME</span>=your-ec2-key-pair-name
+<span class="comment"># Comma-separated SG IDs — must allow SSH (22) inbound from your IP</span>
+<span class="key">AWS_SECURITY_GROUP_IDS</span>=sg-xxxxxxxxxxxx,sg-yyyyyyyyyyyy
+<span class="comment"># Comma-separated subnet IDs, one per AZ: us-east-1a, us-east-1b, us-east-1c</span>
+<span class="key">AWS_SUBNET_IDS</span>=subnet-aaa,subnet-bbb,subnet-ccc</pre></div>
+
+    <div class="note" style="margin-top:8px;">Engineers on <code>pe-team-sbx</code> add nothing — the SG, subnets, and key pair defaults already exist in that account. The <code>auto-account.tfvars</code> file is only generated when <code>AWS_KEY_NAME</code> is present in <code>.env</code>.</div>
+
+    <p style="margin:10px 0 6px;"><strong>Verify resources exist before running:</strong></p>
+    <div class="code-block"><pre><span class="cmd">aws ec2 describe-key-pairs --key-names &lt;key_name&gt; --profile &lt;aws_profile&gt;</span>
+<span class="cmd">aws ec2 describe-security-groups --group-ids &lt;sg_id&gt; --profile &lt;aws_profile&gt;</span></pre></div>
+
     <h3 style="margin-top:24px;color:var(--pink-soft);">run-vars.yml — Complete Field Reference</h3>
     <p style="margin:0 0 10px;">All runtime configuration lives in <span class="inline-code">.claude/skills/themis-aws-deploy/run-vars.yml</span>. Edit before every run — or per environment when running multiple in parallel.</p>
     <div class="table-wrap">
@@ -2339,13 +2360,13 @@ git commit -m "chore: sync platform-skills from upstream"</pre>
           <tr><td><code>aws_profile</code></td><td><span class="pill pill-req">Required</span></td><td>AWS CLI profile for EC2 provisioning; default: <code>pe-team-sbx</code></td></tr>
           <tr><td><code>ssh_key_path</code></td><td><span class="pill pill-req">Required</span></td><td>Path to SSH private key for EC2 access — injected as <code>ansible_ssh_private_key_file</code></td></tr>
           <tr><td><code>repository_username</code></td><td><span class="pill pill-req">Required</span></td><td>Leave blank (<code>""</code>) — JFrog token auth does not use a username</td></tr>
-          <tr><td><code>repository_password</code></td><td><span class="pill pill-req">Required</span></td><td><code>JFROG_TOKEN</code> value — JFrog Identity Token for RPM downloads during deploy</td></tr>
+          <tr><td><code>repository_password</code></td><td><span class="pill pill-req">Required</span></td><td>Paste your <code>JFROG_TOKEN</code> value here. <strong>Not read from <code>.env</code> automatically</strong> — copy the token value manually. If left blank and <code>JFROG_TOKEN</code> is set in <code>.env</code>, the skill auto-populates it at Step 1.</td></tr>
           <tr><td><code>deployment_scope</code></td><td><span class="pill pill-opt">Optional</span></td><td><code>full</code> (default) | <code>redis</code> | <code>mongodb</code> | <code>platform</code> | <code>gateway</code> | <code>none</code></td></tr>
           <tr><td><code>certify_scope</code></td><td><span class="pill pill-opt">Optional</span></td><td><code>full</code> (default) | <code>redis</code> | <code>mongodb</code> | <code>platform</code> | <code>none</code></td></tr>
           <tr><td><code>platform_release</code></td><td><span class="pill pill-opt">Optional</span></td><td>Override Themis's pinned release. Must be set together with <code>platform_packages</code> — setting only one has no effect.</td></tr>
           <tr><td><code>platform_packages</code></td><td><span class="pill pill-opt">Optional</span></td><td>List of RPM URLs or <code>file://</code> paths. Get exact JFrog URLs with: <code>scripts/pull-platform-rpms.sh --version X.Y.Z --list</code></td></tr>
           <tr><td><code>gateway_release</code></td><td><span class="pill pill-opt">Optional</span></td><td>Gateway version string (e.g. <code>"4.4"</code>). If unset, Gateway deploy is skipped even when <code>deployment_scope: full</code>.</td></tr>
-          <tr><td><code>gateway_whl_file</code></td><td><span class="pill pill-opt">Optional</span></td><td>Gateway wheel filename, resolved relative to <code>&lt;deployer_repo&gt;/playbooks/files/</code></td></tr>
+          <tr><td><code>gateway_whl_file</code></td><td><span class="pill pill-opt">Optional</span></td><td>Gateway wheel filename, resolved relative to <code>&lt;deployer_repo&gt;/playbooks/files/</code>. The file must exist there — the gateway role hard-fails if it doesn't. If blank and <code>JFROG_TOKEN</code> is set, the skill auto-pulls the <code>.whl</code> from JFrog <code>automation-gateway</code> repo.</td></tr>
           <tr><td><code>artifacts_retention_days</code></td><td><span class="pill pill-opt">Optional</span></td><td>Days to keep old run artifacts (inventory snapshots, PKI, reports). Default: <code>30</code>.</td></tr>
         </tbody>
       </table>
@@ -2408,6 +2429,18 @@ git commit -m "chore: sync platform-skills from upstream"</pre>
       <div class="rule"><div class="rule-text"><strong>Stale tofu state</strong> — before applying, the skill checks each instance in state against AWS (<code>ec2 describe-instances</code>). Any <code>InvalidInstanceID.NotFound</code> entry is automatically removed with <code>tofu state rm</code> before apply — no confirmation needed, the resource is already gone.</div></div>
       <div class="rule"><div class="rule-text"><strong>Gateway deploy skipped when <code>gateway_release</code> is unset</strong> — the deployer role asserts <code>gateway_release</code> is defined before doing anything. The skill checks for this field and skips the gateway playbook if absent, rather than failing the entire deploy.</div></div>
       <div class="rule"><div class="rule-text"><strong>Sentinel certify reports stay remote</strong> — the Sentinel certify report is never fetched to the local reports directory automatically. The skill fetches it via <code>scp</code> from each sentinel host after <code>certify_redis</code> runs, into <code>environments/&lt;arch&gt;/reports/sentinel/</code>.</div></div>
+    </div>
+
+    <h3 style="margin-top:24px;color:var(--pink-soft);">Pre-Run Decision Checklist</h3>
+    <p style="margin:0 0 12px;">Confirm all items before invoking <span class="inline-code">/themis-aws-deploy</span>. Each item maps to a known first-run blocker.</p>
+    <div class="rules" style="grid-template-columns: 1fr;">
+      <div class="rule"><div class="rule-text"><strong>1. AWS account valid + resources exist</strong> — <code>aws sts get-caller-identity --profile &lt;aws_profile&gt;</code> succeeds. If not on <code>pe-team-sbx</code>: key pair and SG exist in target account (<code>aws ec2 describe-key-pairs</code> / <code>describe-security-groups</code>), and <code>AWS_KEY_NAME</code> / <code>AWS_SECURITY_GROUP_IDS</code> / <code>AWS_SUBNET_IDS</code> are set in <code>.env</code>.</div></div>
+      <div class="rule"><div class="rule-text"><strong>2. itential.tls cloned and <code>tls_repo</code> set</strong> — <code>[ -f &lt;tls_repo&gt;/playbooks/gen_ca_cert.yml ]</code> must succeed. A bad path passes every check until Step 4a (after provisioning runs). Clone if missing: <code>git clone git@gitlab.com:itential/platform-engineering/ansible/collections/itential.tls.git</code></div></div>
+      <div class="rule"><div class="rule-text"><strong>3. <code>repository_password</code> resolved</strong> — either paste your <code>JFROG_TOKEN</code> value into <code>run-vars.yml</code>, or leave it blank and ensure <code>JFROG_TOKEN=&lt;value&gt;</code> is in <code>.env</code> for auto-populate. The deployer cannot pull RPMs without this.</div></div>
+      <div class="rule"><div class="rule-text"><strong>4. Platform version decided</strong> — use Themis's pinned default (currently 6.3.4), or set <em>both</em> <code>platform_release</code> and <code>platform_packages</code> in <code>run-vars.yml</code>. Setting only one has no effect — Themis's own group_vars override it. Browse exact JFrog URLs with: <code>scripts/pull-platform-rpms.sh --version X.Y.Z --list</code></div></div>
+      <div class="rule"><div class="rule-text"><strong>5. Gateway decision made</strong> — leave <code>gateway_release</code> commented out to skip (safe default), or set it and ensure either: (a) the <code>.whl</code> file exists at <code>&lt;deployer_repo&gt;/playbooks/files/</code>, or (b) <code>JFROG_TOKEN</code> is in <code>.env</code> for auto-pull from JFrog <code>automation-gateway</code> repo.</div></div>
+      <div class="rule"><div class="rule-text"><strong>6. Required run-vars filled</strong> — <code>architecture</code>, <code>os</code>, <code>themis_root</code>, <code>owner</code>, <code>deployer_repo</code>, <code>tls_repo</code>, <code>aws_profile</code>, <code>ssh_key_path</code> are all set and non-empty in <code>run-vars.yml</code>.</div></div>
+      <div class="rule"><div class="rule-text"><strong>7. Cost acknowledged</strong> — EC2 instances accrue AWS spend until <code>tofu destroy</code> is run. Know how many instances your architecture creates (see Architecture Reference table above) and have a plan to destroy them when done. The skill runs fully autonomously — it will not pause before <code>tofu apply</code>.</div></div>
     </div>
   </div>
 

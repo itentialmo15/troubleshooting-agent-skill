@@ -66,7 +66,12 @@ JIRA_API_TOKEN=...         # for Jira MCP write operations
 GITLAB_TOKEN=...           # GitLab Deploy Token — pull platform-claude-skills (read_repository)
 JFROG_TOKEN=...            # JFrog Identity Token — pull platform RPMs from itential.jfrog.io
                            #   Generate: itential.jfrog.io → User Profile → Generate Identity Token
-                           #   Used by: scripts/pull-platform-rpms.sh, deployer-inventory skill
+                           #   Used by: scripts/pull-platform-rpms.sh, deployer-inventory skill,
+                           #   /themis-aws-deploy (auto-populates repository_password + gateway .whl pull)
+AWS_KEY_NAME=              # EC2 key pair name (non-pe-team-sbx accounts only)
+                           #   Used by: /themis-aws-deploy → auto-generates tfvars-overrides/auto-account.tfvars
+AWS_SECURITY_GROUP_IDS=    # comma-separated SG IDs; must allow SSH (22) inbound (non-pe-team-sbx only)
+AWS_SUBNET_IDS=            # comma-separated subnet IDs, one per AZ — us-east-1a,us-east-1b,us-east-1c (non-pe-team-sbx only)
 ```
 
 Auth tokens are cached in `.auth.json` (gitignored). The orchestrator reuses a token if it is less than 50 minutes old and `platform_url` matches; otherwise it re-authenticates silently.
@@ -170,6 +175,8 @@ or to feed into the Ansible deployer (`platform_packages` in `run-vars.yml`).
 | `GATEWAY-MANAGER` | Gateway Manager RPM | All versions |
 | `INVENTORY-MANAGER` | Inventory Manager | All versions |
 | `SERVICE` | Service Manager app | All versions |
+| `automation-gateway` | IAG4 Python wheel (.whl) | All IAG4 versions |
+| `gateway5` | IAG5 server RPM + client tarball | All IAG5 versions |
 
 ```bash
 scripts/pull-platform-rpms.sh --check                          # verify token
@@ -177,6 +184,8 @@ scripts/pull-platform-rpms.sh --version 6.4.0 --list          # browse without d
 scripts/pull-platform-rpms.sh --version 6.4.0                 # download all P6 components
 scripts/pull-platform-rpms.sh --version 6.4.0 --components platform,config,gateway-manager
 scripts/pull-platform-rpms.sh --version 23.2.1                # auto-routes to legacy repo
+scripts/pull-platform-rpms.sh --version 4.4.46 --components iag4 --list   # browse IAG4 packages
+scripts/pull-platform-rpms.sh --version 1.2.0  --components iag5 --list   # browse IAG5 packages
 ```
 
 RPMs download to `repro/rpms/{VERSION}/` by default (override with `--out-dir`).

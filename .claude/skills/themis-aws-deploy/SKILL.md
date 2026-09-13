@@ -96,7 +96,9 @@ sed 's/\(repository_password:.*\)/repository_password: [REDACTED]/' <SKILL_DIR>/
 ```
 
 **Required fields — stop and tell the user if any are empty:**
-`architecture`, `os`, `themis_root`, `owner`, `deployer_repo`, `tls_repo`, `aws_profile`, `ssh_key_path`, `repository_username`, `repository_password`
+`architecture`, `os`, `themis_root`, `owner`, `deployer_repo`, `tls_repo`, `aws_profile`, `ssh_key_path`
+
+`repository_password` is required by the deployer but may be auto-populated from `.env` — see Step 1a below.
 
 | Key | Used in |
 |-----|---------|
@@ -114,6 +116,93 @@ sed 's/\(repository_password:.*\)/repository_password: [REDACTED]/' <SKILL_DIR>/
 
 All other vars are Ansible deployer vars — distributed to `group_vars/` in Step 4c.
 
+### Step 1a — Auto-populate `repository_password` from JFROG_TOKEN
+
+If `repository_password` is blank in `run-vars.yml`, read `JFROG_TOKEN` from `.env`:
+
+```bash
+JFROG_TOKEN_VAL=$(grep -E '^JFROG_TOKEN=' <REPO_ROOT>/.env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '[:space:]')
+REPO_PWD=$(grep -E '^repository_password:' <SKILL_DIR>/run-vars.yml | head -1 | sed 's/repository_password://;s/#.*//' | tr -d '[:space:]"'"'"')
+```
+
+- If `REPO_PWD` is blank and `JFROG_TOKEN_VAL` is non-empty: use `JFROG_TOKEN_VAL` as `repository_password` when writing `group_vars/all` in Step 4c. The `apply_run_vars.py` script handles this automatically when it detects a blank password and a `JFROG_TOKEN` in `.env`. Print: `==> Auto-populated repository_password from .env JFROG_TOKEN`
+- If both are blank: stop and tell the user `repository_password` must be set in `run-vars.yml` (paste JFROG_TOKEN value) or `JFROG_TOKEN` must be in `.env`.
+
+### Step 1b — AWS Account Override → generate auto-account.tfvars
+
+Read three optional vars from `.env`:
+
+```bash
+AWS_KEY_NAME=$(grep -E '^AWS_KEY_NAME=' <REPO_ROOT>/.env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '[:space:]')
+AWS_SECURITY_GROUP_IDS=$(grep -E '^AWS_SECURITY_GROUP_IDS=' <REPO_ROOT>/.env 2>/dev/null | head -1 | cut -d= -f2-)
+AWS_SUBNET_IDS=$(grep -E '^AWS_SUBNET_IDS=' <REPO_ROOT>/.env 2>/dev/null | head -1 | cut -d= -f2-)
+```
+
+If `AWS_KEY_NAME` is non-empty, generate `<SKILL_DIR>/tfvars-overrides/auto-account.tfvars`:
+
+```bash
+{
+  echo "key_name = \"${AWS_KEY_NAME}\""
+  IFS=',' read -ra _SG_IDS <<< "${AWS_SECURITY_GROUP_IDS}"
+  printf 'vpc_security_group_ids = [%s]\n' \
+    "$(printf '"%s",' "${_SG_IDS[@]}" | sed 's/,$//')"
+  IFS=',' read -ra _SUBNET_IDS <<< "${AWS_SUBNET_IDS}"
+  printf 'subnet_map = { us-east-1a = "%s" us-east-1b = "%s" us-east-1c = "%s" }\n' \
+    "${_SUBNET_IDS[0]:-}" "${_SUBNET_IDS[1]:-}" "${_SUBNET_IDS[2]:-}"
+} > <SKILL_DIR>/tfvars-overrides/auto-account.tfvars
+echo "==> Generated auto-account.tfvars from .env AWS overrides"
+```
+
+Record whether this file was generated — Step 3 appends it as a `-var-file` to tofu plan/apply/destroy if it exists.
+
+If `AWS_KEY_NAME` is empty: skip silently (default `pe-team-sbx` networking applies).
+
+### Step 1c — IAG4 Gateway Package Auto-pull
+
+If `gateway_release` is set in `run-vars.yml`:
+
+```bash
+GW_RELEASE=$(grep -E '^gateway_release:' <SKILL_DIR>/run-vars.yml | head -1 | sed 's/gateway_release://;s/#.*//' | tr -d '[:space:]"'"'"')
+GW_WHL=$(grep -E '^gateway_whl_file:' <SKILL_DIR>/run-vars.yml | head -1 | sed 's/gateway_whl_file://;s/#.*//' | tr -d '[:space:]"'"'"')
+```
+
+If `GW_RELEASE` is non-empty AND (`GW_WHL` is empty OR the file doesn't exist at `<deployer_repo>/playbooks/files/<GW_WHL>`):
+- If `JFROG_TOKEN_VAL` is available (from Step 1a): run AQL search on `automation-gateway` repo for `*${GW_RELEASE}*`, download the first `.whl` match to `<deployer_repo>/playbooks/files/`, and record the downloaded filename as `GW_WHL_ACTUAL` for Step 5's gateway role. Print: `==> Downloaded gateway .whl from JFrog: <filename>`
+- If `JFROG_TOKEN_VAL` is not available: stop and tell the user the `.whl` is missing and JFROG_TOKEN is required to auto-pull it, or they must manually place the file at `<deployer_repo>/playbooks/files/<gateway_whl_file>`.
+
+```bash
+# AQL search for gateway .whl
+JFROG_BASE="https://itential.jfrog.io/artifactory"
+AQL_RESULT=$(curl -sf \
+  -H "Authorization: Bearer ${JFROG_TOKEN_VAL}" \
+  -H "Content-Type: text/plain" \
+  --data "items.find({\"repo\":\"automation-gateway\",\"name\":{\"\$match\":\"*${GW_RELEASE}*.whl\"},\"type\":\"file\"})" \
+  "${JFROG_BASE}/api/search/aql" 2>/dev/null)
+
+WHL_PATH=$(echo "${AQL_RESULT}" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+r = data.get('results', [])
+if r:
+    path = r[0].get('path', '').lstrip('/')
+    name = r[0]['name']
+    print((path + '/' + name).lstrip('/'))
+" 2>/dev/null)
+
+if [[ -n "${WHL_PATH}" ]]; then
+  WHL_FILENAME=$(basename "${WHL_PATH}")
+  curl -fL \
+    -H "Authorization: Bearer ${JFROG_TOKEN_VAL}" \
+    -o "<deployer_repo>/playbooks/files/${WHL_FILENAME}" \
+    "${JFROG_BASE}/automation-gateway/${WHL_PATH}"
+  echo "==> Downloaded gateway .whl from JFrog: ${WHL_FILENAME}"
+  GW_WHL_ACTUAL="${WHL_FILENAME}"
+else
+  echo "Error: no .whl found in automation-gateway for version '${GW_RELEASE}'" >&2
+  exit 2
+fi
+```
+
 ---
 
 ## Step 2 — Pre-flight Checks
@@ -128,6 +217,34 @@ ansible-galaxy collection list | grep itential.deployer
 ansible-galaxy collection list | grep itential.tls
 ansible-galaxy collection list | grep community.crypto
 ```
+
+**If `auto-account.tfvars` was generated in Step 1b**, verify the AWS resources exist in your account:
+
+```bash
+# Verify key pair
+aws ec2 describe-key-pairs \
+  --key-names "${AWS_KEY_NAME}" \
+  --profile <aws_profile> \
+  --query 'KeyPairs[0].KeyName' --output text
+
+# Verify each security group
+for sg_id in $(echo "${AWS_SECURITY_GROUP_IDS}" | tr ',' ' '); do
+  aws ec2 describe-security-groups \
+    --group-ids "${sg_id}" \
+    --profile <aws_profile> \
+    --query 'SecurityGroups[0].{Id:GroupId,Name:GroupName}' --output table
+done
+```
+
+If either check returns `None` or an error, stop and tell the user the resource doesn't exist in their account.
+
+**Gateway `.whl` check** (only if `gateway_release` is set AND `JFROG_TOKEN` was not available in Step 1c):
+
+```bash
+ls <deployer_repo>/playbooks/files/*.whl
+```
+
+If missing and no JFROG_TOKEN: stop and surface the error from Step 1c before proceeding.
 
 **Also verify `themis_root`, `deployer_repo`, and `tls_repo` are real, correct checkouts — do this before Local Collections Setup, and always before Step 3.** None of the checks above catch a missing or wrong path in these three, and unlike the others, a bad `deployer_repo`/`tls_repo` does not fail fast: `deployer_repo` is only ever referenced through a symlink (Local Collections Setup), which succeeds even when dangling, so a bad path silently passes every step until Step 5's first `ansible-playbook itential.deployer.*` call — by which point Step 3 (provision), Step 3a (wait for SSH), and Step 4/4a (inventory + TLS cert generation against the live hosts) have already run. A bad `tls_repo` fails one step earlier, at Step 4a's `cd <tls_repo>` — still after Step 3 has provisioned real AWS instances. Confirmed live 2026-09-09.
 
@@ -218,6 +335,12 @@ Do this automatically whenever an existing deployment should be preserved — no
 | `ha2` | `-var-file=<SKILL_DIR>/tfvars-overrides/ha2-with-gateway.tfvars` |
 | `asa` | `-var-file=<SKILL_DIR>/tfvars-overrides/asa-with-gateway.tfvars` (adds 2 gateway VMs, one per site) |
 
+**`<ACCOUNT_TFVARS>`:** if `auto-account.tfvars` was generated in Step 1b, set:
+```
+<ACCOUNT_TFVARS> = -var-file=<SKILL_DIR>/tfvars-overrides/auto-account.tfvars
+```
+Otherwise leave `<ACCOUNT_TFVARS>` empty. Include it in every tofu plan/apply/destroy call below.
+
 ```bash
 cd <themis_root>/vms/aws
 
@@ -227,6 +350,7 @@ tofu plan \
   -var-file=tfvars/<architecture>.tfvars \
   <GATEWAY_TFVARS> \
   -var-file=tfvars/<os_tfvars>.tfvars \
+  <ACCOUNT_TFVARS> \
   -var owner=<owner>
 ```
 
@@ -239,6 +363,7 @@ tofu apply \
   -var-file=tfvars/<architecture>.tfvars \
   <GATEWAY_TFVARS> \
   -var-file=tfvars/<os_tfvars>.tfvars \
+  <ACCOUNT_TFVARS> \
   -var owner=<owner> \
   -parallelism=20 \
   -auto-approve
@@ -563,6 +688,7 @@ tofu destroy \
   -var-file=tfvars/<architecture>.tfvars \
   <GATEWAY_TFVARS> \
   -var-file=tfvars/<os_tfvars>.tfvars \
+  <ACCOUNT_TFVARS> \
   -var owner=<owner> \
   -auto-approve
 ```
