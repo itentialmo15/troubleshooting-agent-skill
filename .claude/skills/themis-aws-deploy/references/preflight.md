@@ -48,12 +48,22 @@ aws sso login --profile pe-team-sbx
 aws sts get-caller-identity --profile pe-team-sbx
 ```
 
-**Custom account path:** Add these three vars to `.env` (gitignored, per-engineer).
-The skill reads them at Step 1 and generates `tfvars-overrides/auto-account.tfvars`:
+**Custom account path:** Add these vars to `.env` (gitignored, per-engineer).
+Step 1b runs `scripts/generate_account_tfvars.py` to turn them into `auto-account.tfvars`:
 ```bash
-AWS_KEY_NAME=your-ec2-key-pair-name        # key pair that exists in your account+region
+# Required for non-pe-team-sbx accounts:
+AWS_KEY_NAME=your-ec2-key-pair-name
 AWS_SECURITY_GROUP_IDS=sg-xxxxxxxxxxxx     # comma-separated; must allow SSH (22) inbound
-AWS_SUBNET_IDS=subnet-aaa,subnet-bbb,subnet-ccc  # one per AZ (us-east-1a/b/c)
+AWS_SUBNET_IDS=subnet-aaa,subnet-bbb,subnet-ccc  # three subnets → public-1a/b/c aliases
+
+# Optional — only needed if deploying outside us-east-1:
+AWS_REGION=us-west-2
+
+# Optional — right-size instances per role (all default to t3.medium):
+AWS_INSTANCE_TYPE_PLATFORM=t3.large
+AWS_INSTANCE_TYPE_REDIS=t3.medium
+AWS_INSTANCE_TYPE_MONGODB=t3.medium
+AWS_INSTANCE_TYPE_GATEWAY=t3.medium
 ```
 
 Engineers on `pe-team-sbx` add nothing — the SG/subnet/key defaults already exist in that account.

@@ -130,32 +130,34 @@ REPO_PWD=$(grep -E '^repository_password:' <SKILL_DIR>/run-vars.yml | head -1 | 
 
 ### Step 1b — AWS Account Override → generate auto-account.tfvars
 
-Read three optional vars from `.env`:
+Run `scripts/generate_account_tfvars.py`. It reads all AWS override vars from `.env` (region,
+key name, security groups, subnets, instance types) and the `aws_profile` from `run-vars.yml`,
+then writes a valid HCL `auto-account.tfvars` that is applied after the architecture and OS
+tfvars in every tofu command. If no overrides are present, it removes any stale file.
 
 ```bash
-AWS_KEY_NAME=$(grep -E '^AWS_KEY_NAME=' <REPO_ROOT>/.env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '[:space:]')
-AWS_SECURITY_GROUP_IDS=$(grep -E '^AWS_SECURITY_GROUP_IDS=' <REPO_ROOT>/.env 2>/dev/null | head -1 | cut -d= -f2-)
-AWS_SUBNET_IDS=$(grep -E '^AWS_SUBNET_IDS=' <REPO_ROOT>/.env 2>/dev/null | head -1 | cut -d= -f2-)
+<SKILL_DIR>/.venv/bin/python3 <SKILL_DIR>/scripts/generate_account_tfvars.py \
+  --env-file    <REPO_ROOT>/.env \
+  --run-vars    <SKILL_DIR>/run-vars.yml \
+  --arch-tfvars <themis_root>/vms/aws/tfvars/<architecture>.tfvars \
+  --output      <SKILL_DIR>/tfvars-overrides/auto-account.tfvars
 ```
 
-If `AWS_KEY_NAME` is non-empty, generate `<SKILL_DIR>/tfvars-overrides/auto-account.tfvars`:
+**What it generates (from .env):**
 
-```bash
-{
-  echo "key_name = \"${AWS_KEY_NAME}\""
-  IFS=',' read -ra _SG_IDS <<< "${AWS_SECURITY_GROUP_IDS}"
-  printf 'vpc_security_group_ids = [%s]\n' \
-    "$(printf '"%s",' "${_SG_IDS[@]}" | sed 's/,$//')"
-  IFS=',' read -ra _SUBNET_IDS <<< "${AWS_SUBNET_IDS}"
-  printf 'subnet_map = { us-east-1a = "%s" us-east-1b = "%s" us-east-1c = "%s" }\n' \
-    "${_SUBNET_IDS[0]:-}" "${_SUBNET_IDS[1]:-}" "${_SUBNET_IDS[2]:-}"
-} > <SKILL_DIR>/tfvars-overrides/auto-account.tfvars
-echo "==> Generated auto-account.tfvars from .env AWS overrides"
-```
+| `.env` key | HCL variable written | Notes |
+|---|---|---|
+| `AWS_REGION` | `region` | Default `us-east-1` stays if unset |
+| `aws_profile` (run-vars.yml) | `profile` | Only written if ≠ `pe-team-sbx` |
+| `AWS_KEY_NAME` | `key_name` | EC2 key pair name |
+| `AWS_SECURITY_GROUP_IDS` | `default_security_group_ids` | Comma-separated list |
+| `AWS_SUBNET_IDS` | `subnet_map` + `default_subnet` | Maps to `public-1a/b/c` aliases; default subnet = `public-1a` (override with `AWS_DEFAULT_SUBNET`) |
+| `AWS_INSTANCE_TYPE_PLATFORM` | `instances[name=platform*]` | Rewrites full instances list with role-specific types |
+| `AWS_INSTANCE_TYPE_REDIS` | `instances[name=redis*]` | Same |
+| `AWS_INSTANCE_TYPE_MONGODB` | `instances[name=mongo*]` | Same |
+| `AWS_INSTANCE_TYPE_GATEWAY` | `instances[name=gateway*]` | Same |
 
-Record whether this file was generated — Step 3 appends it as a `-var-file` to tofu plan/apply/destroy if it exists.
-
-If `AWS_KEY_NAME` is empty: skip silently (default `pe-team-sbx` networking applies).
+Record whether `auto-account.tfvars` was written — Step 3 includes it as `<ACCOUNT_TFVARS>` in all tofu commands if it exists.
 
 ### Step 1c — IAG4 Gateway Package Auto-pull
 
@@ -341,6 +343,21 @@ Do this automatically whenever an existing deployment should be preserved — no
 ```
 Otherwise leave `<ACCOUNT_TFVARS>` empty. Include it in every tofu plan/apply/destroy call below.
 
+**Gateway VMs:** all current Themis base tfvars already include gateway VMs. Do NOT apply any
+`tfvars-overrides/*-with-gateway.tfvars` file by default — they were written for older Themis
+branches that lacked gateway in the base tfvars and are now redundant or use outdated instance
+naming. Only apply them if `DEPLOY_GATEWAY_TFVARS=true` is explicitly set in `.env`.
+
+```bash
+DEPLOY_GW_TFVARS=$(grep -E '^DEPLOY_GATEWAY_TFVARS=' <REPO_ROOT>/.env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '[:space:]')
+if [[ "${DEPLOY_GW_TFVARS}" == "true" ]]; then
+  # Legacy Themis only — check tfvars-overrides/<architecture>-with-gateway.tfvars exists
+  GATEWAY_TFVARS_FLAG="-var-file=<SKILL_DIR>/tfvars-overrides/<architecture>-with-gateway.tfvars"
+else
+  GATEWAY_TFVARS_FLAG=""
+fi
+```
+
 ```bash
 cd <themis_root>/vms/aws
 
@@ -348,22 +365,29 @@ tofu init
 
 tofu plan \
   -var-file=tfvars/<architecture>.tfvars \
-  <GATEWAY_TFVARS> \
+  ${GATEWAY_TFVARS_FLAG} \
   -var-file=tfvars/<os_tfvars>.tfvars \
   <ACCOUNT_TFVARS> \
+  -var profile=<aws_profile> \
   -var owner=<owner>
 ```
 
+**Note on `-var profile=<aws_profile>`:** this overrides Themis's hardcoded `profile = "pe-team-sbx"`
+in `terraform.tfvars`, ensuring tofu uses the correct AWS account regardless of what's in the
+vendor file. `auto-account.tfvars` also sets `profile` when `aws_profile ≠ pe-team-sbx` — the
+direct `-var` flag is a belt-and-suspenders safety net.
+
 **Before applying, check for orphaned state:** for every `aws_instance.vm[...]` in `tofu state list`, verify the instance still exists in AWS (`aws ec2 describe-instances --instance-ids <id> --profile <aws_profile>`). If AWS returns `InvalidInstanceID.NotFound`, the state entry is stale (e.g. the instance was terminated outside of tofu) — run `tofu state rm 'aws_instance.vm["<key>"]'` automatically before applying. This is always safe (the resource is already gone) and does not need confirmation.
 
-`-parallelism=20` covers every architecture's instance count in one batch instead of tofu's default of 10 (two batches for `asa`'s 18 hosts):
+`-parallelism=20` covers every architecture's instance count in one batch instead of tofu's default of 10:
 
 ```bash
 tofu apply \
   -var-file=tfvars/<architecture>.tfvars \
-  <GATEWAY_TFVARS> \
+  ${GATEWAY_TFVARS_FLAG} \
   -var-file=tfvars/<os_tfvars>.tfvars \
   <ACCOUNT_TFVARS> \
+  -var profile=<aws_profile> \
   -var owner=<owner> \
   -parallelism=20 \
   -auto-approve
@@ -679,18 +703,22 @@ Skip Steps 3–5. Run Step 6 directly. `<ENV_DIR>/inventory` must exist from a p
 
 ## Destroy
 
-Read `architecture`, `os`, `owner` from `run-vars.yml`. **Pass the same `<GATEWAY_TFVARS>` (see Step 3's table) that was used at apply time** — if it's omitted here and a gateway override VM exists in state, tofu's view of the desired instance set no longer matches what it applied, which is best avoided even though `destroy` targets what's actually in state either way.
+Read `architecture`, `os`, `owner`, `aws_profile` from `run-vars.yml`. Pass the same
+`${GATEWAY_TFVARS_FLAG}` that was used at apply time — if `DEPLOY_GATEWAY_TFVARS` was true at
+provision time, it must also be true at destroy time, or tofu's desired-state view won't match
+what it applied.
 
 ```bash
 cd <themis_root>/vms/aws
 
 tofu destroy \
   -var-file=tfvars/<architecture>.tfvars \
-  <GATEWAY_TFVARS> \
+  ${GATEWAY_TFVARS_FLAG} \
   -var-file=tfvars/<os_tfvars>.tfvars \
   <ACCOUNT_TFVARS> \
+  -var profile=<aws_profile> \
   -var owner=<owner> \
   -auto-approve
 ```
 
-> ⚠️ Always pass `-var owner=<value>` explicitly.
+> ⚠️ Always pass `-var profile=` and `-var owner=` explicitly.

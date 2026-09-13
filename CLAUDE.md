@@ -68,10 +68,18 @@ JFROG_TOKEN=...            # JFrog Identity Token — pull platform RPMs from it
                            #   Generate: itential.jfrog.io → User Profile → Generate Identity Token
                            #   Used by: scripts/pull-platform-rpms.sh, deployer-inventory skill,
                            #   /themis-aws-deploy (auto-populates repository_password + gateway .whl pull)
+AWS_REGION=                # AWS region (default: us-east-1 from Themis terraform.tfvars)
+                           #   /themis-aws-deploy writes this to auto-account.tfvars
 AWS_KEY_NAME=              # EC2 key pair name (non-pe-team-sbx accounts only)
-                           #   Used by: /themis-aws-deploy → auto-generates tfvars-overrides/auto-account.tfvars
 AWS_SECURITY_GROUP_IDS=    # comma-separated SG IDs; must allow SSH (22) inbound (non-pe-team-sbx only)
-AWS_SUBNET_IDS=            # comma-separated subnet IDs, one per AZ — us-east-1a,us-east-1b,us-east-1c (non-pe-team-sbx only)
+AWS_SUBNET_IDS=            # comma-separated subnet IDs — maps to public-1a/b/c aliases in subnet_map
+AWS_DEFAULT_SUBNET=        # which public-1x alias to use as default_subnet (optional, default: public-1a)
+AWS_INSTANCE_TYPE_PLATFORM=  # instance type for platform nodes (e.g. t3.large); default: t3.medium
+AWS_INSTANCE_TYPE_REDIS=     # instance type for redis nodes; default: t3.medium
+AWS_INSTANCE_TYPE_MONGODB=   # instance type for mongo nodes; default: t3.medium
+AWS_INSTANCE_TYPE_GATEWAY=   # instance type for gateway nodes; default: t3.medium
+DEPLOY_GATEWAY_TFVARS=    # true = apply *-with-gateway.tfvars overrides (legacy Themis only)
+                          #   Current Themis main already includes gateway VMs in base tfvars.
 ```
 
 Auth tokens are cached in `.auth.json` (gitignored). The orchestrator reuses a token if it is less than 50 minutes old and `platform_url` matches; otherwise it re-authenticates silently.

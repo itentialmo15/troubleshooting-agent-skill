@@ -961,7 +961,7 @@ flowchart TD
         </tbody>
       </table>
     </div>
-    <div class="note" style="margin-top:8px;">VM counts include an optional Gateway VM. The <code>aio</code> design colocates the gateway on the single host — no extra VM needed. All other designs add one Gateway VM via a tfvars override when <code>gateway_release</code> is set in <code>run-vars.yml</code>.</div>
+    <div class="note" style="margin-top:8px;">Gateway VMs are included in all four architectures' base Themis tfvars. The <code>aio</code> design colocates the gateway on the single host (no extra VM). Gateway is only <em>deployed</em> when <code>gateway_release</code> is set in <code>run-vars.yml</code>.</div>
 
     <h3 style="margin-top:24px;color:var(--pink-soft);">Step 2 — Configure run-vars.yml</h3>
     <p style="margin:0 0 10px;">Open <span class="inline-code">.claude/skills/themis-aws-deploy/run-vars.yml</span> and fill in the required fields. All fields are commented by default — uncomment what you need.</p>
@@ -2332,14 +2332,21 @@ git commit -m "chore: sync platform-skills from upstream"</pre>
 <span class="cmd">aws sts get-caller-identity --profile pe-team-sbx</span></pre></div>
 
     <p style="margin:10px 0 6px;"><strong>Custom account — add to <code>.env</code>:</strong></p>
-    <div class="code-block"><pre><span class="comment"># EC2 key pair that exists in your account + region (e.g. us-east-1)</span>
+    <div class="code-block"><pre><span class="comment"># Required for non-pe-team-sbx accounts:</span>
 <span class="key">AWS_KEY_NAME</span>=your-ec2-key-pair-name
-<span class="comment"># Comma-separated SG IDs — must allow SSH (22) inbound from your IP</span>
-<span class="key">AWS_SECURITY_GROUP_IDS</span>=sg-xxxxxxxxxxxx,sg-yyyyyyyyyyyy
-<span class="comment"># Comma-separated subnet IDs, one per AZ: us-east-1a, us-east-1b, us-east-1c</span>
-<span class="key">AWS_SUBNET_IDS</span>=subnet-aaa,subnet-bbb,subnet-ccc</pre></div>
+<span class="key">AWS_SECURITY_GROUP_IDS</span>=sg-xxxxxxxxxxxx       <span class="comment"># must allow SSH (22) inbound</span>
+<span class="key">AWS_SUBNET_IDS</span>=subnet-aaa,subnet-bbb,subnet-ccc  <span class="comment"># 3 subnets → public-1a/b/c aliases</span>
 
-    <div class="note" style="margin-top:8px;">Engineers on <code>pe-team-sbx</code> add nothing — the SG, subnets, and key pair defaults already exist in that account. The <code>auto-account.tfvars</code> file is only generated when <code>AWS_KEY_NAME</code> is present in <code>.env</code>.</div>
+<span class="comment"># Optional — only needed outside us-east-1:</span>
+<span class="key">AWS_REGION</span>=us-west-2
+
+<span class="comment"># Optional — right-size VMs per role (all default to t3.medium):</span>
+<span class="key">AWS_INSTANCE_TYPE_PLATFORM</span>=t3.large
+<span class="key">AWS_INSTANCE_TYPE_REDIS</span>=t3.medium
+<span class="key">AWS_INSTANCE_TYPE_MONGODB</span>=t3.medium
+<span class="key">AWS_INSTANCE_TYPE_GATEWAY</span>=t3.medium</pre></div>
+
+    <div class="note" style="margin-top:8px;">Engineers on <code>pe-team-sbx</code> add nothing — the SG, subnets, and key pair defaults already exist in that account. Step 1b runs <code>scripts/generate_account_tfvars.py</code> to convert these into <code>auto-account.tfvars</code>. If no overrides are present, the file is removed and Themis's own <code>terraform.tfvars</code> applies unchanged.</div>
 
     <p style="margin:10px 0 6px;"><strong>Verify resources exist before running:</strong></p>
     <div class="code-block"><pre><span class="cmd">aws ec2 describe-key-pairs --key-names &lt;key_name&gt; --profile &lt;aws_profile&gt;</span>
@@ -2375,12 +2382,12 @@ git commit -m "chore: sync platform-skills from upstream"</pre>
     <h3 style="margin-top:24px;color:var(--pink-soft);">Architecture Reference</h3>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Architecture</th><th>VMs (no gateway)</th><th>VMs (with gateway)</th><th>Host groups</th><th>Est. time (provision→certify)</th></tr></thead>
+        <thead><tr><th>Architecture</th><th>Total VMs</th><th>Host groups</th><th>Est. time (provision→certify)</th></tr></thead>
         <tbody>
-          <tr><td><code>aio</code></td><td>1</td><td>1 (colocated)</td><td>redis_master, mongodb_primary, platform</td><td>~45–70 min</td></tr>
-          <tr><td><code>minimal</code></td><td>3</td><td>4</td><td>redis_master, mongodb_primary, platform</td><td>~57 min</td></tr>
-          <tr><td><code>ha2</code></td><td>8</td><td>9</td><td>redis_master/replica/sentinel (×3), mongodb_primary/replica (×3), platform (×2)</td><td>~44 min</td></tr>
-          <tr><td><code>asa</code></td><td>16</td><td>18</td><td>Full dual-site: redis_master/replica/sentinel, mongodb_primary/replica/arbiter, platform + platform_secondary</td><td>~68 min</td></tr>
+          <tr><td><code>aio</code></td><td>1</td><td>redis_master, mongodb_primary, platform (gateway colocated on same host)</td><td>~45–70 min</td></tr>
+          <tr><td><code>minimal</code></td><td>4 (incl. gateway)</td><td>redis_master, mongodb_primary, platform, gateway</td><td>~57 min</td></tr>
+          <tr><td><code>ha2</code></td><td>9 (incl. gateway)</td><td>redis_master/replica/sentinel (×3), mongodb_primary/replica (×3), platform (×2), gateway</td><td>~44 min</td></tr>
+          <tr><td><code>asa</code></td><td>17 (incl. 2 gateway)</td><td>redis/redis_secondary (×6), mongodb/mongodb_arbiter (×5), platform/platform_secondary (×4), gateway (×2)</td><td>~68 min</td></tr>
         </tbody>
       </table>
     </div>
