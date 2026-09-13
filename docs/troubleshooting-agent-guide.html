@@ -832,7 +832,7 @@ flowchart TD
     <p class="desc">Five steps to go from zero to your first investigation. Each step is a one-time setup — after that, every session is just <span class="inline-code">/troubleshoot ISD-XXXX</span>.</p>
 
     <!-- Prerequisites -->
-    <h3 style="margin-top:20px; margin-bottom:10px;">Prerequisites</h3>
+    <h3 style="margin-top:20px; margin-bottom:10px;">Prerequisites — Troubleshooting &amp; Investigation</h3>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Requirement</th><th>Version</th><th>How to get it</th></tr></thead>
@@ -847,6 +847,26 @@ flowchart TD
       </table>
     </div>
     <div class="note" style="margin-top:10px;"><strong>Docker is not required</strong> to investigate live environments. It is only needed for Phase 3 local reproduction environments — and only when you specifically want to reproduce an issue locally rather than in the customer environment.</div>
+
+    <h3 style="margin-top:28px; margin-bottom:10px;">Prerequisites — Building a Reproduction Environment <span style="font-size:11px;font-weight:500;color:var(--muted);margin-left:8px;">(Themis / AWS deploy only)</span></h3>
+    <p style="margin:0 0 10px;color:var(--muted);">Only required when provisioning AWS VMs and deploying IAP via the <span class="inline-code">/themis-aws-deploy</span> skill. You do not need any of these to run <span class="inline-code">/troubleshoot</span>.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Requirement</th><th>Version</th><th>How to get it</th></tr></thead>
+        <tbody>
+          <tr><td><strong>OpenTofu</strong> (or Terraform)</td><td>1.6+</td><td><code>tofu version</code> to check; install from <a href="https://opentofu.org/docs/intro/install/" style="color:#f26bac">opentofu.org</a>. <code>terraform</code> works as a fallback — commands are identical.</td></tr>
+          <tr><td><strong>Ansible</strong></td><td>2.13+</td><td><code>ansible --version</code> to check; <code>pip install ansible</code> to install</td></tr>
+          <tr><td><strong>Python 3</strong></td><td>3.8+</td><td><code>python3 --version</code> to check; install via system package manager or <a href="https://python.org" style="color:#f26bac">python.org</a></td></tr>
+          <tr><td><strong>AWS CLI + profile</strong></td><td>v2</td><td><code>aws sts get-caller-identity --profile pe-team-sbx</code> to check. If expired: <code>aws sso login --profile pe-team-sbx</code>. Profile must be in <code>~/.aws/config</code>.</td></tr>
+          <tr><td><strong>SSH key (EC2 access)</strong></td><td>—</td><td>Obtain <code>pet-east1.open.pem</code> from your team. Place in <code>~/.ssh/</code> and <code>chmod 400 ~/.ssh/pet-east1.open.pem</code>. Without this, Ansible cannot connect to provisioned instances.</td></tr>
+          <tr><td><strong>Themis repo checkout</strong></td><td>—</td><td><code>git clone git@gitlab.com:itential/platform-engineering/themis.git</code>. Set <code>themis_root</code> in <code>run-vars.yml</code>. Verify with: <code>[ -f &lt;path&gt;/scripts/generate_inventory.py ] &amp;&amp; echo OK</code></td></tr>
+          <tr><td><strong>itential.deployer checkout</strong></td><td>—</td><td><code>git clone git@github.com:itential/itential.deployer.git</code>. Set <code>deployer_repo</code> in <code>run-vars.yml</code>. Verify with: <code>[ -d &lt;path&gt;/roles/platform ] &amp;&amp; echo OK</code></td></tr>
+          <tr><td><strong>itential.tls checkout</strong></td><td>—</td><td><code>git clone git@gitlab.com:itential/platform-engineering/ansible/collections/itential.tls.git</code>. Set <code>tls_repo</code> in <code>run-vars.yml</code>. Verify with: <code>[ -f &lt;path&gt;/playbooks/gen_ca_cert.yml ] &amp;&amp; echo OK</code></td></tr>
+          <tr><td><strong>JFROG_TOKEN</strong></td><td>—</td><td>Generate at <code>itential.jfrog.io → User Profile → Generate Identity Token</code>. Needed only if supplying RPM URLs (rather than Themis's pinned defaults) — verify with <code>scripts/pull-platform-rpms.sh --check</code>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="danger" style="margin-top:12px;"><strong>Verify repo paths before provisioning.</strong> A bad <code>deployer_repo</code> or <code>tls_repo</code> path does not fail immediately — the symlink succeeds even when dangling. The first failure surfaces only at Step 5 (Ansible deploy), after AWS instances are already provisioned and running. Always run the path-verify checks above before invoking <code>/themis-aws-deploy</code>.</div>
 
     <!-- Step 1: Install Claude Code -->
     <h3 style="margin-top:28px; margin-bottom:10px;"><span style="color:#ec1e7f">Step 1</span> — Install Claude Code</h3>
@@ -919,6 +939,78 @@ flowchart TD
     </div>
 
     <div class="warning" style="margin-top:20px;"><strong>Priority Mismatch Detection:</strong> If the agent detects that a low-priority ticket (P3/P4) contains language indicating a production outage, blocked team, or time-critical deadline — it escalates to senior management <em>before</em> investigation begins (Phase 1 Step 1f), not after. This is intentional and by design.</div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Building a Reproduction Environment -->
+  <div class="section">
+    <div class="section-label">Reproduction Environments</div>
+    <h2>Building a Reproduction Environment</h2>
+    <p class="desc">When Phase 3 requires a full environment to reproduce an issue — not just Docker — the <span class="inline-code">/themis-aws-deploy</span> skill provisions AWS EC2 instances and runs the complete Ansible deployer pipeline end-to-end. Invoke it once <span class="inline-code">run-vars.yml</span> is filled in; the rest is autonomous.</p>
+
+    <h3 style="margin-top:20px;color:var(--pink-soft);">Step 1 — Choose your architecture</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Architecture</th><th>VMs</th><th>Stack</th><th>Use case</th><th>Est. time</th></tr></thead>
+        <tbody>
+          <tr><td><code>aio</code></td><td>1</td><td>Redis + MongoDB + Platform on one host</td><td>POC / quick dev repro / feature testing</td><td>~45–70 min</td></tr>
+          <tr><td><code>minimal</code></td><td>3–4</td><td>Dedicated Redis, MongoDB, Platform (+ optional Gateway)</td><td>Small-scale repro without HA complexity</td><td>~57 min</td></tr>
+          <tr><td><code>ha2</code></td><td>8–9</td><td>Redis Sentinel (×3), MongoDB ReplicaSet (×3), Platform (×2)</td><td>HA repro — most common for production issues</td><td>~44 min</td></tr>
+          <tr><td><code>asa</code></td><td>16–18</td><td>Dual-site Active/Standby across DC1+DC2+DC3</td><td>Multi-site failover or geo-redundancy issues</td><td>~68 min</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note" style="margin-top:8px;">VM counts include an optional Gateway VM. The <code>aio</code> design colocates the gateway on the single host — no extra VM needed. All other designs add one Gateway VM via a tfvars override when <code>gateway_release</code> is set in <code>run-vars.yml</code>.</div>
+
+    <h3 style="margin-top:24px;color:var(--pink-soft);">Step 2 — Configure run-vars.yml</h3>
+    <p style="margin:0 0 10px;">Open <span class="inline-code">.claude/skills/themis-aws-deploy/run-vars.yml</span> and fill in the required fields. All fields are commented by default — uncomment what you need.</p>
+    <div class="code-block"><pre><span class="comment"># ── Required — must set before invoking /themis-aws-deploy ───</span>
+<span class="key">architecture</span>: <span class="val">ha2</span>                  <span class="comment"># aio | minimal | ha2 | asa</span>
+<span class="key">os</span>: <span class="val">rocky9</span>                        <span class="comment"># rocky8 | rocky9 | rhel8 | rhel9 | al2023 | oracle9</span>
+<span class="key">themis_root</span>: <span class="val">/path/to/themis</span>      <span class="comment"># absolute path to Themis repo checkout</span>
+<span class="key">owner</span>: <span class="val">your-name</span>                  <span class="comment"># AWS resource tag — used in tofu -var owner=</span>
+<span class="key">deployer_repo</span>: <span class="val">/path/to/itential.deployer</span>
+<span class="key">tls_repo</span>: <span class="val">/path/to/itential.tls</span>
+<span class="key">aws_profile</span>: <span class="val">pe-team-sbx</span>         <span class="comment"># AWS CLI profile for EC2 provisioning</span>
+<span class="key">ssh_key_path</span>: <span class="val">~/.ssh/pet-east1.open.pem</span>
+
+<span class="comment"># ── Credentials ───────────────────────────────────────────────</span>
+<span class="key">repository_username</span>: <span class="val">""</span>           <span class="comment"># leave blank — JFrog token auth</span>
+<span class="key">repository_password</span>: <span class="val">""</span>           <span class="comment"># paste JFROG_TOKEN value here</span>
+
+<span class="comment"># ── Scope (default: deploy + certify everything) ──────────────</span>
+<span class="key">deployment_scope</span>: <span class="val">full</span>            <span class="comment"># full | redis | mongodb | platform | gateway | none</span>
+<span class="key">certify_scope</span>: <span class="val">full</span>              <span class="comment"># full | redis | mongodb | platform | none</span>
+
+<span class="comment"># ── Platform release (optional — overrides Themis defaults) ──</span>
+<span class="comment"># platform_release: 6</span>
+<span class="comment"># platform_packages:</span>
+<span class="comment">#   - https://itential.jfrog.io/artifactory/PLATFORM/…/itential-platform-6.4.0-1.noarch.rpm</span>
+<span class="comment">#   # Run: scripts/pull-platform-rpms.sh --version 6.4.0 --list  (to discover paths)</span>
+
+<span class="comment"># ── Gateway (optional) ─────────────────────────────────────────</span>
+<span class="comment"># gateway_release: "4.4"</span>
+<span class="comment"># gateway_whl_file: automation_gateway-4.4.46-py3-none-any.whl</span></pre></div>
+
+    <h3 style="margin-top:24px;color:var(--pink-soft);">Step 3 — Invoke the skill</h3>
+    <div class="code-block"><pre><span class="cmd">/themis-aws-deploy</span></pre></div>
+    <p style="margin:8px 0 0;">Claude reads <span class="inline-code">run-vars.yml</span>, runs pre-flight checks, then executes the full pipeline end-to-end without pausing: <strong>Provision → Wait for SSH → Inventory → TLS → Deploy → Certify</strong>. It only stops if a required field is missing or a deploy task fails.</p>
+
+    <h3 style="margin-top:24px;color:var(--pink-soft);">Step 4 — Review certify reports</h3>
+    <p style="margin:0 0 8px;">After the pipeline completes, Claude prints a per-component verdict (<strong>PASSED / FAILED / WARNING</strong>) and the full path to each certify report. Reports are also saved to:</p>
+    <div class="code-block"><pre>.claude/skills/themis-aws-deploy/artifacts/&lt;architecture&gt;/&lt;timestamp&gt;/reports/</pre></div>
+
+    <h3 style="margin-top:24px;color:var(--pink-soft);">Other operations</h3>
+    <div class="rules" style="grid-template-columns: 1fr;">
+      <div class="rule"><div class="rule-text"><strong>Deploy only (skip certify)</strong> — set <span class="inline-code">certify_scope: none</span> in <span class="inline-code">run-vars.yml</span> before invoking.</div></div>
+      <div class="rule"><div class="rule-text"><strong>Single component</strong> — set <span class="inline-code">deployment_scope: redis</span> (or <code>mongodb</code>, <code>platform</code>, <code>gateway</code>) to re-deploy just one component against an existing inventory.</div></div>
+      <div class="rule"><div class="rule-text"><strong>Re-certify only</strong> — set <span class="inline-code">deployment_scope: none</span>. Runs certify against the existing inventory without touching the running VMs.</div></div>
+      <div class="rule"><div class="rule-text"><strong>Tear down</strong> — ask Claude to run <span class="inline-code">tofu destroy</span> from the Themis repo. Always pass the same <span class="inline-code">owner</span> and tfvars that were used at apply time.</div></div>
+      <div class="rule"><div class="rule-text"><strong>Test all 4 architectures in parallel</strong> — Claude can use <span class="inline-code">scripts/test_all_environments.py</span> to provision and deploy all architectures simultaneously, each in its own AWS workspace. Useful for deployer release validation. See Admin Guide → Environment Build Setup for details.</div></div>
+    </div>
+
+    <div class="note" style="margin-top:16px;border-color:var(--c-blue-border);"><strong>Inventory generation only?</strong> Use <span class="inline-code">/deployer-inventory</span> if you already have VMs and just need an <span class="inline-code">itential.deployer</span> Ansible inventory YAML. It supports all 4 topologies and the new <span class="inline-code">itential.iag5</span> gateway topology — no AWS provisioning required.</div>
   </div>
 
   <hr class="section-divider" />
@@ -2195,6 +2287,127 @@ git commit -m "chore: sync platform-skills from upstream"</pre>
       <div class="rule"><div class="rule-text">
         <strong>Deployer integration</strong> — pre-downloaded RPM paths can be supplied as <span class="inline-code">platform_packages: file:///path/to/rpm</span> in <span class="inline-code">run-vars.yml</span> so the Ansible deployer nodes do not need direct JFrog access. See <span class="inline-code">/themis-aws-deploy</span> skill.
       </div></div>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Themis / Environment Build Setup -->
+  <div class="section">
+    <div class="section-label">Environment Build</div>
+    <h2>Environment Build Setup — Themis AWS Deploy</h2>
+    <p class="desc">The <span class="inline-code">/themis-aws-deploy</span> skill provisions AWS EC2 instances and deploys Itential Platform end-to-end using OpenTofu + the <span class="inline-code">itential.deployer</span> Ansible collection. This section covers the one-time setup an engineer needs before the skill can run.</p>
+
+    <h3 style="margin-top:20px;color:var(--pink-soft);">Required Repos — Clone Once</h3>
+    <p style="margin:0 0 10px;">Three repos must be checked out locally. The skill uses them via symlinks — they are never installed globally.</p>
+    <div class="code-block"><pre><span class="comment"># 1. Themis — OpenTofu configs + inventory generator</span>
+<span class="cmd">git clone git@gitlab.com:itential/platform-engineering/themis.git</span>
+
+<span class="comment"># 2. itential.deployer — Ansible collection (Redis / MongoDB / Platform / Gateway roles)</span>
+<span class="cmd">git clone git@github.com:itential/itential.deployer.git</span>
+
+<span class="comment"># 3. itential.tls — TLS certificate generation playbooks</span>
+<span class="cmd">git clone git@gitlab.com:itential/platform-engineering/ansible/collections/itential.tls.git</span></pre></div>
+    <div class="warning" style="margin-top:8px;"><strong>Verify all three paths before the first run.</strong> A bad <code>deployer_repo</code> or <code>tls_repo</code> passes every check silently — the symlink works even when the path is wrong. The failure only surfaces at Step 5 (Ansible playbook), after AWS instances are already provisioned. Run the path checks in Step 2 of SKILL.md before invoking the skill.</div>
+
+    <h3 style="margin-top:24px;color:var(--pink-soft);">Required Tools</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Tool</th><th>Min version</th><th>Check</th><th>Install</th></tr></thead>
+        <tbody>
+          <tr><td><strong>OpenTofu</strong> (or Terraform)</td><td>1.6</td><td><code>tofu version</code></td><td><a href="https://opentofu.org/docs/intro/install/" style="color:#f26bac">opentofu.org</a> — <code>terraform</code> works as fallback</td></tr>
+          <tr><td><strong>Ansible</strong></td><td>2.13</td><td><code>ansible --version</code></td><td><code>pip install ansible</code></td></tr>
+          <tr><td><strong>Python 3</strong></td><td>3.8</td><td><code>python3 --version</code></td><td>System package manager or <a href="https://python.org" style="color:#f26bac">python.org</a></td></tr>
+          <tr><td><strong>AWS CLI</strong></td><td>v2</td><td><code>aws sts get-caller-identity --profile pe-team-sbx</code></td><td>If expired: <code>aws sso login --profile pe-team-sbx</code></td></tr>
+          <tr><td><strong>SSH key</strong></td><td>—</td><td><code>ls -la ~/.ssh/pet-east1.open.pem</code></td><td>Obtain from team; <code>chmod 400 ~/.ssh/pet-east1.open.pem</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:24px;color:var(--pink-soft);">run-vars.yml — Complete Field Reference</h3>
+    <p style="margin:0 0 10px;">All runtime configuration lives in <span class="inline-code">.claude/skills/themis-aws-deploy/run-vars.yml</span>. Edit before every run — or per environment when running multiple in parallel.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Field</th><th>Required</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>architecture</code></td><td><span class="pill pill-req">Required</span></td><td><code>aio</code> | <code>minimal</code> | <code>ha2</code> | <code>asa</code> — drives tofu tfvars and inventory generation</td></tr>
+          <tr><td><code>os</code></td><td><span class="pill pill-req">Required</span></td><td><code>rocky8</code> | <code>rocky9</code> | <code>rhel8</code> | <code>rhel9</code> | <code>al2023</code> | <code>oracle9</code></td></tr>
+          <tr><td><code>themis_root</code></td><td><span class="pill pill-req">Required</span></td><td>Absolute path to the Themis repo checkout</td></tr>
+          <tr><td><code>owner</code></td><td><span class="pill pill-req">Required</span></td><td>AWS resource owner tag — passed as <code>-var owner=</code> to tofu</td></tr>
+          <tr><td><code>deployer_repo</code></td><td><span class="pill pill-req">Required</span></td><td>Absolute path to <code>itential.deployer</code> checkout — symlinked into local collections</td></tr>
+          <tr><td><code>tls_repo</code></td><td><span class="pill pill-req">Required</span></td><td>Absolute path to <code>itential.tls</code> checkout — symlinked into local collections</td></tr>
+          <tr><td><code>aws_profile</code></td><td><span class="pill pill-req">Required</span></td><td>AWS CLI profile for EC2 provisioning; default: <code>pe-team-sbx</code></td></tr>
+          <tr><td><code>ssh_key_path</code></td><td><span class="pill pill-req">Required</span></td><td>Path to SSH private key for EC2 access — injected as <code>ansible_ssh_private_key_file</code></td></tr>
+          <tr><td><code>repository_username</code></td><td><span class="pill pill-req">Required</span></td><td>Leave blank (<code>""</code>) — JFrog token auth does not use a username</td></tr>
+          <tr><td><code>repository_password</code></td><td><span class="pill pill-req">Required</span></td><td><code>JFROG_TOKEN</code> value — JFrog Identity Token for RPM downloads during deploy</td></tr>
+          <tr><td><code>deployment_scope</code></td><td><span class="pill pill-opt">Optional</span></td><td><code>full</code> (default) | <code>redis</code> | <code>mongodb</code> | <code>platform</code> | <code>gateway</code> | <code>none</code></td></tr>
+          <tr><td><code>certify_scope</code></td><td><span class="pill pill-opt">Optional</span></td><td><code>full</code> (default) | <code>redis</code> | <code>mongodb</code> | <code>platform</code> | <code>none</code></td></tr>
+          <tr><td><code>platform_release</code></td><td><span class="pill pill-opt">Optional</span></td><td>Override Themis's pinned release. Must be set together with <code>platform_packages</code> — setting only one has no effect.</td></tr>
+          <tr><td><code>platform_packages</code></td><td><span class="pill pill-opt">Optional</span></td><td>List of RPM URLs or <code>file://</code> paths. Get exact JFrog URLs with: <code>scripts/pull-platform-rpms.sh --version X.Y.Z --list</code></td></tr>
+          <tr><td><code>gateway_release</code></td><td><span class="pill pill-opt">Optional</span></td><td>Gateway version string (e.g. <code>"4.4"</code>). If unset, Gateway deploy is skipped even when <code>deployment_scope: full</code>.</td></tr>
+          <tr><td><code>gateway_whl_file</code></td><td><span class="pill pill-opt">Optional</span></td><td>Gateway wheel filename, resolved relative to <code>&lt;deployer_repo&gt;/playbooks/files/</code></td></tr>
+          <tr><td><code>artifacts_retention_days</code></td><td><span class="pill pill-opt">Optional</span></td><td>Days to keep old run artifacts (inventory snapshots, PKI, reports). Default: <code>30</code>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:24px;color:var(--pink-soft);">Architecture Reference</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Architecture</th><th>VMs (no gateway)</th><th>VMs (with gateway)</th><th>Host groups</th><th>Est. time (provision→certify)</th></tr></thead>
+        <tbody>
+          <tr><td><code>aio</code></td><td>1</td><td>1 (colocated)</td><td>redis_master, mongodb_primary, platform</td><td>~45–70 min</td></tr>
+          <tr><td><code>minimal</code></td><td>3</td><td>4</td><td>redis_master, mongodb_primary, platform</td><td>~57 min</td></tr>
+          <tr><td><code>ha2</code></td><td>8</td><td>9</td><td>redis_master/replica/sentinel (×3), mongodb_primary/replica (×3), platform (×2)</td><td>~44 min</td></tr>
+          <tr><td><code>asa</code></td><td>16</td><td>18</td><td>Full dual-site: redis_master/replica/sentinel, mongodb_primary/replica/arbiter, platform + platform_secondary</td><td>~68 min</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note" style="margin-top:8px;">Timing measured 2026-08-11 end-to-end on Rocky 9, <code>t3.medium</code>/<code>t3.large</code>, <code>pe-team-sbx</code>. This is real AWS + Ansible latency (cloud-init boot, package installs, TLS cert generation, MongoDB replica-set formation) — not approval waiting. There are zero decision pauses once the skill starts.</div>
+
+    <h3 style="margin-top:24px;color:var(--pink-soft);">Platform RPMs — Configuring platform_packages</h3>
+    <p style="margin:0 0 10px;">Themis pins <code>platform_release</code> and <code>platform_packages</code> to a fixed version in its own group_vars. To deploy a different version, you must override <em>both</em> in <code>run-vars.yml</code>.</p>
+    <div class="code-block"><pre><span class="comment"># 1. Browse JFrog for exact file paths</span>
+<span class="cmd">scripts/pull-platform-rpms.sh</span> --version 6.4.0 --list
+
+<span class="comment"># 2. Set in run-vars.yml:</span>
+<span class="key">platform_release</span>: <span class="val">6</span>
+<span class="key">platform_packages</span>:
+  - <span class="val">https://itential.jfrog.io/artifactory/PLATFORM/&lt;path&gt;/itential-platform-6.4.0-1.noarch.rpm</span>
+  - <span class="val">https://itential.jfrog.io/artifactory/CONFIG/&lt;path&gt;/itential-configuration_manager-6.4.0-1.noarch.rpm</span>
+  - <span class="val">https://itential.jfrog.io/artifactory/GATEWAY-MANAGER/&lt;path&gt;/itential-gateway_manager-1.0.8.noarch.rpm</span>
+  - <span class="val">https://itential.jfrog.io/artifactory/INVENTORY-MANAGER/&lt;path&gt;/itential-inventory-manager-1.0.7.noarch.rpm</span>
+
+<span class="comment"># Alternatively, pre-download and supply local file:// paths:</span>
+<span class="cmd">scripts/pull-platform-rpms.sh</span> --version 6.4.0 --out-dir /tmp/rpms
+<span class="comment"># Then in run-vars.yml:</span>
+<span class="key">platform_packages</span>:
+  - <span class="val">file:///tmp/rpms/itential-platform-6.4.0-1.noarch.rpm</span></pre></div>
+    <div class="note" style="margin-top:8px;">The <code>file://</code> approach is useful when deployer nodes don't have direct JFrog access, or when you've already downloaded the RPMs to a specific version for isolated testing.</div>
+
+    <h3 style="margin-top:24px;color:var(--pink-soft);">Testing All 4 Architectures in Parallel</h3>
+    <p style="margin:0 0 10px;">To validate a deployer release against all architectures simultaneously, use the orchestrator script. Each architecture gets its own tofu workspace and isolated filesystem — one failure does not affect the others.</p>
+    <div class="code-block"><pre><span class="comment"># Pull latest itential.deployer main + test all 4 architectures</span>
+<span class="cmd">.venv/bin/python3 scripts/test_all_environments.py</span> \
+  --skill-dir .claude/skills/themis-aws-deploy \
+  --run-vars .claude/skills/themis-aws-deploy/run-vars.yml \
+  --pull-deployer
+
+<span class="comment"># Test a subset only</span>
+<span class="cmd">.venv/bin/python3 scripts/test_all_environments.py</span> \
+  --skill-dir .claude/skills/themis-aws-deploy \
+  --run-vars .claude/skills/themis-aws-deploy/run-vars.yml \
+  --archs ha2,asa</pre></div>
+    <p style="margin:8px 0 0;color:var(--muted);">Progress per architecture: read <code>environments/&lt;arch&gt;/status.json</code> (phase-by-phase PASSED/FAILED) or tail <code>environments/&lt;arch&gt;/pipeline.log</code>. The orchestrator prints a consolidated pass/fail matrix when all environments finish.</p>
+
+    <h3 style="margin-top:24px;color:var(--pink-soft);">Known Gaps &amp; Auto-Fixes</h3>
+    <div class="rules" style="grid-template-columns: 1fr;">
+      <div class="rule"><div class="rule-text"><strong>No <code>gateway</code> inventory group</strong> — <code>generate_inventory.py</code> never creates a <code>gateway</code> group for any design. The skill fixes this automatically via <code>scripts/fix_gateway_group.py</code>: adds gateway instances from tofu state, or reuses the single AIO host. No manual edit needed.</div></div>
+      <div class="rule"><div class="rule-text"><strong>TLS cert SSH key not injected until Step 4c</strong> — TLS generation (Step 4a) runs before <code>apply_run_vars.py</code> (Step 4c), so <code>ansible_ssh_private_key_file</code> isn't in group_vars yet. The skill always passes <code>-e ansible_ssh_private_key_file=&lt;ssh_key_path&gt;</code> explicitly on TLS playbook calls to avoid auth failures on fresh inventories.</div></div>
+      <div class="rule"><div class="rule-text"><strong>MongoDB replica/arbiter TLS wiring</strong> — <code>mongodb_replica</code> and <code>mongodb_arbiter</code> groups don't inherit vars from sibling groups. The skill writes <code>custom_tls.yml</code> into each group explicitly in Step 4b.</div></div>
+      <div class="rule"><div class="rule-text"><strong>Stale tofu state</strong> — before applying, the skill checks each instance in state against AWS (<code>ec2 describe-instances</code>). Any <code>InvalidInstanceID.NotFound</code> entry is automatically removed with <code>tofu state rm</code> before apply — no confirmation needed, the resource is already gone.</div></div>
+      <div class="rule"><div class="rule-text"><strong>Gateway deploy skipped when <code>gateway_release</code> is unset</strong> — the deployer role asserts <code>gateway_release</code> is defined before doing anything. The skill checks for this field and skips the gateway playbook if absent, rather than failing the entire deploy.</div></div>
+      <div class="rule"><div class="rule-text"><strong>Sentinel certify reports stay remote</strong> — the Sentinel certify report is never fetched to the local reports directory automatically. The skill fetches it via <code>scp</code> from each sentinel host after <code>certify_redis</code> runs, into <code>environments/&lt;arch&gt;/reports/sentinel/</code>.</div></div>
     </div>
   </div>
 
