@@ -49,6 +49,38 @@ if not IS_GIT_CMD:
             print(f"\nCommand that triggered this guard:\n  {cmd[:300]}")
             sys.exit(2)
 
+# ── Service / container restarts ───────────────────────────────────────────
+# Blocked by default, but may proceed if the engineer has given explicit
+# approval in conversation for this specific restart: prefix the command
+# with RESTART_APPROVED=yes to confirm that consent was obtained before
+# re-running. This mirrors the "present the plan, get a clear yes" pattern
+# used elsewhere in this repo, while still requiring a deliberate,
+# non-accidental marker rather than relying on hook access to chat history
+# (which hooks do not have).
+RESTART_PATTERNS = [
+    r"\bdocker(\s+container)?\s+restart\b",
+    r"\bdocker-compose\s+restart\b",
+    r"\bsystemctl\s+restart\b",
+    r"\bservice\s+\S+\s+restart\b",
+    r"\bpm2\s+(restart|reload|stop)\b",
+    r"\bkubectl\s+rollout\s+restart\b",
+    r"\bkubectl\s+delete\s+pod\b",
+]
+if not IS_GIT_CMD:
+    for pattern in RESTART_PATTERNS:
+        if re.search(pattern, cmd, re.IGNORECASE):
+            if re.search(r"\bRESTART_APPROVED=yes\b", cmd):
+                break  # explicit engineer approval given — allow
+            print(
+                "BLOCKED — Service or container restart detected.\n"
+                "Safety rule: Never restart adapters, applications, or containers without\n"
+                "explicit engineer consent. Present the restart plan, wait for a clear\n"
+                "'yes', then re-run this command prefixed with RESTART_APPROVED=yes\n"
+                "to confirm consent was given."
+            )
+            print(f"\nCommand that triggered this guard:\n  {cmd[:300]}")
+            sys.exit(2)
+
 RULES = [
     # ── MongoDB writes ─────────────────────────────────────────────────────
     (
@@ -75,22 +107,6 @@ RULES = [
         "Safety rule: Redis is READ-ONLY during investigations.\n"
         "No SET, DEL, FLUSHDB, or FLUSHALL without explicit engineer approval.",
     ),
-    # ── Service / container restarts ───────────────────────────────────────
-    (
-        [
-            r"\bdocker(\s+container)?\s+restart\b",
-            r"\bdocker-compose\s+restart\b",
-            r"\bsystemctl\s+restart\b",
-            r"\bservice\s+\S+\s+restart\b",
-            r"\bpm2\s+(restart|reload|stop)\b",
-            r"\bkubectl\s+rollout\s+restart\b",
-            r"\bkubectl\s+delete\s+pod\b",
-        ],
-        "BLOCKED — Service or container restart detected.\n"
-        "Safety rule: Never restart adapters, applications, or containers without\n"
-        "explicit engineer consent. Present the restart plan, wait for approval,\n"
-        "then proceed.",
-    ),
     # ── git staging of investigation data ─────────────────────────────────
     (
         [
@@ -104,10 +120,10 @@ RULES = [
     ),
 ]
 
-GIT_STAGING_RULE_INDEX = 3  # index of the git-staging rule in RULES
+GIT_STAGING_RULE_INDEX = 2  # index of the git-staging rule in RULES
 
 for i, (patterns, message) in enumerate(RULES):
-    # Skip MongoDB, Redis, and restart rules for git commands
+    # Skip MongoDB and Redis rules for git commands
     if IS_GIT_CMD and i != GIT_STAGING_RULE_INDEX:
         continue
     for pattern in patterns:
