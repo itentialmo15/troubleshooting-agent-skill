@@ -163,6 +163,13 @@ After running: review `git diff .claude/skills/` and `vendor/platform-skills/SYN
 Other skills in the library (`/deployer-inventory`, `/perf-test-analysis`, `/perflab`,
 `/themis-aws-deploy`) are synced and available but not wired into troubleshooting routing.
 
+> **`/themis-aws-deploy` local extensions:** When executing this skill, Claude must also
+> read `.claude/skills/themis-aws-deploy/LOCAL-EXTENSIONS.md` alongside the vendor SKILL.md.
+> It contains `.env`-based account overrides (AWS region, instance types, SG/subnet IDs),
+> corrected architecture facts (gateway now in base tfvars, flat ASA naming), and extended
+> pre-flight steps. `[OVERRIDE]` sections replace the corresponding vendor instruction;
+> `[INSERT AFTER Step N]` sections add to it. This file is not vendored and survives syncs.
+
 ### JFrog RPM Repository (itential.jfrog.io)
 
 Platform RPMs for on-prem / VM deployments are hosted on JFrog. Use

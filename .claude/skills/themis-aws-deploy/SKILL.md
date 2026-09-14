@@ -96,9 +96,7 @@ sed 's/\(repository_password:.*\)/repository_password: [REDACTED]/' <SKILL_DIR>/
 ```
 
 **Required fields — stop and tell the user if any are empty:**
-`architecture`, `os`, `themis_root`, `owner`, `deployer_repo`, `tls_repo`, `aws_profile`, `ssh_key_path`
-
-`repository_password` is required by the deployer but may be auto-populated from `.env` — see Step 1a below.
+`architecture`, `os`, `themis_root`, `owner`, `deployer_repo`, `tls_repo`, `aws_profile`, `ssh_key_path`, `repository_username`, `repository_password`
 
 | Key | Used in |
 |-----|---------|
@@ -116,95 +114,6 @@ sed 's/\(repository_password:.*\)/repository_password: [REDACTED]/' <SKILL_DIR>/
 
 All other vars are Ansible deployer vars — distributed to `group_vars/` in Step 4c.
 
-### Step 1a — Auto-populate `repository_password` from JFROG_TOKEN
-
-If `repository_password` is blank in `run-vars.yml`, read `JFROG_TOKEN` from `.env`:
-
-```bash
-JFROG_TOKEN_VAL=$(grep -E '^JFROG_TOKEN=' <REPO_ROOT>/.env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '[:space:]')
-REPO_PWD=$(grep -E '^repository_password:' <SKILL_DIR>/run-vars.yml | head -1 | sed 's/repository_password://;s/#.*//' | tr -d '[:space:]"'"'"')
-```
-
-- If `REPO_PWD` is blank and `JFROG_TOKEN_VAL` is non-empty: use `JFROG_TOKEN_VAL` as `repository_password` when writing `group_vars/all` in Step 4c. The `apply_run_vars.py` script handles this automatically when it detects a blank password and a `JFROG_TOKEN` in `.env`. Print: `==> Auto-populated repository_password from .env JFROG_TOKEN`
-- If both are blank: stop and tell the user `repository_password` must be set in `run-vars.yml` (paste JFROG_TOKEN value) or `JFROG_TOKEN` must be in `.env`.
-
-### Step 1b — AWS Account Override → generate auto-account.tfvars
-
-Run `scripts/generate_account_tfvars.py`. It reads all AWS override vars from `.env` (region,
-key name, security groups, subnets, instance types) and the `aws_profile` from `run-vars.yml`,
-then writes a valid HCL `auto-account.tfvars` that is applied after the architecture and OS
-tfvars in every tofu command. If no overrides are present, it removes any stale file.
-
-```bash
-<SKILL_DIR>/.venv/bin/python3 <SKILL_DIR>/scripts/generate_account_tfvars.py \
-  --env-file    <REPO_ROOT>/.env \
-  --run-vars    <SKILL_DIR>/run-vars.yml \
-  --arch-tfvars <themis_root>/vms/aws/tfvars/<architecture>.tfvars \
-  --output      <SKILL_DIR>/tfvars-overrides/auto-account.tfvars
-```
-
-**What it generates (from .env):**
-
-| `.env` key | HCL variable written | Notes |
-|---|---|---|
-| `AWS_REGION` | `region` | Default `us-east-1` stays if unset |
-| `aws_profile` (run-vars.yml) | `profile` | Only written if ≠ `pe-team-sbx` |
-| `AWS_KEY_NAME` | `key_name` | EC2 key pair name |
-| `AWS_SECURITY_GROUP_IDS` | `default_security_group_ids` | Comma-separated list |
-| `AWS_SUBNET_IDS` | `subnet_map` + `default_subnet` | Maps to `public-1a/b/c` aliases; default subnet = `public-1a` (override with `AWS_DEFAULT_SUBNET`) |
-| `AWS_INSTANCE_TYPE_PLATFORM` | `instances[name=platform*]` | Rewrites full instances list with role-specific types |
-| `AWS_INSTANCE_TYPE_REDIS` | `instances[name=redis*]` | Same |
-| `AWS_INSTANCE_TYPE_MONGODB` | `instances[name=mongo*]` | Same |
-| `AWS_INSTANCE_TYPE_GATEWAY` | `instances[name=gateway*]` | Same |
-
-Record whether `auto-account.tfvars` was written — Step 3 includes it as `<ACCOUNT_TFVARS>` in all tofu commands if it exists.
-
-### Step 1c — IAG4 Gateway Package Auto-pull
-
-If `gateway_release` is set in `run-vars.yml`:
-
-```bash
-GW_RELEASE=$(grep -E '^gateway_release:' <SKILL_DIR>/run-vars.yml | head -1 | sed 's/gateway_release://;s/#.*//' | tr -d '[:space:]"'"'"')
-GW_WHL=$(grep -E '^gateway_whl_file:' <SKILL_DIR>/run-vars.yml | head -1 | sed 's/gateway_whl_file://;s/#.*//' | tr -d '[:space:]"'"'"')
-```
-
-If `GW_RELEASE` is non-empty AND (`GW_WHL` is empty OR the file doesn't exist at `<deployer_repo>/playbooks/files/<GW_WHL>`):
-- If `JFROG_TOKEN_VAL` is available (from Step 1a): run AQL search on `automation-gateway` repo for `*${GW_RELEASE}*`, download the first `.whl` match to `<deployer_repo>/playbooks/files/`, and record the downloaded filename as `GW_WHL_ACTUAL` for Step 5's gateway role. Print: `==> Downloaded gateway .whl from JFrog: <filename>`
-- If `JFROG_TOKEN_VAL` is not available: stop and tell the user the `.whl` is missing and JFROG_TOKEN is required to auto-pull it, or they must manually place the file at `<deployer_repo>/playbooks/files/<gateway_whl_file>`.
-
-```bash
-# AQL search for gateway .whl
-JFROG_BASE="https://itential.jfrog.io/artifactory"
-AQL_RESULT=$(curl -sf \
-  -H "Authorization: Bearer ${JFROG_TOKEN_VAL}" \
-  -H "Content-Type: text/plain" \
-  --data "items.find({\"repo\":\"automation-gateway\",\"name\":{\"\$match\":\"*${GW_RELEASE}*.whl\"},\"type\":\"file\"})" \
-  "${JFROG_BASE}/api/search/aql" 2>/dev/null)
-
-WHL_PATH=$(echo "${AQL_RESULT}" | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-r = data.get('results', [])
-if r:
-    path = r[0].get('path', '').lstrip('/')
-    name = r[0]['name']
-    print((path + '/' + name).lstrip('/'))
-" 2>/dev/null)
-
-if [[ -n "${WHL_PATH}" ]]; then
-  WHL_FILENAME=$(basename "${WHL_PATH}")
-  curl -fL \
-    -H "Authorization: Bearer ${JFROG_TOKEN_VAL}" \
-    -o "<deployer_repo>/playbooks/files/${WHL_FILENAME}" \
-    "${JFROG_BASE}/automation-gateway/${WHL_PATH}"
-  echo "==> Downloaded gateway .whl from JFrog: ${WHL_FILENAME}"
-  GW_WHL_ACTUAL="${WHL_FILENAME}"
-else
-  echo "Error: no .whl found in automation-gateway for version '${GW_RELEASE}'" >&2
-  exit 2
-fi
-```
-
 ---
 
 ## Step 2 — Pre-flight Checks
@@ -219,34 +128,6 @@ ansible-galaxy collection list | grep itential.deployer
 ansible-galaxy collection list | grep itential.tls
 ansible-galaxy collection list | grep community.crypto
 ```
-
-**If `auto-account.tfvars` was generated in Step 1b**, verify the AWS resources exist in your account:
-
-```bash
-# Verify key pair
-aws ec2 describe-key-pairs \
-  --key-names "${AWS_KEY_NAME}" \
-  --profile <aws_profile> \
-  --query 'KeyPairs[0].KeyName' --output text
-
-# Verify each security group
-for sg_id in $(echo "${AWS_SECURITY_GROUP_IDS}" | tr ',' ' '); do
-  aws ec2 describe-security-groups \
-    --group-ids "${sg_id}" \
-    --profile <aws_profile> \
-    --query 'SecurityGroups[0].{Id:GroupId,Name:GroupName}' --output table
-done
-```
-
-If either check returns `None` or an error, stop and tell the user the resource doesn't exist in their account.
-
-**Gateway `.whl` check** (only if `gateway_release` is set AND `JFROG_TOKEN` was not available in Step 1c):
-
-```bash
-ls <deployer_repo>/playbooks/files/*.whl
-```
-
-If missing and no JFROG_TOKEN: stop and surface the error from Step 1c before proceeding.
 
 **Also verify `themis_root`, `deployer_repo`, and `tls_repo` are real, correct checkouts — do this before Local Collections Setup, and always before Step 3.** None of the checks above catch a missing or wrong path in these three, and unlike the others, a bad `deployer_repo`/`tls_repo` does not fail fast: `deployer_repo` is only ever referenced through a symlink (Local Collections Setup), which succeeds even when dangling, so a bad path silently passes every step until Step 5's first `ansible-playbook itential.deployer.*` call — by which point Step 3 (provision), Step 3a (wait for SSH), and Step 4/4a (inventory + TLS cert generation against the live hosts) have already run. A bad `tls_repo` fails one step earlier, at Step 4a's `cd <tls_repo>` — still after Step 3 has provisioned real AWS instances. Confirmed live 2026-09-09.
 
@@ -337,27 +218,6 @@ Do this automatically whenever an existing deployment should be preserved — no
 | `ha2` | `-var-file=<SKILL_DIR>/tfvars-overrides/ha2-with-gateway.tfvars` |
 | `asa` | `-var-file=<SKILL_DIR>/tfvars-overrides/asa-with-gateway.tfvars` (adds 2 gateway VMs, one per site) |
 
-**`<ACCOUNT_TFVARS>`:** if `auto-account.tfvars` was generated in Step 1b, set:
-```
-<ACCOUNT_TFVARS> = -var-file=<SKILL_DIR>/tfvars-overrides/auto-account.tfvars
-```
-Otherwise leave `<ACCOUNT_TFVARS>` empty. Include it in every tofu plan/apply/destroy call below.
-
-**Gateway VMs:** all current Themis base tfvars already include gateway VMs. Do NOT apply any
-`tfvars-overrides/*-with-gateway.tfvars` file by default — they were written for older Themis
-branches that lacked gateway in the base tfvars and are now redundant or use outdated instance
-naming. Only apply them if `DEPLOY_GATEWAY_TFVARS=true` is explicitly set in `.env`.
-
-```bash
-DEPLOY_GW_TFVARS=$(grep -E '^DEPLOY_GATEWAY_TFVARS=' <REPO_ROOT>/.env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '[:space:]')
-if [[ "${DEPLOY_GW_TFVARS}" == "true" ]]; then
-  # Legacy Themis only — check tfvars-overrides/<architecture>-with-gateway.tfvars exists
-  GATEWAY_TFVARS_FLAG="-var-file=<SKILL_DIR>/tfvars-overrides/<architecture>-with-gateway.tfvars"
-else
-  GATEWAY_TFVARS_FLAG=""
-fi
-```
-
 ```bash
 cd <themis_root>/vms/aws
 
@@ -365,29 +225,20 @@ tofu init
 
 tofu plan \
   -var-file=tfvars/<architecture>.tfvars \
-  ${GATEWAY_TFVARS_FLAG} \
+  <GATEWAY_TFVARS> \
   -var-file=tfvars/<os_tfvars>.tfvars \
-  <ACCOUNT_TFVARS> \
-  -var profile=<aws_profile> \
   -var owner=<owner>
 ```
 
-**Note on `-var profile=<aws_profile>`:** this overrides Themis's hardcoded `profile = "pe-team-sbx"`
-in `terraform.tfvars`, ensuring tofu uses the correct AWS account regardless of what's in the
-vendor file. `auto-account.tfvars` also sets `profile` when `aws_profile ≠ pe-team-sbx` — the
-direct `-var` flag is a belt-and-suspenders safety net.
-
 **Before applying, check for orphaned state:** for every `aws_instance.vm[...]` in `tofu state list`, verify the instance still exists in AWS (`aws ec2 describe-instances --instance-ids <id> --profile <aws_profile>`). If AWS returns `InvalidInstanceID.NotFound`, the state entry is stale (e.g. the instance was terminated outside of tofu) — run `tofu state rm 'aws_instance.vm["<key>"]'` automatically before applying. This is always safe (the resource is already gone) and does not need confirmation.
 
-`-parallelism=20` covers every architecture's instance count in one batch instead of tofu's default of 10:
+`-parallelism=20` covers every architecture's instance count in one batch instead of tofu's default of 10 (two batches for `asa`'s 18 hosts):
 
 ```bash
 tofu apply \
   -var-file=tfvars/<architecture>.tfvars \
-  ${GATEWAY_TFVARS_FLAG} \
+  <GATEWAY_TFVARS> \
   -var-file=tfvars/<os_tfvars>.tfvars \
-  <ACCOUNT_TFVARS> \
-  -var profile=<aws_profile> \
   -var owner=<owner> \
   -parallelism=20 \
   -auto-approve
@@ -703,22 +554,17 @@ Skip Steps 3–5. Run Step 6 directly. `<ENV_DIR>/inventory` must exist from a p
 
 ## Destroy
 
-Read `architecture`, `os`, `owner`, `aws_profile` from `run-vars.yml`. Pass the same
-`${GATEWAY_TFVARS_FLAG}` that was used at apply time — if `DEPLOY_GATEWAY_TFVARS` was true at
-provision time, it must also be true at destroy time, or tofu's desired-state view won't match
-what it applied.
+Read `architecture`, `os`, `owner` from `run-vars.yml`. **Pass the same `<GATEWAY_TFVARS>` (see Step 3's table) that was used at apply time** — if it's omitted here and a gateway override VM exists in state, tofu's view of the desired instance set no longer matches what it applied, which is best avoided even though `destroy` targets what's actually in state either way.
 
 ```bash
 cd <themis_root>/vms/aws
 
 tofu destroy \
   -var-file=tfvars/<architecture>.tfvars \
-  ${GATEWAY_TFVARS_FLAG} \
+  <GATEWAY_TFVARS> \
   -var-file=tfvars/<os_tfvars>.tfvars \
-  <ACCOUNT_TFVARS> \
-  -var profile=<aws_profile> \
   -var owner=<owner> \
   -auto-approve
 ```
 
-> ⚠️ Always pass `-var profile=` and `-var owner=` explicitly.
+> ⚠️ Always pass `-var owner=<value>` explicitly.

@@ -33,13 +33,8 @@ artifacts_retention_days: 30
 
 
 # ---- Credentials (forwarded to group_vars/all) ----
-# JFrog Identity Token auth (preferred): leave username blank, set password to JFROG_TOKEN from .env.
-# Legacy Nexus auth: set both username and password (for older deployer configs).
 repository_username: ""
-repository_password: ""   # PASTE your JFROG_TOKEN value here (from .env JFROG_TOKEN=...)
-                          # NOT read from .env automatically — copy the token value manually.
-                          # If left blank AND JFROG_TOKEN is set in .env, /themis-aws-deploy
-                          # will auto-populate this from .env so the deployer can pull RPMs.
+repository_password: ""
 
 
 # ---- TLS (uncomment to override deployer defaults) ----
@@ -57,20 +52,10 @@ repository_password: ""   # PASTE your JFROG_TOKEN value here (from .env JFROG_T
 
 # ---- Gateway (uncomment to deploy Gateway/IAG) ----
 # Gateway deploy is skipped automatically (not failed) if gateway_release is unset,
-# even when deployment_scope is full.
-#
-# gateway_whl_file is a local wheel filename resolved relative to
-# <deployer_repo>/playbooks/files/. The gateway role hard-fails if this file is missing.
-#
-# Auto-pull: if JFROG_TOKEN is set in .env and gateway_whl_file is blank or missing,
-# /themis-aws-deploy will search automation-gateway on JFrog for files matching
-# gateway_release, download the .whl to <deployer_repo>/playbooks/files/, and set
-# gateway_whl_file automatically. No manual placement needed when JFROG_TOKEN is present.
-#
+# even when deployment_scope is full. gateway_whl_file is a local wheel filename,
+# resolved relative to <deployer_repo>/playbooks/files/ by the gateway role.
 # gateway_release: "4.4"
 # gateway_whl_file: automation_gateway-4.4.46-py3-none-any.whl
-#   ↑ The .whl must exist at <deployer_repo>/playbooks/files/<gateway_whl_file>
-#     OR JFROG_TOKEN must be set for auto-pull from itential.jfrog.io/automation-gateway
 
 
 # ---- Platform release (uncomment to override themis's pinned default) ----
@@ -80,16 +65,12 @@ repository_password: ""   # PASTE your JFROG_TOKEN value here (from .env JFROG_T
 # not enough, since platform_packages must point at that release's actual RPM URLs.
 # platform_release: 6
 # platform_packages:
-#   # JFrog (itential.jfrog.io) — current RPM source. Use scripts/pull-platform-rpms.sh to
-#   # discover exact paths: scripts/pull-platform-rpms.sh --version 6.4.0 --list
-#   - https://itential.jfrog.io/artifactory/PLATFORM/<path-from-list>/itential-platform-6.4.0-1.noarch.rpm
-#   - https://itential.jfrog.io/artifactory/CONFIG/<path-from-list>/itential-configuration_manager-6.4.0-1.noarch.rpm
-#   - https://itential.jfrog.io/artifactory/SERVICE/<path-from-list>/itential-service_management-6.4.0.x86_64.rpm
-#   - https://itential.jfrog.io/artifactory/GATEWAY-MANAGER/<path-from-list>/itential-gateway_manager-1.0.8.noarch.rpm
-#   - https://itential.jfrog.io/artifactory/INVENTORY-MANAGER/<path-from-list>/itential-inventory-manager-1.0.7.noarch.rpm
-#   # Or pre-download locally and pass file:// paths:
-#   #   scripts/pull-platform-rpms.sh --version 6.4.0 --out-dir /tmp/rpms
-#   #   - file:///tmp/rpms/itential-platform-6.4.0-1.noarch.rpm
+#   - https://registry.aws.itential.com/repository/PLATFORM/Platform%206/Platform%206.4.0/itential-platform-6.4.0-1.noarch.rpm
+#   - https://registry.aws.itential.com/repository/CONFIG/Configuration%20Manager%206/Configuration%20Manager%206.4.0/itential-configuration_manager-6.4.0-1.noarch.rpm
+#   - https://registry.aws.itential.com/repository/LIFECYCLE/Lifecycle%20Manager%206/Lifecycle%20Manager%206.4.0/itential-lifecycle_manager-6.4.0-1.noarch.rpm
+#   - https://registry.aws.itential.com/repository/SERVICE/Service%20Manager%206/Service%20Manager%206.4.0/itential-service_management-6.4.0.x86_64.rpm
+#   - https://registry.aws.itential.com/repository/GATEWAY-MANAGER/Gateway%20Manager/itential-gateway_manager-1.0.8.noarch.rpm
+#   - https://registry.aws.itential.com/repository/INVENTORY-MANAGER/Inventory%20Manager/itential-inventory-manager-1.0.7.noarch.rpm
 
 
 # ---- Any other deployer variable ----
