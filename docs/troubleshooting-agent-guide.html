@@ -312,6 +312,7 @@
       padding: 18px 20px;
       overflow-x: auto;
       margin: 16px 0;
+      position: relative;
     }
     .code-block pre {
       font-family: 'JetBrains Mono', monospace;
@@ -324,6 +325,26 @@
     .code-block .cmd { color: var(--pink-soft); }
     .code-block .section-hdr { color: var(--orange); font-weight: 600; }
     .code-block .prompt { color: var(--muted); user-select: none; }
+
+    /* ── Copy button ── */
+    .copy-btn {
+      position: absolute; top: 8px; right: 8px;
+      display: flex; align-items: center; gap: 5px;
+      padding: 4px 10px; border-radius: 5px;
+      border: 1px solid var(--border);
+      background: var(--surface); color: var(--muted);
+      font-size: 11px; font-family: 'JetBrains Mono', monospace;
+      cursor: pointer; opacity: 0; transition: opacity .15s, color .15s, border-color .15s;
+      user-select: none; white-space: nowrap;
+    }
+    .copy-btn svg { width: 12px; height: 12px; flex-shrink: 0; }
+    .code-block:hover .copy-btn,
+    .arch-pane:hover .copy-btn { opacity: 1; }
+    .copy-btn:hover { color: var(--text); border-color: var(--pink); }
+    .copy-btn.copied { color: #86efac; border-color: #86efac; opacity: 1; }
+    /* arch-pane copy button sits at top-right of the pane */
+    .arch-pane { position: relative; }
+    .arch-pane > .copy-btn { top: 10px; right: 10px; }
 
     .inline-code {
       font-family: 'JetBrains Mono', monospace;
@@ -3849,6 +3870,83 @@ tofu destroy \
       fontSize: '13px'
     }
   });
+</script>
+
+<script>
+/* ── Copy buttons: wired onto every .code-block and every .arch-pane ── */
+(function () {
+  var ICON_COPY = '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="4" y="4" width="9" height="11" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M3 11H2.5A1.5 1.5 0 0 1 1 9.5v-7A1.5 1.5 0 0 1 2.5 1h7A1.5 1.5 0 0 1 11 2.5V3" stroke="currentColor" stroke-width="1.4"/></svg>';
+  var ICON_CHECK = '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M2.5 8.5 6.5 12.5 13.5 4" stroke="#86efac" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  function plainText(el) {
+    /* Walk the subtree and collect text, skipping .prompt spans (non-copyable prompts) */
+    var parts = [];
+    (function walk(node) {
+      if (node.nodeType === 3) { parts.push(node.nodeValue); return; }
+      if (node.nodeType === 1) {
+        if (node.classList && node.classList.contains('prompt')) return;
+        node.childNodes.forEach(walk);
+      }
+    }(el));
+    return parts.join('').trimEnd();
+  }
+
+  function makeBtn(targetEl) {
+    var btn = document.createElement('button');
+    btn.className = 'copy-btn';
+    btn.setAttribute('aria-label', 'Copy to clipboard');
+    btn.innerHTML = ICON_COPY + '<span>Copy</span>';
+    var timer;
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var text = plainText(targetEl);
+      navigator.clipboard.writeText(text).then(function () {
+        btn.classList.add('copied');
+        btn.innerHTML = ICON_CHECK + '<span>Copied!</span>';
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+          btn.classList.remove('copied');
+          btn.innerHTML = ICON_COPY + '<span>Copy</span>';
+        }, 2000);
+      }).catch(function () {
+        /* Fallback for non-https or blocked clipboard */
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        btn.classList.add('copied');
+        btn.innerHTML = ICON_CHECK + '<span>Copied!</span>';
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+          btn.classList.remove('copied');
+          btn.innerHTML = ICON_COPY + '<span>Copy</span>';
+        }, 2000);
+      });
+    });
+    return btn;
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    /* .code-block divs — copy the <pre> content */
+    document.querySelectorAll('.code-block').forEach(function (block) {
+      var pre = block.querySelector('pre');
+      if (!pre) return;
+      var btn = makeBtn(pre);
+      block.appendChild(btn);
+    });
+
+    /* .arch-pane divs — copy the <pre> content (the override block) */
+    document.querySelectorAll('.arch-pane').forEach(function (pane) {
+      var pre = pane.querySelector('pre');
+      if (!pre) return;
+      var btn = makeBtn(pre);
+      pane.appendChild(btn);
+    });
+  });
+}());
 </script>
 </body>
 </html>
