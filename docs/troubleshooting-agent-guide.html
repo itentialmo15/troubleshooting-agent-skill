@@ -1887,7 +1887,22 @@ SSH_ROLE_1=iap</pre></div>
 <span class="section-hdr"># ── Kafka ─────────────────────────────────────────────────────</span>
 <span class="key">KAFKA_BOOTSTRAP</span>=<span class="val">localhost:9092</span>
 <span class="key">KAFKA_CONSUMER_GROUP</span>=<span class="val">iap-consumer-group</span>
-<span class="key">KAFKA_TOPIC</span>=<span class="val">iap-topic</span></pre></div>
+<span class="key">KAFKA_TOPIC</span>=<span class="val">iap-topic</span>
+
+<span class="section-hdr"># ── /themis-aws-deploy — VM Provisioning ─────────────────────</span>
+<span class="key">JFROG_TOKEN</span>=                     <span class="comment"># JFrog Identity Token — auto-populates repository_password + gateway .whl</span>
+                                   <span class="comment">#   Generate: itential.jfrog.io → User Profile → Generate Identity Token (per-engineer, not shared)</span>
+<span class="key">GITLAB_TOKEN</span>=                    <span class="comment"># GitLab Deploy Token — sync platform-skills (shared via 1Password/Vault)</span>
+<span class="key">AWS_KEY_NAME</span>=                    <span class="comment"># EC2 key pair name in target account (non-pe-team-sbx only)</span>
+<span class="key">AWS_SECURITY_GROUP_IDS</span>=          <span class="comment"># comma-separated SG IDs — SSH (22) inbound + self-referencing all-traffic rule</span>
+<span class="key">AWS_SUBNET_IDS</span>=                  <span class="comment"># 3 subnet IDs → public-1a/b/c aliases; all 3 required for every architecture</span>
+<span class="key">AWS_DEFAULT_SUBNET</span>=<span class="val">public-1a</span>    <span class="comment"># which alias used as default_subnet (default: public-1a)</span>
+<span class="key">AWS_INSTANCE_TYPE_PLATFORM</span>=      <span class="comment"># platform VM type (default: t3.medium)</span>
+<span class="key">AWS_INSTANCE_TYPE_REDIS</span>=         <span class="comment"># redis VM type (default: t3.medium)</span>
+<span class="key">AWS_INSTANCE_TYPE_MONGODB</span>=       <span class="comment"># mongodb VM type (default: t3.medium)</span>
+<span class="key">AWS_INSTANCE_TYPE_GATEWAY</span>=       <span class="comment"># gateway VM type (default: t3.medium)</span>
+                                   <span class="comment"># Note: AWS_REGION is shared with the EKS section above</span>
+<span class="comment"># DEPLOY_GATEWAY_TFVARS=true      # legacy Themis only — NEVER set for ASA architecture</span></pre></div>
 
     <div class="table-wrap" style="margin-top:20px;">
       <table>
@@ -1903,6 +1918,183 @@ SSH_ROLE_1=iap</pre></div>
           <tr><td><code>IAG_URL</code> + credentials</td><td><span class="pill pill-cond">Conditional</span></td><td>IAG direct health check, service list, job history — needed for IAG-related issues</td></tr>
           <tr><td><code>PROMETHEUS_URL</code></td><td><span class="pill pill-opt">Optional</span></td><td>WFE CPU, heap, event loop lag, GC overhead metrics — unlocks Phase 6 of /troubleshoot-jobs</td></tr>
           <tr><td><code>SLACK_ESCALATION_CHANNEL</code></td><td><span class="pill pill-opt">Optional</span></td><td>Manager escalation messages in Phase 7</td></tr>
+          <tr style="border-top:2px solid var(--pink);"><td><code>JFROG_TOKEN</code></td><td><span class="pill pill-cond">Conditional</span></td><td><strong>/themis-aws-deploy:</strong> auto-populates <code>repository_password</code> + pulls gateway .whl; also used by <code>/deployer-inventory</code></td></tr>
+          <tr><td><code>GITLAB_TOKEN</code></td><td><span class="pill pill-cond">Conditional</span></td><td><strong>/themis-aws-deploy:</strong> required to run <code>sync-platform-skills.sh</code>; not read at skill runtime</td></tr>
+          <tr><td><code>AWS_KEY_NAME</code> + <code>AWS_SECURITY_GROUP_IDS</code> + <code>AWS_SUBNET_IDS</code></td><td><span class="pill pill-cond">Conditional</span></td><td><strong>/themis-aws-deploy:</strong> required for non-pe-team-sbx accounts; converted to <code>auto-account.tfvars</code> at Step 1b</td></tr>
+          <tr><td><code>AWS_INSTANCE_TYPE_*</code></td><td><span class="pill pill-opt">Optional</span></td><td><strong>/themis-aws-deploy:</strong> per-role EC2 instance sizing overrides; defaults to <code>t3.medium</code> for all roles</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:28px;color:var(--pink-soft);">Architecture Overrides — /themis-aws-deploy</h3>
+    <p style="margin:0 0 10px;">Your complete <span class="inline-code">.env</span> = <strong>all base keys above</strong> + the architecture block below. Copy the base, append the right architecture block, fill in your values, then set <span class="inline-code">architecture: &lt;arch&gt;</span> in <span class="inline-code">run-vars.yml</span>. Ready-made combined files also live in <span class="inline-code">sample-env/</span>.</p>
+
+    <div class="note" style="margin-bottom:14px;"><strong>pe-team-sbx engineers:</strong> Only <span class="inline-code">JFROG_TOKEN</span> and optionally <span class="inline-code">GITLAB_TOKEN</span> are needed on top of the base. Leave all <span class="inline-code">AWS_*</span> fields blank — Themis terraform.tfvars defaults (us-east-1, pe-team-sbx key pair and subnets) apply automatically.</div>
+
+    <style>
+      .arch-tabs { display:flex; gap:6px; margin-bottom:0; }
+      .arch-tab {
+        padding:6px 18px; border-radius:6px 6px 0 0; border:1px solid var(--border);
+        border-bottom:none; background:var(--surface); color:var(--muted);
+        cursor:pointer; font-size:13px; font-weight:600; letter-spacing:.04em;
+        font-family:monospace; transition:background .15s,color .15s;
+      }
+      .arch-tab:hover { background:var(--card); color:var(--text); }
+      .arch-tab.active { background:var(--card); color:var(--pink); border-color:var(--pink); }
+      .arch-pane { display:none; border:1px solid var(--border); border-radius:0 6px 6px 6px; padding:16px; background:var(--card); }
+      .arch-pane.active { display:block; }
+      .arch-pane pre { margin:0; font-size:12px; line-height:1.7; overflow-x:auto; white-space:pre; }
+      .env-required { color:#f59e0b; font-weight:600; }
+      .env-comment  { color:var(--muted); }
+      .env-key      { color:#7dd3fc; }
+      .env-val      { color:#86efac; }
+      .env-section  { color:var(--pink-soft); font-weight:700; }
+      .env-warn     { color:#f87171; font-weight:600; }
+    </style>
+
+    <div class="arch-tabs">
+      <button class="arch-tab active" onclick="showArch('aio',this)">aio — 1 VM</button>
+      <button class="arch-tab" onclick="showArch('minimal',this)">minimal — 4 VMs</button>
+      <button class="arch-tab" onclick="showArch('ha2',this)">ha2 — 9 VMs</button>
+      <button class="arch-tab" onclick="showArch('asa',this)">asa — 17 VMs</button>
+    </div>
+
+    <!-- AIO -->
+    <div id="arch-aio" class="arch-pane active">
+      <p style="margin:0 0 8px;font-size:13px;">
+        <strong>AIO — All-in-One</strong> &nbsp;·&nbsp; 1 VM (~45–70 min, ~$0.15/hr) &nbsp;·&nbsp;
+        IAP, IAG, MongoDB, Redis colocated on one instance. Best first test.
+      </p>
+      <p style="margin:0 0 10px;font-size:12px;color:var(--muted);">Add to your base <code>.env</code> &nbsp;|&nbsp; <code>run-vars.yml</code>: <code style="color:var(--pink-soft);">architecture: aio</code> &nbsp;|&nbsp; Full file: <code>sample-env/env.aio.example</code></p>
+      <pre><span class="env-comment"># ── Append to base .env above — AIO overrides ────────────────────────────────</span>
+
+<span class="env-comment"># JFrog + GitLab (Required)</span>
+<span class="env-key">JFROG_TOKEN</span>=<span class="env-val">&lt;your-jfrog-identity-token&gt;</span>     <span class="env-comment"># itential.jfrog.io → User Profile → Generate Identity Token</span>
+<span class="env-key">GITLAB_TOKEN</span>=<span class="env-val">&lt;deploy-token-value&gt;</span>           <span class="env-comment"># shared token — get from 1Password or Vault</span>
+
+<span class="env-comment"># AWS Account (leave all AWS_* blank for pe-team-sbx)</span>
+<span class="env-key">AWS_REGION</span>=<span class="env-val">us-east-1</span>
+<span class="env-key">AWS_KEY_NAME</span>=<span class="env-val">your-ec2-key-pair-name</span>
+<span class="env-key">AWS_SECURITY_GROUP_IDS</span>=<span class="env-val">sg-xxxxxxxxxxxx</span>        <span class="env-comment"># SSH (22) inbound; self-referencing all-traffic rule</span>
+<span class="env-key">AWS_SUBNET_IDS</span>=<span class="env-val">subnet-aaa111111,subnet-bbb222222,subnet-ccc333333</span>   <span class="env-comment"># all 3 required even though AIO uses only public-1a</span>
+<span class="env-key">AWS_DEFAULT_SUBNET</span>=<span class="env-val">public-1a</span>
+
+<span class="env-comment"># Sizing — AIO: all services on ONE VM; only PLATFORM type is used (others ignored)</span>
+<span class="env-key">AWS_INSTANCE_TYPE_PLATFORM</span>=<span class="env-val">t3.xlarge</span>         <span class="env-comment"># t3.xlarge — IAP + IAG + MongoDB + Redis compete for same CPU/RAM</span>
+<span class="env-comment"># AWS_INSTANCE_TYPE_REDIS=     # not used — no separate Redis VM in AIO</span>
+<span class="env-comment"># AWS_INSTANCE_TYPE_MONGODB=   # not used — no separate MongoDB VM in AIO</span>
+<span class="env-comment"># AWS_INSTANCE_TYPE_GATEWAY=   # not used — no separate Gateway VM in AIO</span></pre>
+    </div>
+
+    <!-- Minimal -->
+    <div id="arch-minimal" class="arch-pane">
+      <p style="margin:0 0 8px;font-size:13px;">
+        <strong>Minimal</strong> &nbsp;·&nbsp; 4 VMs (~57 min, ~$0.40/hr) &nbsp;·&nbsp;
+        Dedicated Redis, MongoDB, Platform, Gateway. First multi-VM test — validates inventory and inter-node connectivity.
+      </p>
+      <p style="margin:0 0 10px;font-size:12px;color:var(--muted);">Add to your base <code>.env</code> &nbsp;|&nbsp; <code>run-vars.yml</code>: <code style="color:var(--pink-soft);">architecture: minimal</code> &nbsp;|&nbsp; Full file: <code>sample-env/env.minimal.example</code></p>
+      <pre><span class="env-comment"># ── Append to base .env above — Minimal overrides ───────────────────────────</span>
+
+<span class="env-key">JFROG_TOKEN</span>=<span class="env-val">&lt;your-jfrog-identity-token&gt;</span>
+<span class="env-key">GITLAB_TOKEN</span>=<span class="env-val">&lt;deploy-token-value&gt;</span>
+
+<span class="env-comment"># AWS Account (leave all AWS_* blank for pe-team-sbx)</span>
+<span class="env-key">AWS_REGION</span>=<span class="env-val">us-east-1</span>
+<span class="env-key">AWS_KEY_NAME</span>=<span class="env-val">your-ec2-key-pair-name</span>
+<span class="env-key">AWS_SECURITY_GROUP_IDS</span>=<span class="env-val">sg-xxxxxxxxxxxx</span>        <span class="env-comment"># SSH (22) inbound; self-referencing all-traffic rule</span>
+<span class="env-key">AWS_SUBNET_IDS</span>=<span class="env-val">subnet-aaa111111,subnet-bbb222222,subnet-ccc333333</span>   <span class="env-comment"># Minimal places all VMs in public-1a; 3 IDs still required</span>
+<span class="env-key">AWS_DEFAULT_SUBNET</span>=<span class="env-val">public-1a</span>
+
+<span class="env-comment"># Sizing — 4 dedicated VMs, right-size each role independently</span>
+<span class="env-key">AWS_INSTANCE_TYPE_PLATFORM</span>=<span class="env-val">t3.large</span>          <span class="env-comment"># IAP Platform VM — needs RAM for Node.js workers</span>
+<span class="env-key">AWS_INSTANCE_TYPE_REDIS</span>=<span class="env-val">t3.medium</span>            <span class="env-comment"># Redis (standalone, no Sentinel in Minimal)</span>
+<span class="env-key">AWS_INSTANCE_TYPE_MONGODB</span>=<span class="env-val">t3.medium</span>          <span class="env-comment"># MongoDB (standalone, no ReplicaSet in Minimal)</span>
+<span class="env-key">AWS_INSTANCE_TYPE_GATEWAY</span>=<span class="env-val">t3.medium</span>          <span class="env-comment"># IAG Gateway</span></pre>
+    </div>
+
+    <!-- HA2 -->
+    <div id="arch-ha2" class="arch-pane">
+      <p style="margin:0 0 8px;font-size:13px;">
+        <strong>HA2 — High Availability</strong> &nbsp;·&nbsp; 9 VMs (~44 min, ~$0.90/hr) &nbsp;·&nbsp;
+        Redis Sentinel ×3, MongoDB ReplicaSet ×3, Platform ×2, Gateway ×1.
+      </p>
+      <div class="danger" style="margin:0 0 10px;padding:8px 12px;font-size:12px;"><strong>SG self-referencing all-traffic rule is MANDATORY.</strong> Without it, MongoDB elections fail (port 27017 blocked between VMs) and Redis Sentinel cluster won't form (port 26379). Create with: <code>aws ec2 authorize-security-group-ingress --group-id sg-xxx --protocol all --port -1 --source-group sg-xxx</code></div>
+      <p style="margin:0 0 10px;font-size:12px;color:var(--muted);">Add to your base <code>.env</code> &nbsp;|&nbsp; <code>run-vars.yml</code>: <code style="color:var(--pink-soft);">architecture: ha2</code> &nbsp;|&nbsp; Full file: <code>sample-env/env.ha2.example</code></p>
+      <pre><span class="env-comment"># ── Append to base .env above — HA2 overrides ───────────────────────────────</span>
+
+<span class="env-key">JFROG_TOKEN</span>=<span class="env-val">&lt;your-jfrog-identity-token&gt;</span>
+<span class="env-key">GITLAB_TOKEN</span>=<span class="env-val">&lt;deploy-token-value&gt;</span>
+
+<span class="env-comment"># AWS Account (leave all AWS_* blank for pe-team-sbx)</span>
+<span class="env-key">AWS_REGION</span>=<span class="env-val">us-east-1</span>
+<span class="env-key">AWS_KEY_NAME</span>=<span class="env-val">your-ec2-key-pair-name</span>
+<span class="env-comment"># SG MUST have self-referencing all-traffic rule — MongoDB RS (27017), Redis Sentinel (26379), IAP (3000)</span>
+<span class="env-key">AWS_SECURITY_GROUP_IDS</span>=<span class="env-val">sg-xxxxxxxxxxxx</span>
+<span class="env-comment"># Spread across 3 AZs for true HA resiliency (public-1a → AZ1, public-1b → AZ2, public-1c → AZ3)</span>
+<span class="env-key">AWS_SUBNET_IDS</span>=<span class="env-val">subnet-aaa111111,subnet-bbb222222,subnet-ccc333333</span>
+<span class="env-key">AWS_DEFAULT_SUBNET</span>=<span class="env-val">public-1a</span>
+
+<span class="env-comment"># Sizing — 9 VMs, production-capable</span>
+<span class="env-key">AWS_INSTANCE_TYPE_PLATFORM</span>=<span class="env-val">t3.large</span>          <span class="env-comment"># Platform ×2 (HA load balanced)</span>
+<span class="env-key">AWS_INSTANCE_TYPE_REDIS</span>=<span class="env-val">t3.medium</span>            <span class="env-comment"># Redis Sentinel ×3</span>
+<span class="env-key">AWS_INSTANCE_TYPE_MONGODB</span>=<span class="env-val">t3.medium</span>          <span class="env-comment"># MongoDB ReplicaSet ×3 (use t3.large for write-heavy workloads)</span>
+<span class="env-key">AWS_INSTANCE_TYPE_GATEWAY</span>=<span class="env-val">t3.medium</span>          <span class="env-comment"># IAG Gateway ×1</span>
+
+<span class="env-comment"># Post-build: redis-cli -h &lt;redis01&gt; sentinel masters   →  verify Sentinel master elected</span>
+<span class="env-comment"># Post-build: mongo --host &lt;mongo01&gt;:27017 --eval "rs.status()"  → verify PRIMARY elected</span></pre>
+    </div>
+
+    <!-- ASA -->
+    <div id="arch-asa" class="arch-pane">
+      <p style="margin:0 0 8px;font-size:13px;">
+        <strong>ASA — Active-Standby</strong> &nbsp;·&nbsp; 17 VMs (~68 min, ~$1.70/hr) &nbsp;·&nbsp;
+        Dual-site: <code>redis01–06</code>, <code>mongo01–05</code>, <code>platform01–04</code>, <code>gateway01–02</code> (flat naming — NOT dc1-/dc2-).
+      </p>
+      <div class="danger" style="margin:0 0 10px;padding:8px 12px;font-size:12px;"><strong>NEVER set DEPLOY_GATEWAY_TFVARS=true for ASA.</strong> The <code>asa-with-gateway.tfvars</code> uses OLD <code>dc1-/dc2-/dc3-</code> naming — applying it destroys running instances by replacing them with wrongly-named ones.</div>
+      <p style="margin:0 0 10px;font-size:12px;color:var(--muted);">Add to your base <code>.env</code> &nbsp;|&nbsp; <code>run-vars.yml</code>: <code style="color:var(--pink-soft);">architecture: asa</code> &nbsp;|&nbsp; Full file: <code>sample-env/env.asa.example</code></p>
+      <pre><span class="env-comment"># ── Append to base .env above — ASA overrides ───────────────────────────────</span>
+
+<span class="env-key">JFROG_TOKEN</span>=<span class="env-val">&lt;your-jfrog-identity-token&gt;</span>
+<span class="env-key">GITLAB_TOKEN</span>=<span class="env-val">&lt;deploy-token-value&gt;</span>
+
+<span class="env-comment"># AWS Account (leave all AWS_* blank for pe-team-sbx)</span>
+<span class="env-key">AWS_REGION</span>=<span class="env-val">us-east-1</span>
+<span class="env-key">AWS_KEY_NAME</span>=<span class="env-val">your-ec2-key-pair-name</span>
+<span class="env-comment"># SG MANDATORY: self-referencing all-traffic — cross-site replication (MongoDB 27017, Redis 6379/26379, etcd 2379/2380)</span>
+<span class="env-key">AWS_SECURITY_GROUP_IDS</span>=<span class="env-val">sg-xxxxxxxxxxxx</span>
+<span class="env-comment"># 3 subnets across AZs: primary site → public-1a/b, secondary site → public-1c</span>
+<span class="env-key">AWS_SUBNET_IDS</span>=<span class="env-val">subnet-aaa111111,subnet-bbb222222,subnet-ccc333333</span>
+<span class="env-key">AWS_DEFAULT_SUBNET</span>=<span class="env-val">public-1a</span>
+
+<span class="env-comment"># Sizing — 17 VMs, production-grade</span>
+<span class="env-key">AWS_INSTANCE_TYPE_PLATFORM</span>=<span class="env-val">t3.xlarge</span>         <span class="env-comment"># Platform ×4 (primary + secondary site, more traffic in ASA)</span>
+<span class="env-key">AWS_INSTANCE_TYPE_REDIS</span>=<span class="env-val">t3.medium</span>            <span class="env-comment"># Redis ×6 (3 per site)</span>
+<span class="env-key">AWS_INSTANCE_TYPE_MONGODB</span>=<span class="env-val">t3.large</span>           <span class="env-comment"># MongoDB ×5 (cross-site RS, more data volume)</span>
+<span class="env-key">AWS_INSTANCE_TYPE_GATEWAY</span>=<span class="env-val">t3.medium</span>          <span class="env-comment"># Gateway ×2 (gateway01 + gateway02)</span>
+
+<span class="env-warn"># DEPLOY_GATEWAY_TFVARS=true   # DO NOT UNCOMMENT FOR ASA — asa-with-gateway.tfvars uses OLD dc1-/dc2- naming</span>
+
+<span class="env-comment"># Post-build: tofu output -json | jq '.instances.value | keys'  → verify flat names (redis01–06, etc.)</span>
+<span class="env-comment"># Post-build: mongo --host &lt;mongo01&gt;:27017 --eval "rs.status()"  → verify all 5 RS members</span></pre>
+    </div>
+
+    <script>
+      function showArch(arch, btn) {
+        document.querySelectorAll('.arch-pane').forEach(function(p){ p.classList.remove('active'); });
+        document.querySelectorAll('.arch-tab').forEach(function(b){ b.classList.remove('active'); });
+        document.getElementById('arch-' + arch).classList.add('active');
+        btn.classList.add('active');
+      }
+    </script>
+
+    <div class="table-wrap" style="margin-top:20px;">
+      <table>
+        <thead><tr><th>Architecture</th><th>VMs</th><th>Cost/hr</th><th>Key difference vs base</th><th>Full sample file</th></tr></thead>
+        <tbody>
+          <tr><td><code>aio</code></td><td>1</td><td>~$0.15</td><td>Only <code>AWS_INSTANCE_TYPE_PLATFORM</code> used; all services on one VM — use t3.xlarge</td><td><code>sample-env/env.aio.example</code></td></tr>
+          <tr><td><code>minimal</code></td><td>4</td><td>~$0.40</td><td>Per-role instance types; standalone Redis and MongoDB (no Sentinel/RS)</td><td><code>sample-env/env.minimal.example</code></td></tr>
+          <tr><td><code>ha2</code></td><td>9</td><td>~$0.90</td><td>SG self-referencing rule mandatory; spread 3 subnets across AZs</td><td><code>sample-env/env.ha2.example</code></td></tr>
+          <tr><td><code>asa</code></td><td>17</td><td>~$1.70</td><td>DEPLOY_GATEWAY_TFVARS MUST be unset; flat naming (redis01–06); t3.xlarge platform + t3.large MongoDB</td><td><code>sample-env/env.asa.example</code></td></tr>
         </tbody>
       </table>
     </div>
@@ -2697,226 +2889,6 @@ tofu destroy \
             <td>All 17 VMs provisioned with flat naming (redis01–06, mongo01–05, platform01–04, gateway01–02); cross-site replication active</td>
             <td><code>tofu output -json | jq '.instances.value | keys'</code> — verify flat names; MongoDB: <code>rs.status().members</code> shows all 5 members</td>
           </tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <hr class="section-divider" />
-
-  <!-- .env Architecture Samples -->
-  <div class="section">
-    <div class="section-label">Configuration Samples</div>
-    <h2>.env Reference — Per-Architecture Templates</h2>
-    <p class="desc">Copy-paste <span class="inline-code">.env</span> templates for each <span class="inline-code">/themis-aws-deploy</span> architecture. Select your target architecture below, fill in the highlighted REQUIRED fields, then set <span class="inline-code">architecture: &lt;arch&gt;</span> in <span class="inline-code">run-vars.yml</span>. All sample files also live in <span class="inline-code">sample-env/</span> in the repo root.</p>
-
-    <div class="note" style="margin-bottom:16px;"><strong>pe-team-sbx users:</strong> Leave all <span class="inline-code">AWS_*</span> fields blank. Themis terraform.tfvars defaults (us-east-1, pe-team-sbx key pair, pe-team-sbx subnets/SGs) apply automatically. Only <span class="inline-code">JFROG_TOKEN</span> and optionally <span class="inline-code">GITLAB_TOKEN</span> are needed.</div>
-
-    <style>
-      .arch-tabs { display:flex; gap:6px; margin-bottom:0; }
-      .arch-tab {
-        padding:6px 18px; border-radius:6px 6px 0 0; border:1px solid var(--border);
-        border-bottom:none; background:var(--surface); color:var(--muted);
-        cursor:pointer; font-size:13px; font-weight:600; letter-spacing:.04em;
-        font-family:monospace; transition:background .15s,color .15s;
-      }
-      .arch-tab:hover { background:var(--card); color:var(--text); }
-      .arch-tab.active { background:var(--card); color:var(--pink); border-color:var(--pink); }
-      .arch-pane { display:none; border:1px solid var(--border); border-radius:0 6px 6px 6px; padding:16px; background:var(--card); }
-      .arch-pane.active { display:block; }
-      .arch-pane pre { margin:0; font-size:12px; line-height:1.7; overflow-x:auto; white-space:pre; }
-      .env-required { color:#f59e0b; font-weight:600; }
-      .env-comment  { color:var(--muted); }
-      .env-key      { color:#7dd3fc; }
-      .env-val      { color:#86efac; }
-      .env-section  { color:var(--pink-soft); font-weight:700; }
-      .env-warn     { color:#f87171; font-weight:600; }
-    </style>
-
-    <div class="arch-tabs">
-      <button class="arch-tab active" onclick="showArch('aio',this)">aio</button>
-      <button class="arch-tab" onclick="showArch('minimal',this)">minimal</button>
-      <button class="arch-tab" onclick="showArch('ha2',this)">ha2</button>
-      <button class="arch-tab" onclick="showArch('asa',this)">asa</button>
-    </div>
-
-    <!-- AIO -->
-    <div id="arch-aio" class="arch-pane active">
-      <p style="margin:0 0 10px;font-size:13px;color:var(--muted);">
-        <strong style="color:var(--text);">AIO — All-in-One</strong> &nbsp;·&nbsp; 1 VM &nbsp;·&nbsp; ~45–70 min build &nbsp;·&nbsp; ~$0.15–0.20/hr &nbsp;·&nbsp;
-        <span style="color:var(--muted);">Best first test — cheapest and fastest. All services colocated.</span>
-      </p>
-      <div style="margin-bottom:8px;font-size:12px;color:var(--muted);">
-        In <strong>run-vars.yml</strong> set: <code style="color:var(--pink-soft);">architecture: aio</code>
-        &nbsp;|&nbsp; Source file: <code>sample-env/env.aio.example</code>
-      </div>
-      <pre><span class="env-comment"># ── JFrog Identity Token ─────────────────────────────────────────────────────</span>
-<span class="env-required"># REQUIRED — per-engineer token. Generate at: itential.jfrog.io → User Profile → Generate Identity Token</span>
-<span class="env-key">JFROG_TOKEN</span>=<span class="env-val">&lt;your-jfrog-identity-token&gt;</span>
-
-<span class="env-comment"># ── GitLab Deploy Token ───────────────────────────────────────────────────────</span>
-<span class="env-comment"># Required on first sync. Shared token — get from 1Password or Vault.</span>
-<span class="env-key">GITLAB_TOKEN</span>=<span class="env-val">&lt;deploy-token-value&gt;</span>
-
-<span class="env-comment"># ── AWS Account (leave blank for pe-team-sbx) ────────────────────────────────</span>
-<span class="env-key">AWS_REGION</span>=<span class="env-val">us-east-1</span>
-<span class="env-key">AWS_KEY_NAME</span>=<span class="env-val">your-ec2-key-pair-name</span>
-<span class="env-key">AWS_SECURITY_GROUP_IDS</span>=<span class="env-val">sg-xxxxxxxxxxxx</span>             <span class="env-comment"># SSH (22) inbound + self-referencing all-traffic</span>
-
-<span class="env-comment"># 3 subnet IDs required even though AIO only uses public-1a</span>
-<span class="env-key">AWS_SUBNET_IDS</span>=<span class="env-val">subnet-aaa111111,subnet-bbb222222,subnet-ccc333333</span>
-<span class="env-key">AWS_DEFAULT_SUBNET</span>=<span class="env-val">public-1a</span>
-
-<span class="env-comment"># ── Instance Sizing ───────────────────────────────────────────────────────────</span>
-<span class="env-comment"># AIO: all services on one VM. Only PLATFORM type is used; others are ignored.</span>
-<span class="env-comment"># Use t3.xlarge — IAP + IAG + MongoDB + Redis compete for the same CPU/RAM.</span>
-<span class="env-key">AWS_INSTANCE_TYPE_PLATFORM</span>=<span class="env-val">t3.xlarge</span>
-
-<span class="env-comment"># DEPLOY_GATEWAY_TFVARS=true  # DO NOT set — current Themis main has gateway in base tfvars</span></pre>
-    </div>
-
-    <!-- Minimal -->
-    <div id="arch-minimal" class="arch-pane">
-      <p style="margin:0 0 10px;font-size:13px;color:var(--muted);">
-        <strong style="color:var(--text);">Minimal</strong> &nbsp;·&nbsp; 4 VMs &nbsp;·&nbsp; ~57 min build &nbsp;·&nbsp; ~$0.35–0.45/hr &nbsp;·&nbsp;
-        <span style="color:var(--muted);">Dedicated Redis, MongoDB, Platform, Gateway. First multi-VM test — validates inventory and inter-node connectivity.</span>
-      </p>
-      <div style="margin-bottom:8px;font-size:12px;color:var(--muted);">
-        In <strong>run-vars.yml</strong> set: <code style="color:var(--pink-soft);">architecture: minimal</code>
-        &nbsp;|&nbsp; Source file: <code>sample-env/env.minimal.example</code>
-      </div>
-      <pre><span class="env-comment"># ── JFrog Identity Token ─────────────────────────────────────────────────────</span>
-<span class="env-required"># REQUIRED — per-engineer token. Generate at: itential.jfrog.io → User Profile → Generate Identity Token</span>
-<span class="env-key">JFROG_TOKEN</span>=<span class="env-val">&lt;your-jfrog-identity-token&gt;</span>
-
-<span class="env-comment"># ── GitLab Deploy Token ───────────────────────────────────────────────────────</span>
-<span class="env-key">GITLAB_TOKEN</span>=<span class="env-val">&lt;deploy-token-value&gt;</span>
-
-<span class="env-comment"># ── AWS Account (leave blank for pe-team-sbx) ────────────────────────────────</span>
-<span class="env-key">AWS_REGION</span>=<span class="env-val">us-east-1</span>
-<span class="env-key">AWS_KEY_NAME</span>=<span class="env-val">your-ec2-key-pair-name</span>
-<span class="env-key">AWS_SECURITY_GROUP_IDS</span>=<span class="env-val">sg-xxxxxxxxxxxx</span>             <span class="env-comment"># SSH (22) inbound + self-referencing all-traffic</span>
-<span class="env-comment"># Minimal places all VMs in public-1a — 3 IDs still required in subnet_map</span>
-<span class="env-key">AWS_SUBNET_IDS</span>=<span class="env-val">subnet-aaa111111,subnet-bbb222222,subnet-ccc333333</span>
-<span class="env-key">AWS_DEFAULT_SUBNET</span>=<span class="env-val">public-1a</span>
-
-<span class="env-comment"># ── Instance Sizing — 4 dedicated VMs, right-size per role ───────────────────</span>
-<span class="env-key">AWS_INSTANCE_TYPE_PLATFORM</span>=<span class="env-val">t3.large</span>    <span class="env-comment"># IAP Platform VM — needs RAM for Node.js workers</span>
-<span class="env-key">AWS_INSTANCE_TYPE_REDIS</span>=<span class="env-val">t3.medium</span>     <span class="env-comment"># Redis (standalone, no sentinel)</span>
-<span class="env-key">AWS_INSTANCE_TYPE_MONGODB</span>=<span class="env-val">t3.medium</span>   <span class="env-comment"># MongoDB (standalone, no replica set)</span>
-<span class="env-key">AWS_INSTANCE_TYPE_GATEWAY</span>=<span class="env-val">t3.medium</span>   <span class="env-comment"># IAG Gateway</span>
-
-<span class="env-comment"># DEPLOY_GATEWAY_TFVARS=true  # DO NOT set — current Themis main has gateway in base tfvars</span></pre>
-    </div>
-
-    <!-- HA2 -->
-    <div id="arch-ha2" class="arch-pane">
-      <p style="margin:0 0 10px;font-size:13px;color:var(--muted);">
-        <strong style="color:var(--text);">HA2 — High Availability</strong> &nbsp;·&nbsp; 9 VMs &nbsp;·&nbsp; ~44 min build &nbsp;·&nbsp; ~$0.80–1.00/hr &nbsp;·&nbsp;
-        <span style="color:var(--muted);">Redis Sentinel ×3, MongoDB ReplicaSet ×3, Platform ×2, Gateway ×1.</span>
-      </p>
-      <div class="danger" style="margin:0 0 10px;padding:8px 12px;font-size:12px;">
-        <strong>Security Group self-referencing rule is MANDATORY for HA2.</strong> Without it, MongoDB replica set elections fail (port 27017 blocked between VMs) and Redis Sentinel cluster won't form (port 26379 blocked). The Platform nodes also need port 3000 open between them.
-      </div>
-      <div style="margin-bottom:8px;font-size:12px;color:var(--muted);">
-        In <strong>run-vars.yml</strong> set: <code style="color:var(--pink-soft);">architecture: ha2</code>
-        &nbsp;|&nbsp; Source file: <code>sample-env/env.ha2.example</code>
-      </div>
-      <pre><span class="env-comment"># ── JFrog Identity Token ─────────────────────────────────────────────────────</span>
-<span class="env-required"># REQUIRED — per-engineer token. Generate at: itential.jfrog.io → User Profile → Generate Identity Token</span>
-<span class="env-key">JFROG_TOKEN</span>=<span class="env-val">&lt;your-jfrog-identity-token&gt;</span>
-
-<span class="env-comment"># ── GitLab Deploy Token ───────────────────────────────────────────────────────</span>
-<span class="env-key">GITLAB_TOKEN</span>=<span class="env-val">&lt;deploy-token-value&gt;</span>
-
-<span class="env-comment"># ── AWS Account (leave blank for pe-team-sbx) ────────────────────────────────</span>
-<span class="env-key">AWS_REGION</span>=<span class="env-val">us-east-1</span>
-<span class="env-key">AWS_KEY_NAME</span>=<span class="env-val">your-ec2-key-pair-name</span>
-<span class="env-comment"># SG MUST have self-referencing all-traffic rule for HA (MongoDB 27017, Redis 26379, IAP 3000)</span>
-<span class="env-key">AWS_SECURITY_GROUP_IDS</span>=<span class="env-val">sg-xxxxxxxxxxxx</span>
-<span class="env-comment"># Use 3 different AZ subnets for true HA (nodes spread across AZs)</span>
-<span class="env-key">AWS_SUBNET_IDS</span>=<span class="env-val">subnet-aaa111111,subnet-bbb222222,subnet-ccc333333</span>
-<span class="env-key">AWS_DEFAULT_SUBNET</span>=<span class="env-val">public-1a</span>
-
-<span class="env-comment"># ── Instance Sizing — 9 VMs, production-capable ──────────────────────────────</span>
-<span class="env-key">AWS_INSTANCE_TYPE_PLATFORM</span>=<span class="env-val">t3.large</span>    <span class="env-comment"># Platform ×2 (HA load balanced)</span>
-<span class="env-key">AWS_INSTANCE_TYPE_REDIS</span>=<span class="env-val">t3.medium</span>     <span class="env-comment"># Redis Sentinel ×3</span>
-<span class="env-key">AWS_INSTANCE_TYPE_MONGODB</span>=<span class="env-val">t3.medium</span>   <span class="env-comment"># MongoDB ReplicaSet ×3 (use t3.large for write-heavy workloads)</span>
-<span class="env-key">AWS_INSTANCE_TYPE_GATEWAY</span>=<span class="env-val">t3.medium</span>   <span class="env-comment"># IAG Gateway ×1</span>
-
-<span class="env-comment"># DEPLOY_GATEWAY_TFVARS=true  # DO NOT set — current Themis main has gateway in base tfvars</span>
-
-<span class="env-comment"># ── Post-Build Verification ───────────────────────────────────────────────────</span>
-<span class="env-comment"># redis-cli -h &lt;redis01_ip&gt; sentinel masters             # confirm Sentinel master elected</span>
-<span class="env-comment"># mongo --host &lt;mongo01_ip&gt;:27017 --eval "rs.status()"   # confirm PRIMARY elected</span></pre>
-    </div>
-
-    <!-- ASA -->
-    <div id="arch-asa" class="arch-pane">
-      <p style="margin:0 0 10px;font-size:13px;color:var(--muted);">
-        <strong style="color:var(--text);">ASA — Active-Standby</strong> &nbsp;·&nbsp; 17 VMs &nbsp;·&nbsp; ~68 min build &nbsp;·&nbsp; ~$1.60–1.80/hr &nbsp;·&nbsp;
-        <span style="color:var(--muted);">Dual-site: redis01–06, mongo01–05, platform01–04, gateway01–02 (flat naming, not dc1-/dc2-).</span>
-      </p>
-      <div class="danger" style="margin:0 0 10px;padding:8px 12px;font-size:12px;">
-        <strong>NEVER set DEPLOY_GATEWAY_TFVARS=true for ASA.</strong> The <code>asa-with-gateway.tfvars</code> file uses OLD <code>dc1-/dc2-/dc3-</code> naming — applying it against current Themis main will destroy running instances by replacing them with wrongly-named ones.
-      </div>
-      <div style="margin-bottom:8px;font-size:12px;color:var(--muted);">
-        In <strong>run-vars.yml</strong> set: <code style="color:var(--pink-soft);">architecture: asa</code>
-        &nbsp;|&nbsp; Source file: <code>sample-env/env.asa.example</code>
-      </div>
-      <pre><span class="env-comment"># ── JFrog Identity Token ─────────────────────────────────────────────────────</span>
-<span class="env-required"># REQUIRED — per-engineer token. Generate at: itential.jfrog.io → User Profile → Generate Identity Token</span>
-<span class="env-key">JFROG_TOKEN</span>=<span class="env-val">&lt;your-jfrog-identity-token&gt;</span>
-
-<span class="env-comment"># ── GitLab Deploy Token ───────────────────────────────────────────────────────</span>
-<span class="env-key">GITLAB_TOKEN</span>=<span class="env-val">&lt;deploy-token-value&gt;</span>
-
-<span class="env-comment"># ── AWS Account (leave blank for pe-team-sbx) ────────────────────────────────</span>
-<span class="env-key">AWS_REGION</span>=<span class="env-val">us-east-1</span>
-<span class="env-key">AWS_KEY_NAME</span>=<span class="env-val">your-ec2-key-pair-name</span>
-<span class="env-comment"># SG MANDATORY: self-referencing all-traffic rule for cross-site replication</span>
-<span class="env-comment"># MongoDB (27017), Redis (6379/26379), etcd (2379/2380), IAP (3000), IAG (8083)</span>
-<span class="env-key">AWS_SECURITY_GROUP_IDS</span>=<span class="env-val">sg-xxxxxxxxxxxx</span>
-<span class="env-comment"># 3 subnets across AZs — primary site: public-1a/b, secondary site: public-1c</span>
-<span class="env-key">AWS_SUBNET_IDS</span>=<span class="env-val">subnet-aaa111111,subnet-bbb222222,subnet-ccc333333</span>
-<span class="env-key">AWS_DEFAULT_SUBNET</span>=<span class="env-val">public-1a</span>
-
-<span class="env-comment"># ── Instance Sizing — 17 VMs, production-grade ───────────────────────────────</span>
-<span class="env-key">AWS_INSTANCE_TYPE_PLATFORM</span>=<span class="env-val">t3.xlarge</span>   <span class="env-comment"># Platform ×4 (primary + secondary site, more traffic in ASA)</span>
-<span class="env-key">AWS_INSTANCE_TYPE_REDIS</span>=<span class="env-val">t3.medium</span>     <span class="env-comment"># Redis ×6 (3 per site)</span>
-<span class="env-key">AWS_INSTANCE_TYPE_MONGODB</span>=<span class="env-val">t3.large</span>    <span class="env-comment"># MongoDB ×5 (cross-site RS, more data volume)</span>
-<span class="env-key">AWS_INSTANCE_TYPE_GATEWAY</span>=<span class="env-val">t3.medium</span>   <span class="env-comment"># Gateway ×2 (gateway01 + gateway02)</span>
-
-<span class="env-warn"># DEPLOY_GATEWAY_TFVARS=true  # DO NOT UNCOMMENT FOR ASA — asa-with-gateway.tfvars uses OLD naming</span>
-
-<span class="env-comment"># ── Post-Build Verification ───────────────────────────────────────────────────</span>
-<span class="env-comment"># tofu output -json | jq '.instances.value | keys'         # confirm flat names (redis01–06, etc.)</span>
-<span class="env-comment"># mongo --host &lt;mongo01_ip&gt;:27017 --eval "rs.status()"    # confirm all 5 RS members</span>
-<span class="env-comment"># redis-cli -h redis01 sentinel masters                     # confirm Sentinel master elected</span></pre>
-    </div>
-
-    <script>
-      function showArch(arch, btn) {
-        document.querySelectorAll('.arch-pane').forEach(function(p){ p.classList.remove('active'); });
-        document.querySelectorAll('.arch-tab').forEach(function(b){ b.classList.remove('active'); });
-        document.getElementById('arch-' + arch).classList.add('active');
-        btn.classList.add('active');
-      }
-    </script>
-
-    <h3 style="margin-top:24px;color:var(--pink-soft);">.env vs run-vars.yml — What Goes Where</h3>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Setting</th><th>File</th><th>Notes</th></tr></thead>
-        <tbody>
-          <tr><td><code>architecture</code> (aio/minimal/ha2/asa)</td><td><code>run-vars.yml</code></td><td>Controls which Themis tfvars is used</td></tr>
-          <tr><td><code>os</code>, <code>owner</code>, <code>platform_release</code></td><td><code>run-vars.yml</code></td><td>Build configuration</td></tr>
-          <tr><td><code>themis_root</code>, <code>deployer_repo</code>, <code>tls_repo</code></td><td><code>run-vars.yml</code></td><td>Local repo paths</td></tr>
-          <tr><td><code>aws_profile</code>, <code>ssh_key_path</code></td><td><code>run-vars.yml</code></td><td>AWS profile + SSH key for Ansible</td></tr>
-          <tr><td><code>AWS_REGION</code>, <code>AWS_KEY_NAME</code>, <code>AWS_SECURITY_GROUP_IDS</code>, <code>AWS_SUBNET_IDS</code></td><td><code>.env</code></td><td>Converted to <code>auto-account.tfvars</code> at Step 1b by <code>generate_account_tfvars.py</code></td></tr>
-          <tr><td><code>AWS_INSTANCE_TYPE_*</code></td><td><code>.env</code></td><td>Per-role instance sizing overrides</td></tr>
-          <tr><td><code>JFROG_TOKEN</code></td><td><code>.env</code></td><td>Auto-populates <code>repository_password</code> + gateway .whl pull</td></tr>
-          <tr><td><code>GITLAB_TOKEN</code></td><td><code>.env</code></td><td>Platform-skills sync only; not read by the skill at runtime</td></tr>
         </tbody>
       </table>
     </div>
