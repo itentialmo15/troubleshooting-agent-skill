@@ -955,9 +955,9 @@ flowchart TD
         <thead><tr><th>Architecture</th><th>VMs</th><th>Stack</th><th>Use case</th><th>Est. time</th></tr></thead>
         <tbody>
           <tr><td><code>aio</code></td><td>1</td><td>Redis + MongoDB + Platform on one host</td><td>POC / quick dev repro / feature testing</td><td>~45–70 min</td></tr>
-          <tr><td><code>minimal</code></td><td>3–4</td><td>Dedicated Redis, MongoDB, Platform (+ optional Gateway)</td><td>Small-scale repro without HA complexity</td><td>~57 min</td></tr>
-          <tr><td><code>ha2</code></td><td>8–9</td><td>Redis Sentinel (×3), MongoDB ReplicaSet (×3), Platform (×2)</td><td>HA repro — most common for production issues</td><td>~44 min</td></tr>
-          <tr><td><code>asa</code></td><td>16–18</td><td>Dual-site Active/Standby across DC1+DC2+DC3</td><td>Multi-site failover or geo-redundancy issues</td><td>~68 min</td></tr>
+          <tr><td><code>minimal</code></td><td>4</td><td>Dedicated Redis, MongoDB, Platform, Gateway</td><td>Small-scale repro without HA complexity</td><td>~57 min</td></tr>
+          <tr><td><code>ha2</code></td><td>9</td><td>Redis Sentinel (×3), MongoDB ReplicaSet (×3), Platform (×2), Gateway</td><td>HA repro — most common for production issues</td><td>~44 min</td></tr>
+          <tr><td><code>asa</code></td><td>17</td><td>Dual-site Active/Standby — redis01–06, mongo01–05, platform01–04, gateway01–02</td><td>Multi-site failover or geo-redundancy issues</td><td>~68 min</td></tr>
         </tbody>
       </table>
     </div>
@@ -1010,7 +1010,12 @@ flowchart TD
       <div class="rule"><div class="rule-text"><strong>Test all 4 architectures in parallel</strong> — Claude can use <span class="inline-code">scripts/test_all_environments.py</span> to provision and deploy all architectures simultaneously, each in its own AWS workspace. Useful for deployer release validation. See Admin Guide → Environment Build Setup for details.</div></div>
     </div>
 
-    <div class="note" style="margin-top:16px;border-color:var(--c-blue-border);"><strong>Inventory generation only?</strong> Use <span class="inline-code">/deployer-inventory</span> if you already have VMs and just need an <span class="inline-code">itential.deployer</span> Ansible inventory YAML. It supports all 4 topologies and the new <span class="inline-code">itential.iag5</span> gateway topology — no AWS provisioning required.</div>
+    <div class="note" style="margin-top:16px;border-color:var(--c-blue-border);">
+      <strong>Inventory generation only?</strong> Use <span class="inline-code">/deployer-inventory</span> if you already have VMs and just need an <span class="inline-code">itential.deployer</span> Ansible inventory YAML. It supports all 4 topologies and the new <span class="inline-code">itential.iag5</span> gateway topology — no AWS provisioning required.<br><br>
+      <strong>/deployer-inventory prerequisites:</strong> Know your actual hostnames/IPs, the exact RPM filenames (use <code>scripts/pull-platform-rpms.sh --version X.Y.Z --list</code>), and generate two 64-char hex encryption keys before invoking:
+      <code style="display:block;margin-top:6px;">openssl rand -hex 32   # for gateway_secrets_encrypt_key</code>
+      <code style="display:block;margin-top:2px;">openssl rand -hex 32   # for platform_encryption_key</code>
+    </div>
   </div>
 
   <hr class="section-divider" />
@@ -2308,7 +2313,22 @@ git commit -m "chore: sync platform-skills from upstream"</pre>
 
 <span class="comment"># 3. itential.tls — TLS certificate generation playbooks</span>
 <span class="cmd">git clone git@gitlab.com:itential/platform-engineering/ansible/collections/itential.tls.git</span></pre></div>
-    <div class="warning" style="margin-top:8px;"><strong>Verify all three paths before the first run.</strong> A bad <code>deployer_repo</code> or <code>tls_repo</code> passes every check silently — the symlink works even when the path is wrong. The failure only surfaces at Step 5 (Ansible playbook), after AWS instances are already provisioned. Run the path checks in Step 2 of SKILL.md before invoking the skill.</div>
+
+    <h3 style="margin-top:20px;color:var(--pink-soft);">Ansible Collections — Install Once</h3>
+    <p style="margin:0 0 8px;">The deployer roles need <code>community.crypto</code> for TLS certificate tasks. Install it into your user collection path — this is separate from the repo checkouts above.</p>
+    <div class="code-block"><pre><span class="comment"># Install community.crypto (needed for TLS cert generation in itential.tls)</span>
+<span class="cmd">ansible-galaxy collection install community.crypto</span>
+
+<span class="comment"># Verify</span>
+<span class="cmd">ansible-galaxy collection list | grep community.crypto</span>
+<span class="comment"># Expected output: community.crypto  X.Y.Z</span>
+
+<span class="comment"># If running Ansible from a venv, install inside it:</span>
+<span class="cmd">.venv/bin/pip install ansible</span>
+<span class="cmd">.venv/bin/ansible-galaxy collection install community.crypto</span></pre></div>
+    <div class="note" style="margin-top:6px;">The skill sets <code>ANSIBLE_COLLECTIONS_PATHS</code> to include the local deployer/tls repo paths (via symlinks), but <code>community.crypto</code> must be installed into the global or venv Ansible path — the symlink approach only works for the itential collections.</div>
+
+    <div class="warning" style="margin-top:12px;"><strong>Verify all three paths before the first run.</strong> A bad <code>deployer_repo</code> or <code>tls_repo</code> passes every check silently — the symlink works even when the path is wrong. The failure only surfaces at Step 5 (Ansible playbook), after AWS instances are already provisioned. Run the path checks in Step 2 of SKILL.md before invoking the skill.</div>
 
     <h3 style="margin-top:24px;color:var(--pink-soft);">Required Tools</h3>
     <div class="table-wrap">
@@ -2320,6 +2340,8 @@ git commit -m "chore: sync platform-skills from upstream"</pre>
           <tr><td><strong>Python 3</strong></td><td>3.8</td><td><code>python3 --version</code></td><td>System package manager or <a href="https://python.org" style="color:#f26bac">python.org</a></td></tr>
           <tr><td><strong>AWS CLI</strong></td><td>v2</td><td><code>aws sts get-caller-identity --profile pe-team-sbx</code></td><td>If expired: <code>aws sso login --profile pe-team-sbx</code></td></tr>
           <tr><td><strong>SSH key</strong></td><td>—</td><td><code>ls -la ~/.ssh/pet-east1.open.pem</code></td><td>Obtain from team; <code>chmod 400 ~/.ssh/pet-east1.open.pem</code></td></tr>
+          <tr><td><strong>Ansible collections</strong></td><td>—</td><td><code>ansible-galaxy collection list | grep community.crypto</code></td><td>See Required Repos → Ansible Collections below</td></tr>
+          <tr><td><strong>gh CLI</strong></td><td>2.x</td><td><code>gh auth status</code></td><td><code>brew install gh</code> or <a href="https://cli.github.com" style="color:#f26bac">cli.github.com</a>; then <code>gh auth login</code>. Required for <code>/contribute</code> to open PRs automatically.</td></tr>
         </tbody>
       </table>
     </div>
@@ -2350,7 +2372,83 @@ git commit -m "chore: sync platform-skills from upstream"</pre>
 
     <p style="margin:10px 0 6px;"><strong>Verify resources exist before running:</strong></p>
     <div class="code-block"><pre><span class="cmd">aws ec2 describe-key-pairs --key-names &lt;key_name&gt; --profile &lt;aws_profile&gt;</span>
-<span class="cmd">aws ec2 describe-security-groups --group-ids &lt;sg_id&gt; --profile &lt;aws_profile&gt;</span></pre></div>
+<span class="cmd">aws ec2 describe-security-groups --group-ids &lt;sg_id&gt; --profile &lt;aws_profile&gt;</span>
+
+<span class="comment"># List subnets in your default VPC — pick 3 in different AZs for public-1a/b/c:</span>
+<span class="cmd">aws ec2 describe-subnets \
+  --filters "Name=default-for-az,Values=true" \
+  --query 'Subnets[*].{ID:SubnetId,AZ:AvailabilityZone,CIDR:CidrBlock}' \
+  --output table \
+  --profile &lt;aws_profile&gt;</span></pre></div>
+
+    <h3 style="margin-top:20px;color:var(--pink-soft);">AWS Resources Required per Architecture</h3>
+    <p style="margin:0 0 10px;">The 3 subnet IDs in <code>AWS_SUBNET_IDS</code> map to Themis's <code>subnet_map</code> aliases <code>public-1a</code>, <code>public-1b</code>, <code>public-1c</code> in that order. Each should be in a different Availability Zone — Themis distributes VMs across AZs for HA designs.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Architecture</th><th>VMs</th><th>Subnets actually used</th><th>Min SG inbound rules</th><th>Recommended instance types</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>aio</code></td><td>1</td>
+            <td>1 subnet (public-1a only)</td>
+            <td>SSH (22) from your IP</td>
+            <td><code>t3.large</code> or larger — all components share one host</td>
+          </tr>
+          <tr>
+            <td><code>minimal</code></td><td>4</td>
+            <td>Up to 3 subnets (1 per VM role)</td>
+            <td>SSH (22) from your IP; all traffic within SG (self-referencing rule)</td>
+            <td>Platform: <code>t3.large</code>; Redis/MongoDB/Gateway: <code>t3.medium</code></td>
+          </tr>
+          <tr>
+            <td><code>ha2</code></td><td>9</td>
+            <td>All 3 subnets — Sentinel nodes distributed across AZs</td>
+            <td>SSH (22) from your IP; all traffic within SG (self-referencing rule)</td>
+            <td>Platform nodes: <code>t3.large</code>; all others: <code>t3.medium</code></td>
+          </tr>
+          <tr>
+            <td><code>asa</code></td><td>17</td>
+            <td>All 3 subnets — primary/secondary site distribution</td>
+            <td>SSH (22) from your IP; all traffic within SG (self-referencing rule)</td>
+            <td>Platform nodes: <code>t3.large</code>; all others: <code>t3.medium</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note" style="margin-top:8px;">Even for <code>aio</code> (1 VM), provide all 3 subnet IDs in <code>AWS_SUBNET_IDS</code> — Themis's <code>subnet_map</code> HCL block always declares all three keys. Only the first subnet (<code>public-1a</code>) is actually used for provisioning, but the plan fails if the other keys have empty values.</div>
+
+    <h3 style="margin-top:20px;color:var(--pink-soft);">Security Group Setup</h3>
+    <p style="margin:0 0 8px;">Create one SG per AWS account — reuse it across all Themis runs. The SG must allow:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Direction</th><th>Protocol</th><th>Port(s)</th><th>Source / Dest</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>Inbound</td><td>TCP</td><td>22</td><td>Your engineer IP (<code>/32</code>)</td><td>SSH — Ansible needs this to configure every instance</td></tr>
+          <tr><td>Inbound</td><td>All</td><td>All</td><td>This SG (self-referencing)</td><td>Inter-node traffic: MongoDB 27017, Redis 6379/26379, IAP 3000, IAG 8083, etcd 2379/2380</td></tr>
+          <tr><td>Outbound</td><td>All</td><td>All</td><td>0.0.0.0/0</td><td>Package installs (yum/dnf), JFrog RPM downloads, AWS APIs</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="code-block" style="margin-top:10px;"><pre><span class="comment"># Create the SG (run once per account):</span>
+<span class="cmd">aws ec2 create-security-group \
+  --group-name itential-themis-deploy \
+  --description "Themis deployer — SSH + inter-node" \
+  --profile &lt;aws_profile&gt;</span>
+<span class="comment"># Note the GroupId (sg-xxxx) from the output — use it in AWS_SECURITY_GROUP_IDS</span>
+
+<span class="comment"># Add SSH inbound from your current IP:</span>
+<span class="cmd">MY_IP=$(curl -s https://checkip.amazonaws.com)
+aws ec2 authorize-security-group-ingress \
+  --group-id sg-xxxx \
+  --protocol tcp --port 22 --cidr ${MY_IP}/32 \
+  --profile &lt;aws_profile&gt;</span>
+
+<span class="comment"># Add self-referencing rule (all inter-node traffic):</span>
+<span class="cmd">aws ec2 authorize-security-group-ingress \
+  --group-id sg-xxxx \
+  --protocol all --port all \
+  --source-group sg-xxxx \
+  --profile &lt;aws_profile&gt;</span></pre></div>
+    <div class="warning" style="margin-top:8px;"><strong>NAT / VPN users:</strong> If your outbound IP changes between sessions (corporate NAT rotation, VPN reconnect), Ansible SSH will start failing mid-deploy. Check your current IP before each run: <code>curl -s https://checkip.amazonaws.com</code>. Update the SG inbound rule if it changed.</div>
 
     <h3 style="margin-top:24px;color:var(--pink-soft);">run-vars.yml — Complete Field Reference</h3>
     <p style="margin:0 0 10px;">All runtime configuration lives in <span class="inline-code">.claude/skills/themis-aws-deploy/run-vars.yml</span>. Edit before every run — or per environment when running multiple in parallel.</p>
@@ -2449,6 +2547,89 @@ git commit -m "chore: sync platform-skills from upstream"</pre>
       <div class="rule"><div class="rule-text"><strong>6. Required run-vars filled</strong> — <code>architecture</code>, <code>os</code>, <code>themis_root</code>, <code>owner</code>, <code>deployer_repo</code>, <code>tls_repo</code>, <code>aws_profile</code>, <code>ssh_key_path</code> are all set and non-empty in <code>run-vars.yml</code>.</div></div>
       <div class="rule"><div class="rule-text"><strong>7. Cost acknowledged</strong> — EC2 instances accrue AWS spend until <code>tofu destroy</code> is run. Know how many instances your architecture creates (see Architecture Reference table above) and have a plan to destroy them when done. The skill runs fully autonomously — it will not pause before <code>tofu apply</code>.</div></div>
     </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Platform Skills Operational Setup -->
+  <div class="section">
+    <div class="section-label">Operational Skills Setup</div>
+    <h2>Platform Skills — Operational PE Environment Setup</h2>
+    <p class="desc">The five operational platform skills (<span class="inline-code">/mongodb</span>, <span class="inline-code">/redis</span>, <span class="inline-code">/prometheus</span>, <span class="inline-code">/itential-platform</span>, <span class="inline-code">/itential-gateway</span>) use a <strong>different credential model</strong> from the troubleshooting sub-skills. They authenticate via HashiCorp Vault — not directly from <code>.env</code>. This is because they are designed for PE-managed environments (perflab, production support environments) where credentials are centrally managed in Vault.</p>
+
+    <div class="danger" style="margin-top:4px;"><strong>These are NOT customer-environment skills.</strong> The credential model requires your SSH key, a Vault token, and an environment CLAUDE.md file describing the target cluster. They cannot be pointed at an arbitrary customer IAP instance — use the main <code>.env</code>-based troubleshoot sub-skills for customer environments instead.</div>
+
+    <h3 style="margin-top:24px;color:var(--pink-soft);">Prerequisites</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Requirement</th><th>How to obtain</th></tr></thead>
+        <tbody>
+          <tr><td><strong>SSH key at <code>~/.ssh/claude_perflab</code></strong> (or team-standard path)</td><td>Obtain from team lead — same key used for pe-ansible access</td></tr>
+          <tr><td><strong>HashiCorp Vault token</strong></td><td>Run <code>vault login</code> against the team Vault server, or source from <code>vault-env.sh</code>; token goes in <code>vault-env.sh</code> as <code>VAULT_TOKEN=hvs.xxxx</code></td></tr>
+          <tr><td><strong><code>vault-env.sh</code> file</strong></td><td>Create in the repo root (gitignored); sourced by the skills before every Vault call — see template below</td></tr>
+          <tr><td><strong><code>environments/&lt;env-name&gt;/CLAUDE.md</code></strong></td><td>One file per target environment (perflab, prod-support, etc.); describes cluster topology for that environment — see template below</td></tr>
+          <tr><td><strong>SSH key path in Claude's persistent memory</strong></td><td>Tell Claude once: "remember my ssh_key_path is <code>~/.ssh/claude_perflab</code>" — it persists across sessions</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:20px;color:var(--pink-soft);">vault-env.sh — Template</h3>
+    <p style="margin:0 0 8px;">Create this file in the repo root. The skills source it before any Vault call. Never commit it — it is already gitignored.</p>
+    <div class="code-block"><pre><span class="comment">#!/bin/bash
+# vault-env.sh — sourced by platform-skills for Vault auth
+# NEVER commit this file</span>
+<span class="key">export VAULT_ADDR</span>=<span class="val">https://vault.pe.itential.io:8200</span>   <span class="comment"># or your team's Vault URL</span>
+<span class="key">export VAULT_TOKEN</span>=<span class="val">hvs.your-vault-token-here</span>
+<span class="key">export VAULT_SKIP_VERIFY</span>=<span class="val">false</span>                          <span class="comment"># set true only for self-signed certs</span></pre></div>
+
+    <h3 style="margin-top:20px;color:var(--pink-soft);">environments/&lt;env-name&gt;/CLAUDE.md — Templates per Skill</h3>
+    <p style="margin:0 0 8px;">Each environment gets its own directory under <code>environments/</code>. Create a <code>CLAUDE.md</code> in it. The skills read this file to learn the topology of the target cluster. Below are the key variables each skill needs:</p>
+
+    <div class="table-wrap" style="margin-bottom:16px;">
+      <table>
+        <thead><tr><th>Skill</th><th>Required variables in <code>environments/&lt;env-name&gt;/CLAUDE.md</code></th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>/mongodb</code></td>
+            <td><code>MONGO_NODES=node1.host,node2.host,node3.host</code><br><code>MONGO_PORT=27017</code><br><code>MONGO_RS=rs0</code><br><code>VAULT_ADDR=https://...</code><br><code>PLATFORM_VAULT_PATH=itential/iap</code><br><code>MONGO_SSH_USER=ec2-user</code><br><code>MONGO_TLS_ENABLED=true</code> (if TLS on)<br><code>MONGO_TLS_CA=/etc/pki/tls/certs/mongodb/rootCA.pem</code></td>
+          </tr>
+          <tr>
+            <td><code>/redis</code></td>
+            <td><code>REDIS_NODES=node1.host,node2.host,node3.host</code><br><code>REDIS_PORT=6379</code><br><code>REDIS_MODE=sentinel</code><br><code>SENTINEL_PORT=26379</code><br><code>SENTINEL_MASTER=mymaster</code><br><code>VAULT_ADDR=https://...</code><br><code>PLATFORM_VAULT_PATH=itential/iap</code><br><code>REDIS_SSH_USER=ec2-user</code></td>
+          </tr>
+          <tr>
+            <td><code>/prometheus</code></td>
+            <td><code>PROMETHEUS_HOST=monitor.host</code><br><code>PROMETHEUS_PORT=9090</code><br><code>PROMETHEUS_AUTH=none</code> or <code>basic</code> or <code>bearer</code><br><code>VAULT_ADDR=https://...</code> (only when auth ≠ none)<br><code>PLATFORM_VAULT_PATH=itential/iap</code> (only when auth ≠ none)</td>
+          </tr>
+          <tr>
+            <td><code>/itential-platform</code></td>
+            <td><code>IAP_HOST=iap.host</code><br><code>IAP_PORT=3000</code><br><code>IAP_NODES=node1.host,node2.host</code><br><code>VAULT_ADDR=https://...</code><br><code>SA_VAULT_PATH=platform-engineering/perflab-iap-service-accounts</code><br><code>SA_CLIENT_ID_KEY=claude-user-client-id</code><br><code>SA_CLIENT_SECRET_KEY=claude-user-client-secret</code><br><code>IAP_SSH_USER=ec2-user</code><br><code>AUTH_METHOD=oauth</code></td>
+          </tr>
+          <tr>
+            <td><code>/itential-gateway</code></td>
+            <td><code>IAG_HOST=iag.host</code><br><code>IAG_PORT=8083</code><br><code>VAULT_ADDR=https://...</code><br><code>PLATFORM_VAULT_PATH=itential/iap</code><br><code>IAG_ADMIN_USER=admin</code><br><code>IAG_ADMIN_PASSWORD_KEY=iagAdminPassword</code><br><code>IAG_SSH_USER=ec2-user</code><br><code>IAG_BACKEND=etcd</code> or <code>fs</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p style="margin:0 0 8px;"><strong>Example directory structure:</strong></p>
+    <div class="code-block"><pre>environments/
+├── perflab/
+│   └── CLAUDE.md        ← perflab cluster config
+├── prod-support/
+│   └── CLAUDE.md        ← production support cluster config
+└── asa-test/
+    └── CLAUDE.md        ← ASA test environment config</pre></div>
+
+    <h3 style="margin-top:20px;color:var(--pink-soft);">Invoking Operational Skills</h3>
+    <div class="code-block"><pre><span class="comment"># Always specify the environment name when invoking:</span>
+<span class="cmd">/mongodb perflab</span>
+<span class="cmd">/redis perflab</span>
+<span class="cmd">/prometheus prod-support</span>
+<span class="cmd">/itential-platform perflab</span>
+<span class="cmd">/itential-gateway perflab</span></pre></div>
+    <p style="margin:8px 0 0;color:var(--muted);">The skill reads <code>environments/&lt;env-name&gt;/CLAUDE.md</code>, sources <code>vault-env.sh</code>, fetches credentials from Vault, then connects via SSH. SSH key path must be in Claude's persistent memory as <code>ssh_key_path</code> — the skill does not prompt for it during execution.</p>
   </div>
 
   <hr class="section-divider" />
@@ -2997,10 +3178,13 @@ git commit -m "chore: sync platform-skills from upstream"</pre>
     <h2 id="sk-platform">Platform Skills — Deep-Diagnostic Library</h2>
     <p class="desc">Five operational skills vendored from <span class="inline-code">platform-claude-skills</span> (private GitLab). Requires <span class="inline-code">GITLAB_TOKEN</span> in <span class="inline-code">.env</span> and an initial <span class="inline-code">scripts/sync-platform-skills.sh</span> run. See Admin Guide → Vendor Sync for setup.</p>
 
+    <div class="warning" style="margin-bottom:16px;"><strong>Credential model:</strong> These five skills authenticate via <strong>HashiCorp Vault + <code>vault-env.sh</code></strong>, not from the main <code>.env</code> file. They are designed for PE-managed environments (perflab, production support). Each skill reads <code>environments/&lt;env-name&gt;/CLAUDE.md</code> for cluster topology. See <strong>Admin Guide → Operational Skills Setup</strong> for the full setup walkthrough.</div>
+
     <h3 style="margin-top:20px;">/mongodb — MongoDB Life Report</h3>
     <p class="desc" style="margin-bottom:8px;">Produces a scored HEALTHY / DEGRADED / CRITICAL life report for a MongoDB cluster. Invoke after <span class="inline-code">/troubleshoot-databases</span> surfaces replica or pool saturation issues.</p>
     <div class="rules">
-      <div class="rule"><div class="rule-text"><strong>Credentials:</strong> <span class="inline-code">MONGO_URL</span> in <span class="inline-code">.env</span> (e.g. <code>mongodb://user:pass@host:27017/admin?replicaSet=rs0</code>)</div></div>
+      <div class="rule"><div class="rule-text"><strong>Prerequisites:</strong> <code>vault-env.sh</code> with <code>VAULT_TOKEN</code>; <code>environments/&lt;env-name&gt;/CLAUDE.md</code> with <code>MONGO_NODES</code>, <code>MONGO_PORT</code>, <code>MONGO_RS</code>, <code>PLATFORM_VAULT_PATH</code>, <code>MONGO_SSH_USER</code>; SSH key in Claude memory as <code>ssh_key_path</code></div></div>
+      <div class="rule"><div class="rule-text"><strong>Vault keys read:</strong> <code>mongoDbAdmin</code> (admin password), <code>mongoDb</code> (app password) from <code>PLATFORM_VAULT_PATH</code></div></div>
       <div class="rule"><div class="rule-text"><strong>Report covers:</strong> replica set topology, oplog window, connection pool, slow operations, index gaps, disk usage</div></div>
       <div class="rule"><div class="rule-text"><strong>Air-gapped environments:</strong> use companion scripts <span class="inline-code">.claude/skills/mongodb/offline-collect-cluster.sh</span> and <span class="inline-code">offline-collect-node.sh</span> to gather data offline; see <span class="inline-code">OFFLINE-COLLECTION.md</span> for the full workflow</div></div>
       <div class="rule"><div class="rule-text"><strong>When to invoke:</strong> replica member not PRIMARY/RECOVERING, pool saturation &gt;80%, elections detected, engineer requests scored assessment</div></div>
@@ -3009,7 +3193,8 @@ git commit -m "chore: sync platform-skills from upstream"</pre>
     <h3 style="margin-top:20px;">/redis — Redis Life Report</h3>
     <p class="desc" style="margin-bottom:8px;">Produces a scored HEALTHY / DEGRADED / CRITICAL life report for a Redis instance or Sentinel cluster.</p>
     <div class="rules">
-      <div class="rule"><div class="rule-text"><strong>Credentials:</strong> <span class="inline-code">REDIS_HOST</span>, <span class="inline-code">REDIS_PORT</span>, <span class="inline-code">REDIS_PASSWORD</span> in <span class="inline-code">.env</span></div></div>
+      <div class="rule"><div class="rule-text"><strong>Prerequisites:</strong> <code>vault-env.sh</code> with <code>VAULT_TOKEN</code>; <code>environments/&lt;env-name&gt;/CLAUDE.md</code> with <code>REDIS_NODES</code>, <code>REDIS_PORT</code>, <code>REDIS_MODE</code>, <code>SENTINEL_PORT</code>, <code>SENTINEL_MASTER</code>, <code>PLATFORM_VAULT_PATH</code>, <code>REDIS_SSH_USER</code>; SSH key in Claude memory</div></div>
+      <div class="rule"><div class="rule-text"><strong>Vault keys read:</strong> <code>redisAdmin</code>, <code>redisPassword</code>, <code>redisSentinelAdmin</code>, <code>redisSentinelPassword</code> from <code>PLATFORM_VAULT_PATH</code></div></div>
       <div class="rule"><div class="rule-text"><strong>Report covers:</strong> Sentinel topology, memory utilization, keyspace hit ratio, slow log, persistence state (RDB/AOF), blocked_clients</div></div>
       <div class="rule"><div class="rule-text"><strong>When to invoke:</strong> memory used &gt;80% of maxmemory, evicted_keys &gt;0, sentinel topology issues, persistent blocked_clients</div></div>
     </div>
@@ -3017,7 +3202,7 @@ git commit -m "chore: sync platform-skills from upstream"</pre>
     <h3 style="margin-top:20px;">/prometheus — Metrics Query</h3>
     <p class="desc" style="margin-bottom:8px;">Executes PromQL range queries scoped to the incident time window from <span class="inline-code">ticket_context.md</span>.</p>
     <div class="rules">
-      <div class="rule"><div class="rule-text"><strong>Credentials:</strong> <span class="inline-code">PROMETHEUS_URL</span> required; optional <span class="inline-code">PROMETHEUS_BASIC_AUTH_USER</span>/<span class="inline-code">PROMETHEUS_BASIC_AUTH_PASS</span> for basic auth, or source <span class="inline-code">vault-env.sh</span> for Vault-sourced bearer tokens</div></div>
+      <div class="rule"><div class="rule-text"><strong>Prerequisites:</strong> <code>environments/&lt;env-name&gt;/CLAUDE.md</code> with <code>PROMETHEUS_HOST</code>, <code>PROMETHEUS_PORT</code>, <code>PROMETHEUS_AUTH</code>. When <code>PROMETHEUS_AUTH=bearer</code> or <code>basic</code>: also <code>vault-env.sh</code> with <code>VAULT_TOKEN</code> and <code>PLATFORM_VAULT_PATH</code></div></div>
       <div class="rule"><div class="rule-text"><strong>Capabilities:</strong> firing alerts, ad-hoc PromQL, CPU/heap/task-rate stat tables, TSDB cardinality report</div></div>
       <div class="rule"><div class="rule-text"><strong>When to invoke:</strong> sustained high CPU, node nearing OOM, container restarts correlating with resource pressure, or when you need time-series confirmation of a trend seen in infra diagnostics</div></div>
     </div>
@@ -3025,14 +3210,16 @@ git commit -m "chore: sync platform-skills from upstream"</pre>
     <h3 style="margin-top:20px;">/itential-platform — IAP Admin</h3>
     <p class="desc" style="margin-bottom:8px;">Deep administrative view of IAP — complements <span class="inline-code">/troubleshoot-jobs</span> for worker-level visibility.</p>
     <div class="rules">
-      <div class="rule"><div class="rule-text"><strong>Credentials:</strong> <span class="inline-code">PLATFORM_URL</span>, <span class="inline-code">CLIENT_ID</span>, <span class="inline-code">CLIENT_SECRET</span> (or <span class="inline-code">AUTH_METHOD=basic</span> equivalents) in <span class="inline-code">.env</span></div></div>
+      <div class="rule"><div class="rule-text"><strong>Prerequisites:</strong> <code>vault-env.sh</code> with <code>VAULT_TOKEN</code>; <code>environments/&lt;env-name&gt;/CLAUDE.md</code> with <code>IAP_HOST</code>, <code>IAP_PORT</code>, <code>IAP_NODES</code>, <code>SA_VAULT_PATH</code>, <code>SA_CLIENT_ID_KEY</code>, <code>SA_CLIENT_SECRET_KEY</code>, <code>IAP_SSH_USER</code>, <code>AUTH_METHOD</code>; SSH key in Claude memory</div></div>
+      <div class="rule"><div class="rule-text"><strong>Vault keys read:</strong> OAuth client_id and client_secret from <code>SA_VAULT_PATH</code> using <code>SA_CLIENT_ID_KEY</code>/<code>SA_CLIENT_SECRET_KEY</code></div></div>
       <div class="rule"><div class="rule-text"><strong>Capabilities:</strong> process health, adapter / application / integration list, job worker control (pause/resume), active job queue depth</div></div>
     </div>
 
     <h3 style="margin-top:20px;">/itential-gateway — IAG Admin</h3>
     <p class="desc" style="margin-bottom:8px;">IAG health, logs, and service management — complements the inline IAG diagnostics in the orchestrator.</p>
     <div class="rules">
-      <div class="rule"><div class="rule-text"><strong>Credentials:</strong> <span class="inline-code">IAG_URL</span>, <span class="inline-code">IAG_USER</span>, <span class="inline-code">IAG_PASS</span> in <span class="inline-code">.env</span></div></div>
+      <div class="rule"><div class="rule-text"><strong>Prerequisites:</strong> <code>vault-env.sh</code> with <code>VAULT_TOKEN</code>; <code>environments/&lt;env-name&gt;/CLAUDE.md</code> with <code>IAG_HOST</code>, <code>IAG_PORT</code>, <code>PLATFORM_VAULT_PATH</code>, <code>IAG_ADMIN_USER</code>, <code>IAG_ADMIN_PASSWORD_KEY</code>, <code>IAG_SSH_USER</code>, <code>IAG_BACKEND</code>; SSH key in Claude memory</div></div>
+      <div class="rule"><div class="rule-text"><strong>Vault keys read:</strong> IAG admin password from <code>PLATFORM_VAULT_PATH</code> key named by <code>IAG_ADMIN_PASSWORD_KEY</code></div></div>
       <div class="rule"><div class="rule-text"><strong>Capabilities:</strong> IAG health endpoint, recent log tail, service list, etcd cluster membership and leader election state</div></div>
     </div>
   </div>
