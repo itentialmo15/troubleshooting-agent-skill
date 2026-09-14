@@ -2210,17 +2210,28 @@ git commit -m "chore: sync platform-skills from upstream"</pre>
     </div>
 
     <h3 style="margin-top:20px;color:var(--pink-soft);">Platform Skills Available After Sync</h3>
+    <p style="margin:0 0 8px;font-size:13px;color:var(--muted);">Note: <code>/mongodb</code>, <code>/redis</code>, <code>/itential-platform</code>, and <code>/itential-gateway</code> authenticate via HashiCorp Vault + <code>vault-env.sh</code>, not directly from <code>.env</code>. See the <strong>Platform Skills — Operational PE Environment Setup</strong> section below for the full credential model.</p>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Skill</th><th>Invoke</th><th>Credentials (.env)</th><th>When to Use</th></tr></thead>
+        <thead><tr><th>Skill</th><th>Invoke</th><th>Auth Model</th><th>When to Use</th></tr></thead>
         <tbody>
-          <tr><td><strong>/mongodb</strong></td><td><code>/mongodb</code></td><td><code>MONGO_URL</code></td><td>Replica issues, pool saturation &gt;80%, elections, scored assessment needed</td></tr>
-          <tr><td><strong>/redis</strong></td><td><code>/redis</code></td><td><code>REDIS_HOST / REDIS_PORT / REDIS_PASSWORD</code></td><td>Eviction, sentinel issues, blocked_clients, memory &gt;80%</td></tr>
-          <tr><td><strong>/prometheus</strong></td><td><code>/prometheus</code></td><td><code>PROMETHEUS_URL</code> + optional basic/bearer auth vars</td><td>Time-series CPU/memory/task-rate analysis scoped to incident window</td></tr>
-          <tr><td><strong>/itential-platform</strong></td><td><code>/itential-platform</code></td><td><code>PLATFORM_URL, CLIENT_ID, CLIENT_SECRET</code></td><td>Deep IAP admin: process health, adapter/application list, job worker control</td></tr>
-          <tr><td><strong>/itential-gateway</strong></td><td><code>/itential-gateway</code></td><td><code>IAG_URL, IAG_USER, IAG_PASS</code></td><td>IAG health, logs, service list, etcd cluster state</td></tr>
+          <tr><td><strong>/mongodb</strong></td><td><code>/mongodb perflab</code></td><td>Vault — keys <code>mongoDbAdmin</code>, <code>mongoDb</code> at <code>PLATFORM_VAULT_PATH</code></td><td>Replica issues, pool saturation &gt;80%, elections, scored assessment needed</td></tr>
+          <tr><td><strong>/redis</strong></td><td><code>/redis perflab</code></td><td>Vault — keys <code>redisAdmin</code>, <code>redisPassword</code>, <code>redisSentinelAdmin</code>, <code>redisSentinelPassword</code></td><td>Eviction, sentinel issues, blocked_clients, memory &gt;80%</td></tr>
+          <tr><td><strong>/prometheus</strong></td><td><code>/prometheus perflab</code></td><td>Vault — optional <code>PROMETHEUS_AUTH</code> key at <code>PLATFORM_VAULT_PATH</code></td><td>Time-series CPU/memory/task-rate analysis scoped to incident window</td></tr>
+          <tr><td><strong>/itential-platform</strong></td><td><code>/itential-platform perflab</code></td><td>Vault — service-account at <code>SA_VAULT_PATH</code> using <code>SA_CLIENT_ID_KEY</code>/<code>SA_CLIENT_SECRET_KEY</code></td><td>Deep IAP admin: process health, adapter/application list, job worker control</td></tr>
+          <tr><td><strong>/itential-gateway</strong></td><td><code>/itential-gateway perflab</code></td><td>Vault — key named by <code>IAG_ADMIN_PASSWORD_KEY</code> at <code>PLATFORM_VAULT_PATH</code></td><td>IAG health, logs, service list, etcd cluster state</td></tr>
         </tbody>
       </table>
+    </div>
+
+    <h3 style="margin-top:24px;color:var(--pink-soft);">Vendor Skill Extension Policy</h3>
+    <div class="danger" style="margin-top:0;"><strong>Never modify any file listed in <code>vendor/platform-skills/SYNC_MANIFEST.json</code> or any file under <code>vendor/builder-skills/</code>.</strong> A future sync run silently overwrites those files — local changes are lost without warning.</div>
+    <p style="margin:10px 0 8px;">To add or override behavior in a vendor skill, create a <code>LOCAL-EXTENSIONS.md</code> file adjacent to the vendor <code>SKILL.md</code>. This file is NOT in <code>SYNC_MANIFEST.json</code> — it survives every sync unchanged.</p>
+    <div class="rules" style="grid-template-columns: 1fr; margin-top:8px;">
+      <div class="rule"><div class="rule-text"><strong>Step 1 — Create <code>LOCAL-EXTENSIONS.md</code></strong> at <code>.claude/skills/&lt;skill-name&gt;/LOCAL-EXTENSIONS.md</code>. Confirm it's not vendored: <code>grep "&lt;skill-name&gt;/LOCAL-EXTENSIONS" vendor/platform-skills/SYNC_MANIFEST.json</code> must return empty.</div></div>
+      <div class="rule"><div class="rule-text"><strong>Step 2 — Use two section labels:</strong> <code>[OVERRIDE] Section Name</code> replaces the vendor instruction entirely. <code>[INSERT AFTER Step N]</code> adds a step at the named position; surrounding vendor steps run unchanged.</div></div>
+      <div class="rule"><div class="rule-text"><strong>Step 3 — Add a CLAUDE.md pointer</strong> in the platform-skills section of <code>CLAUDE.md</code> so Claude always reads the extension file alongside the vendor SKILL.md. See the <code>/themis-aws-deploy</code> entry in <code>CLAUDE.md</code> as the template.</div></div>
+      <div class="rule"><div class="rule-text"><strong>Canonical example:</strong> <code>.claude/skills/themis-aws-deploy/LOCAL-EXTENSIONS.md</code> — the reference implementation for all future vendor skill extensions.</div></div>
     </div>
   </div>
 
@@ -2546,6 +2557,148 @@ aws ec2 authorize-security-group-ingress \
       <div class="rule"><div class="rule-text"><strong>5. Gateway decision made</strong> — leave <code>gateway_release</code> commented out to skip (safe default), or set it and ensure either: (a) the <code>.whl</code> file exists at <code>&lt;deployer_repo&gt;/playbooks/files/</code>, or (b) <code>JFROG_TOKEN</code> is in <code>.env</code> for auto-pull from JFrog <code>automation-gateway</code> repo.</div></div>
       <div class="rule"><div class="rule-text"><strong>6. Required run-vars filled</strong> — <code>architecture</code>, <code>os</code>, <code>themis_root</code>, <code>owner</code>, <code>deployer_repo</code>, <code>tls_repo</code>, <code>aws_profile</code>, <code>ssh_key_path</code> are all set and non-empty in <code>run-vars.yml</code>.</div></div>
       <div class="rule"><div class="rule-text"><strong>7. Cost acknowledged</strong> — EC2 instances accrue AWS spend until <code>tofu destroy</code> is run. Know how many instances your architecture creates (see Architecture Reference table above) and have a plan to destroy them when done. The skill runs fully autonomously — it will not pause before <code>tofu apply</code>.</div></div>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Architecture Testing -->
+  <div class="section">
+    <div class="section-label">Testing</div>
+    <h2>Testing All Architectures — Step-by-Step</h2>
+    <p class="desc">How to validate each of the four Themis architectures (<span class="inline-code">aio</span>, <span class="inline-code">minimal</span>, <span class="inline-code">ha2</span>, <span class="inline-code">asa</span>) end-to-end. Complete the one-time setup in the AWS Account Setup section above before running any architecture test. Each test is independent — run them sequentially or in parallel across separate terminal sessions.</p>
+
+    <h3 style="margin-top:20px;color:var(--pink-soft);">Architecture Reference — Cost and Time</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Architecture</th><th>VMs</th><th>Approx. Runtime</th><th>What It Validates</th><th>Destroy Command</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>aio</code></td><td>1</td><td>~45–70 min</td>
+            <td>Single VM — all IAP components colocated. Redis, MongoDB, Platform, and IAG run on same instance. Best first test — cheapest, fastest.</td>
+            <td><code>tofu destroy -var-file=tfvars/aio.tfvars ...</code></td>
+          </tr>
+          <tr>
+            <td><code>minimal</code></td><td>4</td><td>~57 min</td>
+            <td>Dedicated Redis, MongoDB, Platform, and Gateway VMs. Validates multi-node inventory generation and deployer inter-node communication.</td>
+            <td><code>tofu destroy -var-file=tfvars/minimal.tfvars ...</code></td>
+          </tr>
+          <tr>
+            <td><code>ha2</code></td><td>9</td><td>~44 min</td>
+            <td>Redis Sentinel (×3), MongoDB ReplicaSet (×3), Platform (×2), Gateway. Validates HA quorum, sentinel promotion, and replica set election.</td>
+            <td><code>tofu destroy -var-file=tfvars/ha2.tfvars ...</code></td>
+          </tr>
+          <tr>
+            <td><code>asa</code></td><td>17</td><td>~68 min</td>
+            <td>Dual-site Active/Standby. Flat naming: redis01–06, mongo01–05, platform01–04, gateway01–02. Validates cross-site replication and failover readiness.</td>
+            <td><code>tofu destroy -var-file=tfvars/asa.tfvars ...</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:24px;color:var(--pink-soft);">Step-by-Step Test Sequence (per architecture)</h3>
+    <p style="margin:0 0 8px;">Run these steps for each architecture. Replace <code>&lt;arch&gt;</code> with <code>aio</code>, <code>minimal</code>, <code>ha2</code>, or <code>asa</code>.</p>
+
+    <div class="rules" style="grid-template-columns: 1fr; margin-top:8px;">
+      <div class="rule"><div class="rule-text">
+        <strong>Step 1 — Pre-flight check</strong><br/>
+        <pre style="margin:6px 0 0;">aws sts get-caller-identity --profile &lt;aws_profile&gt;
+# Confirm key pair and SG exist (see AWS Account Setup section)
+# Confirm itential.tls is cloned and tls_repo path is correct</pre>
+      </div></div>
+
+      <div class="rule"><div class="rule-text">
+        <strong>Step 2 — Set architecture in run-vars.yml</strong><br/>
+        <pre style="margin:6px 0 0;">nano .claude/skills/themis-aws-deploy/run-vars.yml
+# Set: architecture: &lt;arch&gt;
+# Confirm: os, themis_root, owner, deployer_repo, tls_repo, aws_profile, ssh_key_path
+# repository_password: leave blank if JFROG_TOKEN is in .env (auto-populated)</pre>
+      </div></div>
+
+      <div class="rule"><div class="rule-text">
+        <strong>Step 3 — Run the skill</strong><br/>
+        <pre style="margin:6px 0 0;">/themis-aws-deploy</pre>
+        Claude drives all steps autonomously: Step 1a–1c (.env resolution, tfvars generation, gateway .whl pull), Steps 2–4 (tofu plan/apply, inventory, ansible deploy), Step 5 (certify). Monitor the session output for per-step progress.
+      </div></div>
+
+      <div class="rule"><div class="rule-text">
+        <strong>Step 4 — Review certify reports</strong><br/>
+        <pre style="margin:6px 0 0;">ls .claude/skills/themis-aws-deploy/artifacts/&lt;arch&gt;/&lt;timestamp&gt;/reports/</pre>
+        Check <code>certify_report.md</code> for PASS/FAIL per component. For HA architectures also verify:
+        <ul style="margin:6px 0 0 16px;line-height:1.8;">
+          <li><strong>minimal / ha2 / asa</strong>: Redis sentinel mode active, MongoDB replica set formed</li>
+          <li><strong>ha2</strong>: Both Platform nodes registered, sentinel master elected</li>
+          <li><strong>asa</strong>: All 4 platform nodes registered; gateway01 and gateway02 both healthy; cross-site MongoDB replication lag &lt; 10s</li>
+        </ul>
+      </div></div>
+
+      <div class="rule"><div class="rule-text">
+        <strong>Step 5 — Destroy (do not skip)</strong><br/>
+        <div class="danger" style="margin:6px 0 4px;"><strong>Always destroy after testing.</strong> EC2 instances accrue charges until explicitly destroyed.</div>
+        <pre style="margin:4px 0 0;">cd &lt;themis_root&gt;/vms/aws
+
+tofu destroy \
+  -var-file=tfvars/&lt;arch&gt;.tfvars \
+  -var-file=tfvars/&lt;os&gt;.tfvars \
+  -var owner=&lt;owner&gt; \
+  -var profile=&lt;aws_profile&gt; \
+  -auto-approve
+
+# If ACCOUNT_TFVARS was generated:
+tofu destroy \
+  -var-file=tfvars/&lt;arch&gt;.tfvars \
+  -var-file=.claude/skills/themis-aws-deploy/tfvars-overrides/auto-account.tfvars \
+  -var-file=tfvars/&lt;os&gt;.tfvars \
+  -var owner=&lt;owner&gt; \
+  -var profile=&lt;aws_profile&gt; \
+  -auto-approve</pre>
+        Confirm with: <code>aws ec2 describe-instances --profile &lt;aws_profile&gt; --filters "Name=tag:Owner,Values=&lt;owner&gt;" --query 'Reservations[].Instances[].State.Name'</code> — all should show <code>terminated</code>.
+      </div></div>
+    </div>
+
+    <h3 style="margin-top:24px;color:var(--pink-soft);">Parallel Testing (all 4 architectures simultaneously)</h3>
+    <p style="margin:0 0 8px;">Use <span class="inline-code">scripts/test_all_environments.py</span> to run all four architectures in parallel. Each architecture gets its own timestamped artifact directory. Requires enough AWS quota for 31 EC2 instances (1+4+9+17) in the target account.</p>
+    <div class="code-block"><pre><span class="comment"># Check AWS quota first (recommended: vCPU limit &gt;= 80 in target region)</span>
+<span class="cmd">python3 scripts/test_all_environments.py \
+  --skill-dir .claude/skills/themis-aws-deploy \
+  --run-vars .claude/skills/themis-aws-deploy/run-vars.yml \
+  --architectures aio,minimal,ha2,asa \
+  --profile &lt;aws_profile&gt;</span>
+
+<span class="comment"># Monitor progress (each arch logs to its own file)</span>
+<span class="cmd">tail -f .claude/skills/themis-aws-deploy/artifacts/*/&lt;timestamp&gt;/deploy.log</span>
+
+<span class="comment"># Destroy all after testing</span>
+<span class="cmd">python3 scripts/test_all_environments.py --destroy-only --profile &lt;aws_profile&gt;</span></pre></div>
+
+    <h3 style="margin-top:24px;color:var(--pink-soft);">Architecture-Specific Verification Checklist</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Architecture</th><th>Key Things to Verify</th><th>Command / Check</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>aio</code></td>
+            <td>IAP accessible, all services running on single VM</td>
+            <td><code>curl -k https://&lt;public-ip&gt;:3000/health</code><br/>IAG: <code>curl -k https://&lt;public-ip&gt;:8083/health</code></td>
+          </tr>
+          <tr>
+            <td><code>minimal</code></td>
+            <td>4 VMs reachable; gateway VM routes to platform VM correctly</td>
+            <td><code>certify_report.md</code> → all PASS; SSH to each VM from deployer</td>
+          </tr>
+          <tr>
+            <td><code>ha2</code></td>
+            <td>Redis Sentinel elected; MongoDB replica set PRIMARY elected; both Platform nodes registered</td>
+            <td>Redis: <code>redis-cli -h &lt;redis01&gt; sentinel masters</code><br/>Mongo: <code>mongo --eval "rs.status()"</code></td>
+          </tr>
+          <tr>
+            <td><code>asa</code></td>
+            <td>All 17 VMs provisioned with flat naming (redis01–06, mongo01–05, platform01–04, gateway01–02); cross-site replication active</td>
+            <td><code>tofu output -json | jq '.instances.value | keys'</code> — verify flat names; MongoDB: <code>rs.status().members</code> shows all 5 members</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </div>
 

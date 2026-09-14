@@ -170,6 +170,30 @@ Other skills in the library (`/deployer-inventory`, `/perf-test-analysis`, `/per
 > pre-flight steps. `[OVERRIDE]` sections replace the corresponding vendor instruction;
 > `[INSERT AFTER Step N]` sections add to it. This file is not vendored and survives syncs.
 
+### Vendor Skill Extension Policy
+
+**Rule: never modify any file listed in `vendor/platform-skills/SYNC_MANIFEST.json` or any file under `vendor/builder-skills/`.** A future `sync-platform-skills.sh` or `sync-builder-skills.sh` run silently overwrites those files. Local changes are lost without warning.
+
+**How to extend a vendor skill without touching it:**
+
+1. **Create `LOCAL-EXTENSIONS.md` adjacent to the vendor `SKILL.md`** — e.g. `.claude/skills/<skill-name>/LOCAL-EXTENSIONS.md`. This file must NOT be listed in `SYNC_MANIFEST.json`; confirm with `grep "<skill-name>/LOCAL-EXTENSIONS" vendor/platform-skills/SYNC_MANIFEST.json` (should return empty).
+
+2. **Use two section labels:**
+   - `[OVERRIDE] <Section Name>` — replaces the vendor instruction entirely. Claude uses this instead of the vendor text.
+   - `[INSERT AFTER Step N]` or `[INSERT AFTER Step Na]` — adds a step at the named position; vendor steps around it run unchanged.
+
+3. **Add a CLAUDE.md pointer** in the platform-skills section of this file so Claude always loads the extension alongside the vendor SKILL.md:
+   ```
+   > **`/<skill-name>` local extensions:** When executing this skill, Claude must also
+   > read `.claude/skills/<skill-name>/LOCAL-EXTENSIONS.md` alongside the vendor SKILL.md.
+   > `[OVERRIDE]` sections replace the vendor instruction; `[INSERT AFTER Step N]` adds steps.
+   > This file is not vendored and survives syncs.
+   ```
+
+4. **Do not put AWS, environment, or account config inside `LOCAL-EXTENSIONS.md` in plaintext.** Runtime secrets stay in `.env` (gitignored); `LOCAL-EXTENSIONS.md` holds structural instructions only (command templates with `<placeholder>` tokens).
+
+**Canonical example:** `.claude/skills/themis-aws-deploy/LOCAL-EXTENSIONS.md` — the template for every future vendor skill extension.
+
 ### JFrog RPM Repository (itential.jfrog.io)
 
 Platform RPMs for on-prem / VM deployments are hosted on JFrog. Use
