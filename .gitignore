@@ -13,6 +13,10 @@
 data/[0-9]*/
 data/repro/
 
+# Local reproduction assets — per-engineer, never commit
+# repro/rpms/ contains downloaded RPMs + JFROG_MANIFEST.json (local paths, timestamps)
+repro/
+
 # Office / presentation files
 ~$*
 *.pptx
