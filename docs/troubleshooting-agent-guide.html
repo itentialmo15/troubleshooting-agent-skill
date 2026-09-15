@@ -494,6 +494,7 @@
 
 <!-- ── Tab Navigation ─────────────────────────────────────────── -->
 <div class="tab-nav">
+  <button class="tab-btn" onclick="showTab('exec')">&#9642; Executive Summary</button>
   <button class="tab-btn active" onclick="showTab('overview')">&#9642; Overview &amp; Architecture</button>
   <button class="tab-btn" onclick="showTab('user')">&#9642; User Guide</button>
   <button class="tab-btn" onclick="showTab('admin')">&#9642; Admin Guide</button>
@@ -506,6 +507,263 @@
   <div class="toc-title">On This Page</div>
   <div id="toc-links"></div>
 </nav>
+
+<!-- ══════════════════════════════════════════════════════════════
+     TAB 0: EXECUTIVE SUMMARY
+     ══════════════════════════════════════════════════════════════ -->
+<div id="tab-exec" class="tab-content">
+
+  <!-- Objectives -->
+  <div class="section">
+    <div class="section-label">Mission</div>
+    <h2>Objectives</h2>
+    <p class="desc">Troubleshooting Agent Skills transform reactive, manual support triage into a structured, AI-augmented investigation workflow — shortening time-to-resolution, capturing institutional knowledge automatically, and enabling engineers to handle more complex cases at higher volume.</p>
+    <div class="card-grid">
+      <div class="info-card t-magenta">
+        <div class="card-title">Structured Investigation</div>
+        <div class="card-body">Enforce a consistent 7-phase lifecycle (Triage → Symptom Analysis → Reproduce → Diagnostic Report → Escalation → Resolution Learning → Manager Escalation) so no step is skipped under pressure.</div>
+      </div>
+      <div class="info-card t-purple">
+        <div class="card-title">Automation of Data Collection</div>
+        <div class="card-body">Automatically pull Jira context, MongoDB replica set health, Redis sentinel state, Prometheus metrics, adapter settings, and log spans — work that currently takes 30–90 minutes of manual curl commands.</div>
+      </div>
+      <div class="info-card t-blue">
+        <div class="card-title">Knowledge Accumulation</div>
+        <div class="card-body">Every closed investigation appends to <code>known-resolutions.md</code>. Future investigations match against this growing database — reducing repeat diagnosis time from hours to minutes.</div>
+      </div>
+      <div class="info-card t-olive">
+        <div class="card-title">Platform Environment Automation</div>
+        <div class="card-body">Skills like <code>/themis-aws-deploy</code> provision full Itential Platform environments (AIO → ASA) in AWS for reproduction — eliminating the shared-environment bottleneck that blocks root cause confirmation.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Problems & Challenges -->
+  <div class="section">
+    <div class="section-label">Context</div>
+    <h2>Problems &amp; Challenges Addressed</h2>
+    <div class="card-grid" style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));">
+      <div class="info-card t-red">
+        <div class="card-title">&#9888; Inconsistent Investigation Depth</div>
+        <div class="card-body">Without a skill scaffold, investigation thoroughness depends entirely on individual engineer experience. Junior engineers miss critical checks (replica set elections, Redis eviction policy, stuck Bull queues). Skills enforce baseline coverage for every ticket.</div>
+      </div>
+      <div class="info-card t-red">
+        <div class="card-title">&#9888; Context Loss at Handoff</div>
+        <div class="card-body">When tickets are transferred between engineers, investigation context lives in fragmented Jira comments. Skills generate structured <code>diagnostic_report.md</code> and <code>ticket_context.md</code> artifacts that travel with the ticket.</div>
+      </div>
+      <div class="info-card t-red">
+        <div class="card-title">&#9888; Repeat Diagnosis of Known Issues</div>
+        <div class="card-body">The same MongoDB COLLSCAN or Redis eviction pattern is re-diagnosed from scratch on every ticket. The <code>known-resolutions.md</code> knowledge base and triage matching break this cycle.</div>
+      </div>
+      <div class="info-card t-red">
+        <div class="card-title">&#9888; Slow Reproduction Setup</div>
+        <div class="card-body">Reproducing a customer issue requires a matching environment. Spinning up HA2 or ASA topologies manually takes 2–4 hours of AWS console clicks. <code>/themis-aws-deploy</code> reduces this to a single skill invocation (~44–68 min automated).</div>
+      </div>
+      <div class="info-card t-red">
+        <div class="card-title">&#9888; Credential &amp; Auth Overhead</div>
+        <div class="card-body">Each engineer maintains their own credential collection scattered across notes, 1Password, and local scripts. Skills centralize auth in a single <code>.env</code> file with token caching — one setup, reused across all skills.</div>
+      </div>
+      <div class="info-card t-red">
+        <div class="card-title">&#9888; ENG Escalation Quality</div>
+        <div class="card-body">Engineering escalations often arrive without sufficient diagnostic evidence, causing round-trips. Phase 5 (Engineering Escalation) generates structured ENG ticket drafts with log excerpts, platform version, and reproduction steps pre-filled.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Target Audience -->
+  <div class="section">
+    <div class="section-label">Personas</div>
+    <h2>Target Audience</h2>
+    <div class="card-grid" style="grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));">
+      <div class="info-card t-purple">
+        <div class="card-title">&#128100; Support Engineers (Primary)</div>
+        <div class="card-body">Day-to-day ticket investigators. Use <code>/troubleshoot ISD-XXXX</code> to run the full 7-phase lifecycle, invoke sub-skills for deep diagnosis, and generate customer communications from Phase 4 artifacts.</div>
+      </div>
+      <div class="info-card t-magenta">
+        <div class="card-title">&#128104;&#8205;&#128187; Platform Engineers</div>
+        <div class="card-body">Use <code>/themis-aws-deploy</code> to spin up reproducible AWS environments for all architectures. Contribute resolution patterns via <code>/contribute</code> after resolving ENG tickets.</div>
+      </div>
+      <div class="info-card t-blue">
+        <div class="card-title">&#128202; Engineering Management</div>
+        <div class="card-body">Consume the <code>outage_summary_report.md</code> for customer-facing communications and post-mortem material. Track escalation patterns through accumulated known-resolutions entries to prioritize product fixes.</div>
+      </div>
+      <div class="info-card t-olive">
+        <div class="card-title">&#128218; New Team Members</div>
+        <div class="card-body">Skills serve as executable runbooks — a new engineer can run <code>/troubleshoot-triage</code> on their first ticket and follow structured guidance without needing deep platform expertise from day one.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Flow Diagram -->
+  <div class="section">
+    <div class="section-label">How It Works</div>
+    <h2>Skill Usage Flow</h2>
+    <p class="desc">From ticket assignment to resolution — how skills guide every investigation phase, route to specialist sub-skills, and accumulate institutional knowledge.</p>
+    <div class="diagram-card">
+      <div class="mermaid">
+flowchart TD
+    A([&#128203; Jira Ticket Received\nISD / IPSO / ENG]) --> B[/troubleshoot ISD-XXXX/]
+    B --> C{Phase 1: Triage\n/troubleshoot-triage}
+    C --> D[(ticket_context.md\npre-investigation-summary.md\nknown_issues.md)]
+    C --> E{Symptom Classification}
+    E --> F[&#128736; Adapter Issues\n/troubleshoot-adapters]
+    E --> G[&#128260; Workflow/Job Issues\n/troubleshoot-workflows\n/troubleshoot-jobs]
+    E --> H[&#128201; Database Issues\n/troubleshoot-databases]
+    E --> I[&#9729; Infrastructure\n/troubleshoot-infra]
+    E --> J[&#128196; Log Analysis\n/troubleshoot-logs]
+    F & G & H & I & J --> K{Phase 4: Diagnostic Report}
+    K --> L[(diagnostic_report.md\noutage_summary_report.md)]
+    K --> M{Resolution?}
+    M -- Yes --> N[/contribute ISD-XXXX/\nResolution appended to\nknown-resolutions.md]
+    M -- No --> O[Phase 5: Engineering Escalation\nENG ticket drafted + filed]
+    O --> P[Phase 7: Manager Escalation\nif SLA breached]
+    N --> Q[(&#128218; Knowledge Base grows\nFuture triage matches faster)]
+
+    style A fill:#14173a,stroke:#ec1e7f,color:#e9eaf2
+    style B fill:#1a1d42,stroke:#ec1e7f,color:#e9eaf2
+    style C fill:#1a1d42,stroke:#8b8fa8,color:#e9eaf2
+    style D fill:#0f1128,stroke:#24274a,color:#8b8fa8
+    style E fill:#1a1d42,stroke:#8b8fa8,color:#e9eaf2
+    style F fill:#14173a,stroke:#7c3aed,color:#e9eaf2
+    style G fill:#14173a,stroke:#7c3aed,color:#e9eaf2
+    style H fill:#14173a,stroke:#7c3aed,color:#e9eaf2
+    style I fill:#14173a,stroke:#7c3aed,color:#e9eaf2
+    style J fill:#14173a,stroke:#7c3aed,color:#e9eaf2
+    style K fill:#1a1d42,stroke:#ec1e7f,color:#e9eaf2
+    style L fill:#0f1128,stroke:#24274a,color:#8b8fa8
+    style M fill:#1a1d42,stroke:#8b8fa8,color:#e9eaf2
+    style N fill:#14173a,stroke:#22c55e,color:#e9eaf2
+    style O fill:#14173a,stroke:#f59e0b,color:#e9eaf2
+    style P fill:#14173a,stroke:#ef4444,color:#e9eaf2
+    style Q fill:#0f1128,stroke:#22c55e,color:#86efac
+      </div>
+    </div>
+  </div>
+
+  <!-- Return on Investment -->
+  <div class="section">
+    <div class="section-label">Value</div>
+    <h2>Return on Investment</h2>
+    <div class="card-grid" style="grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));">
+      <div class="info-card t-magenta">
+        <div class="card-title">&#9203; MTTR Reduction</div>
+        <div class="card-body"><strong>Target: 40–60% reduction</strong> in mean time to resolution for P1/P2 tickets where root cause matches a known resolution pattern. Triage matching surfaces known fixes in minutes instead of hours of re-investigation.</div>
+      </div>
+      <div class="info-card t-purple">
+        <div class="card-title">&#128202; Engineer Throughput</div>
+        <div class="card-body"><strong>2–3× more tickets</strong> per engineer per sprint for routine failure patterns. Data collection automation eliminates 30–90 minutes of manual API calls per ticket — time shifted to analysis and customer communication.</div>
+      </div>
+      <div class="info-card t-blue">
+        <div class="card-title">&#128295; Reproduction Time</div>
+        <div class="card-body"><strong>From 2–4 hours → 44–68 min</strong> for full platform environment provisioning (HA2/ASA via <code>/themis-aws-deploy</code>). Enables root cause confirmation without blocking a shared repro environment.</div>
+      </div>
+      <div class="info-card t-olive">
+        <div class="card-title">&#128218; Knowledge Retention</div>
+        <div class="card-body"><strong>Zero knowledge loss</strong> on engineer departure or ticket handoff. Structured artifacts (<code>diagnostic_report.md</code>, <code>known-resolutions.md</code>) capture investigation outcomes regardless of team composition.</div>
+      </div>
+      <div class="info-card t-orange">
+        <div class="card-title">&#128640; Onboarding Acceleration</div>
+        <div class="card-body"><strong>New engineers productive in days, not weeks.</strong> Skills function as executable runbooks — structured guidance eliminates the expertise gap for routine failure patterns on first investigation.</div>
+      </div>
+      <div class="info-card t-red">
+        <div class="card-title">&#128679; ENG Escalation Quality</div>
+        <div class="card-body"><strong>Fewer engineering round-trips.</strong> Phase 5 auto-generates ENG drafts with structured evidence. Engineering receives actionable tickets with log excerpts, replica set state, and reproduction steps — not "it's broken" comments.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Future Roadmap -->
+  <div class="section">
+    <div class="section-label">Roadmap</div>
+    <h2>Future Roadmap</h2>
+    <p class="desc">As the skill family matures, it evolves from an internal support tool into a multi-persona platform intelligence layer — driving automation, customer self-service, and product improvement feedback loops.</p>
+
+    <div style="position:relative; padding-left:28px; border-left:2px solid var(--border); margin-top:24px;">
+
+      <!-- Phase 1: Multi-Persona Expansion -->
+      <div style="position:relative; margin-bottom:32px;">
+        <div style="position:absolute; left:-37px; top:2px; width:18px; height:18px; border-radius:50%; background:var(--pink); border:2px solid var(--surface); display:flex; align-items:center; justify-content:center;"><span style="font-size:9px; color:#fff; font-weight:700;">1</span></div>
+        <div class="info-card t-magenta" style="margin:0;">
+          <div class="card-title">&#128100;&#128104;&#8205;&#128187;&#128202; Multi-Persona Skill Access</div>
+          <div class="card-body">
+            <strong>Extend skills beyond support engineering.</strong> Each persona gets purpose-scoped access:<br><br>
+            <span class="tag">Platform Engineering</span> — provisioning + performance benchmarking skills<br>
+            <span class="tag">Solutions Engineering</span> — customer demo environment skills<br>
+            <span class="tag">Engineering</span> — root cause investigation access tied to ENG tickets<br>
+            <span class="tag">Management</span> — summary report generation without full investigation access<br><br>
+            Skills already support persona-scoped <code>.env</code> files and per-skill CLAUDE.md pointers — the authorization layer is the primary addition.
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 2: Customer Self-Service -->
+      <div style="position:relative; margin-bottom:32px;">
+        <div style="position:absolute; left:-37px; top:2px; width:18px; height:18px; border-radius:50%; background:#7c3aed; border:2px solid var(--surface); display:flex; align-items:center; justify-content:center;"><span style="font-size:9px; color:#fff; font-weight:700;">2</span></div>
+        <div class="info-card t-purple" style="margin:0;">
+          <div class="card-title">&#128101; Customer Self-Service Tier</div>
+          <div class="card-body">
+            <strong>Package a read-only skill subset for customers</strong> to run against their own environments.<br><br>
+            Customers would receive a scoped skill bundle covering health checks, log collection, and known-issue matching — reducing initial triage calls. Support engineers retain the full investigation skill set for escalations.<br><br>
+            <span class="tag">Skills targeted</span>: read-only <code>/mongodb</code>, <code>/redis</code>, <code>/prometheus</code> health reports + known-resolutions matching<br>
+            <span class="tag">Delivery model</span>: self-contained Claude Code skill bundle, installable via a customer-specific <code>GITLAB_TOKEN</code> scoped to a public mirror
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 3: Knowledge Base Product -->
+      <div style="position:relative; margin-bottom:32px;">
+        <div style="position:absolute; left:-37px; top:2px; width:18px; height:18px; border-radius:50%; background:#2563eb; border:2px solid var(--surface); display:flex; align-items:center; justify-content:center;"><span style="font-size:9px; color:#fff; font-weight:700;">3</span></div>
+        <div class="info-card t-blue" style="margin:0;">
+          <div class="card-title">&#128218; Platform Intelligence Knowledge Base</div>
+          <div class="card-body">
+            <strong>Transform accumulated investigation artifacts into a structured product knowledge base.</strong><br><br>
+            <code>known-resolutions.md</code> already captures resolution patterns. The roadmap extends this to:<br><br>
+            <span class="tag">Version-correlated failures</span> — map known bugs to specific platform versions automatically<br>
+            <span class="tag">Customer topology profiling</span> — detect recurring environmental patterns across tickets<br>
+            <span class="tag">Product gap signals</span> — surface systematic failure modes as input to product planning<br>
+            <span class="tag">Searchable artifact index</span> — full-text search across all investigation <code>.md</code> artifacts via a lightweight indexer<br><br>
+            Every investigation that runs makes this knowledge base richer — the more tickets investigated with skills, the faster future triage becomes.
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 4: Chatbot & Automated Triage -->
+      <div style="position:relative; margin-bottom:32px;">
+        <div style="position:absolute; left:-37px; top:2px; width:18px; height:18px; border-radius:50%; background:#d97706; border:2px solid var(--surface); display:flex; align-items:center; justify-content:center;"><span style="font-size:9px; color:#fff; font-weight:700;">4</span></div>
+        <div class="info-card t-orange" style="margin:0;">
+          <div class="card-title">&#129302; Chatbot &amp; Automated Triage Integration</div>
+          <div class="card-body">
+            <strong>Surface skill outputs through a conversational interface.</strong><br><br>
+            Skills generate structured <code>.md</code> artifacts that are already machine-readable. The next layer:<br><br>
+            <span class="tag">Slack / Teams bot</span> — trigger <code>/troubleshoot-triage</code> from a Slack command; bot posts the triage summary into the ticket thread automatically<br>
+            <span class="tag">Jira automation</span> — on ticket creation, auto-run triage and attach <code>pre-investigation-summary.md</code> as an internal comment<br>
+            <span class="tag">Escalation alerting</span> — bot notifies the on-call manager when Phase 7 (Manager Escalation) is triggered<br>
+            <span class="tag">Known-resolution matching API</span> — expose <code>known-resolutions.md</code> as a lightweight REST endpoint; chatbot checks it before routing to a human engineer
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 5: Automated Investigation Agents -->
+      <div style="position:relative; margin-bottom:0;">
+        <div style="position:absolute; left:-37px; top:2px; width:18px; height:18px; border-radius:50%; background:#16a34a; border:2px solid var(--surface); display:flex; align-items:center; justify-content:center;"><span style="font-size:9px; color:#fff; font-weight:700;">5</span></div>
+        <div class="info-card t-olive" style="margin:0;">
+          <div class="card-title">&#129693; Fully Automated Investigation Agents</div>
+          <div class="card-body">
+            <strong>End-to-end autonomous investigation for known failure patterns.</strong><br><br>
+            For tickets that match a high-confidence known resolution, an automated agent could:<br><br>
+            <span class="tag">Auto-collect diagnostics</span> — run the full data collection phase without engineer interaction<br>
+            <span class="tag">Auto-apply known fixes</span> — for approved, low-risk remediations (adapter restart, cache clear) with engineer approval gate<br>
+            <span class="tag">Auto-draft customer response</span> — generate the Phase 4 customer communication and queue for engineer review before sending<br>
+            <span class="tag">Continuous monitoring loop</span> — post-resolution, run health checks on a schedule to confirm fix held<br><br>
+            The skills architecture already supports this — skills are modular, artifact-driven, and API-connected. The automation layer is the control plane that orchestrates them without a human in the loop for known patterns.
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div><!-- end tab-exec -->
 
 <!-- ══════════════════════════════════════════════════════════════
      TAB 1: OVERVIEW & ARCHITECTURE
