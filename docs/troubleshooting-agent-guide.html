@@ -854,39 +854,22 @@
     <p class="desc">From ticket intake to knowledge base — the full investigation lifecycle in one view.</p>
     <div class="diagram-card">
       <div class="mermaid">
-flowchart TD
-    T["Jira Ticket Received<br/>ISD / IPSO / ENG"] --> PH1["Phase 1 — Triage<br/>/troubleshoot-triage"]
-    PH1 --> ART["Artifacts Created<br/>ticket_context.md<br/>known_issues.md"]
-    PH1 --> CL["Classify Symptoms"]
+flowchart LR
+    TICKET["Jira Ticket<br/>Received"] --> TRIAGE["Triage<br/>Symptom analysis<br/>Known issue matching"]
+    TRIAGE --> SUBSKILLS["Sub-Skill Diagnosis<br/>Adapters, Databases<br/>Infra, Logs, Workflows"]
+    SUBSKILLS --> REPRO["Reproduce<br/>Vendor skills<br/>AWS environment build"]
+    REPRO --> REPORT["Diagnostic Report<br/>Findings, evidence<br/>Recommendations"]
+    REPORT -->|"Resolved"| KB["Resolution Learning<br/>Knowledge base updated<br/>Pattern captured"]
+    REPORT -->|"Escalation needed"| ENG["ENG Escalation<br/>Bug ticket filed<br/>with full evidence"]
+    ENG -->|"SLA breached"| MGR["Manager Escalation<br/>Customer communication<br/>Executive summary"]
 
-    CL --> AD["/troubleshoot-adapters<br/>Adapters, OFFLINE"]
-    CL --> WF["/troubleshoot-workflows<br/>Workflows, Jobs"]
-    CL --> DB["/troubleshoot-databases<br/>MongoDB, Redis"]
-    CL --> INFRA["/troubleshoot-infra<br/>Infrastructure"]
-    CL --> LG["/troubleshoot-logs<br/>Log Analysis"]
-
-    AD --> PH4["Phase 4 — Diagnostic Report<br/>diagnostic_report.md"]
-    WF --> PH4
-    DB --> PH4
-    INFRA --> PH4
-    LG --> PH4
-
-    PH4 -->|"Resolved"| KB["Knowledge Base<br/>known-resolutions.md<br/>grows over time"]
-    PH4 -->|"Needs Escalation"| ESC["Phase 5 — ENG Escalation<br/>ENG ticket drafted, filed"]
-    ESC --> MGR["Phase 7 — Manager Escalation<br/>if SLA breached"]
-
-    style T fill:#14173a,stroke:#ec1e7f,color:#e9eaf2
-    style PH1 fill:#1a1d42,stroke:#ec1e7f,color:#e9eaf2
-    style ART fill:#0f1128,stroke:#24274a,color:#8b8fa8
-    style CL fill:#1a1d42,stroke:#8b8fa8,color:#e9eaf2
-    style AD fill:#1a0a2e,stroke:#9b4de8,color:#e9eaf2
-    style WF fill:#1a0a2e,stroke:#9b4de8,color:#e9eaf2
-    style DB fill:#1a0a2e,stroke:#9b4de8,color:#e9eaf2
-    style INFRA fill:#1a0a2e,stroke:#9b4de8,color:#e9eaf2
-    style LG fill:#1a0a2e,stroke:#9b4de8,color:#e9eaf2
-    style PH4 fill:#1a1d42,stroke:#ec1e7f,color:#e9eaf2
+    style TICKET fill:#14173a,stroke:#ec1e7f,color:#e9eaf2
+    style TRIAGE fill:#1a1d42,stroke:#ec1e7f,color:#e9eaf2
+    style SUBSKILLS fill:#1a0a2e,stroke:#9b4de8,color:#e9eaf2
+    style REPRO fill:#1a0a2e,stroke:#9b4de8,color:#e9eaf2
+    style REPORT fill:#1a1d42,stroke:#ec1e7f,color:#e9eaf2
     style KB fill:#0a1a0a,stroke:#22c55e,color:#86efac
-    style ESC fill:#1a1208,stroke:#f59e0b,color:#e9eaf2
+    style ENG fill:#1a1208,stroke:#f59e0b,color:#e9eaf2
     style MGR fill:#1a0808,stroke:#ef4444,color:#e9eaf2
       </div>
     </div>
