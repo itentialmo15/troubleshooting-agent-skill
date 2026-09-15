@@ -851,27 +851,92 @@
   <div class="section">
     <div class="section-label">How It Works</div>
     <h2>Skill Usage Flow</h2>
-    <p class="desc">From ticket intake to knowledge base — the full investigation lifecycle in one view.</p>
-    <div class="diagram-card">
-      <div class="mermaid">
-flowchart LR
-    TICKET["Jira Ticket<br/>Received"] --> TRIAGE["Triage<br/>Symptom analysis<br/>Known issue matching"]
-    TRIAGE --> SUBSKILLS["Sub-Skill Diagnosis<br/>Adapters, Databases<br/>Infra, Logs, Workflows"]
-    SUBSKILLS --> REPRO["Reproduce<br/>Vendor skills<br/>AWS environment build"]
-    REPRO --> REPORT["Diagnostic Report<br/>Findings, evidence<br/>Recommendations"]
-    REPORT -->|"Resolved"| KB["Resolution Learning<br/>Knowledge base updated<br/>Pattern captured"]
-    REPORT -->|"Escalation needed"| ENG["ENG Escalation<br/>Bug ticket filed<br/>with full evidence"]
-    ENG -->|"SLA breached"| MGR["Manager Escalation<br/>Customer communication<br/>Executive summary"]
+    <p class="desc">From ticket intake to knowledge base — the high-level investigation lifecycle.</p>
 
-    style TICKET fill:#14173a,stroke:#ec1e7f,color:#e9eaf2
-    style TRIAGE fill:#1a1d42,stroke:#ec1e7f,color:#e9eaf2
-    style SUBSKILLS fill:#1a0a2e,stroke:#9b4de8,color:#e9eaf2
-    style REPRO fill:#1a0a2e,stroke:#9b4de8,color:#e9eaf2
-    style REPORT fill:#1a1d42,stroke:#ec1e7f,color:#e9eaf2
-    style KB fill:#0a1a0a,stroke:#22c55e,color:#86efac
-    style ENG fill:#1a1208,stroke:#f59e0b,color:#e9eaf2
-    style MGR fill:#1a0808,stroke:#ef4444,color:#e9eaf2
+    <!-- Custom HTML flow — no Mermaid dependency -->
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:32px 28px;overflow-x:auto;">
+
+      <!-- Main pipeline: 5 steps -->
+      <div style="display:flex;align-items:stretch;gap:0;min-width:600px;">
+
+        <div style="flex:1;background:#14173a;border:1px solid #ec1e7f;border-radius:8px;padding:16px 14px;text-align:center;">
+          <div style="font-size:10px;font-weight:700;color:#ec1e7f;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;">01</div>
+          <div style="font-size:13px;font-weight:600;color:#e9eaf2;margin-bottom:4px;">Jira Ticket<br/>Received</div>
+          <div style="font-size:11px;color:#8b8fa8;">ISD / IPSO / ENG</div>
+        </div>
+
+        <div style="display:flex;align-items:center;padding:0 6px;color:#ec1e7f;font-size:18px;flex-shrink:0;">&#9654;</div>
+
+        <div style="flex:1;background:#1a1d42;border:1px solid #ec1e7f;border-radius:8px;padding:16px 14px;text-align:center;">
+          <div style="font-size:10px;font-weight:700;color:#ec1e7f;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;">02</div>
+          <div style="font-size:13px;font-weight:600;color:#e9eaf2;margin-bottom:4px;">Triage</div>
+          <div style="font-size:11px;color:#8b8fa8;">Symptoms &amp; known issue matching</div>
+        </div>
+
+        <div style="display:flex;align-items:center;padding:0 6px;color:#8b8fa8;font-size:18px;flex-shrink:0;">&#9654;</div>
+
+        <div style="flex:1;background:#1a0a2e;border:1px solid #9b4de8;border-radius:8px;padding:16px 14px;text-align:center;">
+          <div style="font-size:10px;font-weight:700;color:#9b4de8;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;">03</div>
+          <div style="font-size:13px;font-weight:600;color:#e9eaf2;margin-bottom:4px;">Sub-Skill<br/>Diagnosis</div>
+          <div style="font-size:11px;color:#8b8fa8;">Adapters, DB, Infra, Logs</div>
+        </div>
+
+        <div style="display:flex;align-items:center;padding:0 6px;color:#8b8fa8;font-size:18px;flex-shrink:0;">&#9654;</div>
+
+        <div style="flex:1;background:#1a0a2e;border:1px solid #9b4de8;border-radius:8px;padding:16px 14px;text-align:center;">
+          <div style="font-size:10px;font-weight:700;color:#9b4de8;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;">04</div>
+          <div style="font-size:13px;font-weight:600;color:#e9eaf2;margin-bottom:4px;">Reproduce</div>
+          <div style="font-size:11px;color:#8b8fa8;">Vendor skills &amp; AWS env build</div>
+        </div>
+
+        <div style="display:flex;align-items:center;padding:0 6px;color:#8b8fa8;font-size:18px;flex-shrink:0;">&#9654;</div>
+
+        <div style="flex:1;background:#1a1d42;border:2px solid #ec1e7f;border-radius:8px;padding:16px 14px;text-align:center;">
+          <div style="font-size:10px;font-weight:700;color:#ec1e7f;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;">05</div>
+          <div style="font-size:13px;font-weight:600;color:#e9eaf2;margin-bottom:4px;">Diagnostic<br/>Report</div>
+          <div style="font-size:11px;color:#8b8fa8;">Findings &amp; recommendations</div>
+        </div>
+
       </div>
+
+      <!-- Connector line from step 05 down to outcomes -->
+      <div style="display:flex;justify-content:flex-end;padding-right:calc(0px);min-width:600px;">
+        <div style="width:calc(100% / 5);display:flex;justify-content:center;">
+          <div style="width:2px;height:24px;background:linear-gradient(to bottom,#ec1e7f,#8b8fa8);"></div>
+        </div>
+      </div>
+
+      <!-- Outcome row: 3 outcome boxes -->
+      <div style="display:flex;align-items:flex-start;gap:12px;min-width:600px;">
+
+        <!-- Spacer to push outcomes to align under step 05 -->
+        <div style="flex:4;"></div>
+        <div style="width:18px;flex-shrink:0;"></div><!-- arrow spacer -->
+
+        <!-- Three outcomes stacked -->
+        <div style="flex:1;display:flex;flex-direction:column;gap:10px;">
+
+          <div style="background:#0a1a0a;border:1px solid #22c55e;border-radius:8px;padding:14px;position:relative;">
+            <div style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:#0a1a0a;padding:0 6px;font-size:10px;color:#22c55e;font-weight:700;white-space:nowrap;">RESOLVED</div>
+            <div style="font-size:12px;font-weight:600;color:#86efac;margin-bottom:3px;">Resolution Learning</div>
+            <div style="font-size:11px;color:#6b9e6b;">Pattern added to knowledge base</div>
+          </div>
+
+          <div style="background:#1a1208;border:1px solid #f59e0b;border-radius:8px;padding:14px;position:relative;">
+            <div style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:#1a1208;padding:0 6px;font-size:10px;color:#f59e0b;font-weight:700;white-space:nowrap;">ESCALATION NEEDED</div>
+            <div style="font-size:12px;font-weight:600;color:#e9eaf2;margin-bottom:3px;">ENG Escalation</div>
+            <div style="font-size:11px;color:#8b8fa8;">Bug ticket filed with full evidence</div>
+          </div>
+
+          <div style="background:#1a0808;border:1px solid #ef4444;border-radius:8px;padding:14px;position:relative;">
+            <div style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:#1a0808;padding:0 6px;font-size:10px;color:#ef4444;font-weight:700;white-space:nowrap;">SLA BREACHED</div>
+            <div style="font-size:12px;font-weight:600;color:#e9eaf2;margin-bottom:3px;">Manager Escalation</div>
+            <div style="font-size:11px;color:#8b8fa8;">Executive communication</div>
+          </div>
+
+        </div>
+      </div>
+
     </div>
   </div>
 
