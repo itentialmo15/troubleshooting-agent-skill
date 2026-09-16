@@ -700,6 +700,189 @@
       font-size: 11px;
       color: var(--muted);
     }
+    /* ── Prerequisites tab ── */
+    .prereq-matrix {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin-bottom: 0;
+    }
+    .prereq-matrix th {
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: .8px;
+      text-transform: uppercase;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .prereq-matrix td {
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      vertical-align: middle;
+      text-align: center;
+    }
+    .prereq-matrix td.skill-name {
+      text-align: left;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--pink-soft);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .prereq-matrix tr:nth-child(even) td { background: color-mix(in srgb, var(--surface) 50%, transparent); }
+    .cell-req {
+      background: color-mix(in srgb, #22c55e 12%, transparent);
+      color: #22c55e;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .cell-opt {
+      background: color-mix(in srgb, #f59e0b 10%, transparent);
+      color: #f59e0b;
+      font-size: 13px;
+    }
+    .cell-no { color: var(--border); font-size: 13px; }
+    .prereq-setup-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 16px;
+    }
+    .prereq-setup-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 22px 20px;
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+    .prereq-setup-icon { font-size: 28px; flex-shrink: 0; }
+    .prereq-setup-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 5px;
+    }
+    .prereq-setup-desc { font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+    .prereq-skill-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 16px;
+    }
+    .prereq-skill-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 22px 20px;
+    }
+    .prereq-skill-card.pink  { border-left: 4px solid var(--pink); }
+    .prereq-skill-card.purple{ border-left: 4px solid var(--c-purple-border); }
+    .prereq-skill-card.blue  { border-left: 4px solid var(--c-blue-border); }
+    .prereq-skill-card.olive { border-left: 4px solid var(--c-olive-border); }
+    .prereq-skill-title {
+      font-family: 'Oswald', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      color: var(--text);
+      margin-bottom: 10px;
+    }
+    .prereq-skill-card.pink  .prereq-skill-title { color: var(--pink-soft); }
+    .prereq-skill-card.purple .prereq-skill-title { color: var(--c-purple-border); }
+    .prereq-skill-card.blue  .prereq-skill-title { color: var(--c-blue-border); }
+    .prereq-skill-card.olive .prereq-skill-title { color: var(--c-olive-border); }
+    .prereq-skill-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 6px;
+      font-size: 12px;
+    }
+    .prereq-skill-row .dot { flex-shrink: 0; margin-top: 3px; font-size: 8px; color: var(--muted); }
+    .prereq-skill-row strong { color: var(--text); }
+    .prereq-skill-row span { color: var(--muted); }
+    .prereq-iam-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .prereq-iam-table th {
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: .8px;
+      text-transform: uppercase;
+      padding: 9px 14px;
+      border: 1px solid var(--border);
+      text-align: left;
+    }
+    .prereq-iam-table td {
+      padding: 9px 14px;
+      border: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    .prereq-iam-table td:first-child {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--logo-blue);
+    }
+    .prereq-iam-table tr:nth-child(even) td {
+      background: color-mix(in srgb, var(--surface) 40%, transparent);
+    }
+    .prereq-os-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .prereq-os-table th {
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: .8px;
+      text-transform: uppercase;
+      padding: 9px 14px;
+      border: 1px solid var(--border);
+      text-align: left;
+    }
+    .prereq-os-table td {
+      padding: 9px 14px;
+      border: 1px solid var(--border);
+      vertical-align: middle;
+      font-size: 12px;
+    }
+    .prereq-os-table td:first-child {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--pink-soft);
+    }
+    .prereq-os-table tr:nth-child(even) td {
+      background: color-mix(in srgb, var(--surface) 40%, transparent);
+    }
+    .prereq-checklist {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .prereq-check-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 12.5px;
+    }
+    .prereq-check-box {
+      width: 16px;
+      height: 16px;
+      border: 1.5px solid var(--border);
+      border-radius: 3px;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
   </style>
 </head>
 <body>
@@ -718,6 +901,7 @@
 <div class="tab-nav">
   <button class="tab-btn" onclick="showTab('exec')">&#9642; Executive Summary</button>
   <button class="tab-btn active" onclick="showTab('overview')">&#9642; Overview &amp; Architecture</button>
+  <button class="tab-btn" onclick="showTab('prereqs')">&#9642; Prerequisites</button>
   <button class="tab-btn" onclick="showTab('user')">&#9642; User Guide</button>
   <button class="tab-btn" onclick="showTab('admin')">&#9642; Admin Guide</button>
   <button class="tab-btn" onclick="showTab('subskills')">&#9642; Sub-Skills Reference</button>
@@ -1392,6 +1576,357 @@ flowchart TD
 <!-- ══════════════════════════════════════════════════════════════
      TAB 2: USER GUIDE
      ══════════════════════════════════════════════════════════════ -->
+<div id="tab-prereqs" class="tab-content">
+  <div class="content-wrap">
+
+    <!-- Hero -->
+    <div class="exec-hero" style="margin-bottom:32px;">
+      <div class="exec-tagline">Before You Start</div>
+      <div class="exec-sub">A complete access checklist for every skill. Scan the matrix to identify gaps, then follow the one-time setup steps below. Each skill group card links to the Admin Guide for full configuration detail.</div>
+    </div>
+
+    <!-- Section 1: Capability Matrix -->
+    <div class="section">
+      <div class="section-label">Access Matrix</div>
+      <h2 class="section-heading">Capability Access Matrix</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin-bottom:20px;">
+        <strong style="color:#22c55e;">✅ Required</strong> &nbsp;|&nbsp;
+        <strong style="color:#f59e0b;">⚡ Optional</strong> — unlocks deeper diagnostics &nbsp;|&nbsp;
+        <strong style="color:var(--border);">—</strong> Not needed
+      </p>
+      <div style="overflow-x:auto;border-radius:10px;border:1px solid var(--border);">
+        <table class="prereq-matrix">
+          <thead>
+            <tr>
+              <th style="text-align:left;min-width:220px;">Skill</th>
+              <th>IAP Creds</th>
+              <th>Jira Token</th>
+              <th>SSH Key</th>
+              <th>Mongo URL</th>
+              <th>Redis Host</th>
+              <th>AWS Profile</th>
+              <th>Vault Token</th>
+              <th>JFrog Token</th>
+              <th>GitLab Token</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="skill-name">/troubleshoot (core)</td>
+              <td class="cell-req">✅</td>
+              <td class="cell-req">✅</td>
+              <td class="cell-opt">⚡</td>
+              <td class="cell-opt">⚡</td>
+              <td class="cell-opt">⚡</td>
+              <td class="cell-opt">⚡</td>
+              <td class="cell-no">—</td>
+              <td class="cell-no">—</td>
+              <td class="cell-opt">⚡</td>
+            </tr>
+            <tr>
+              <td class="skill-name">/troubleshoot + platform skills</td>
+              <td class="cell-req">✅</td>
+              <td class="cell-req">✅</td>
+              <td class="cell-opt">⚡</td>
+              <td class="cell-opt">⚡</td>
+              <td class="cell-opt">⚡</td>
+              <td class="cell-opt">⚡</td>
+              <td class="cell-no">—</td>
+              <td class="cell-no">—</td>
+              <td class="cell-req">✅</td>
+            </tr>
+            <tr>
+              <td class="skill-name">/themis-aws-deploy</td>
+              <td class="cell-no">—</td>
+              <td class="cell-no">—</td>
+              <td class="cell-req">✅</td>
+              <td class="cell-no">—</td>
+              <td class="cell-no">—</td>
+              <td class="cell-req">✅</td>
+              <td class="cell-no">—</td>
+              <td class="cell-req">✅</td>
+              <td class="cell-req">✅</td>
+            </tr>
+            <tr>
+              <td class="skill-name">/perflab</td>
+              <td class="cell-no">—</td>
+              <td class="cell-no">—</td>
+              <td class="cell-req">✅</td>
+              <td class="cell-no">—</td>
+              <td class="cell-no">—</td>
+              <td class="cell-no">—</td>
+              <td class="cell-req">✅</td>
+              <td class="cell-no">—</td>
+              <td class="cell-no">—</td>
+            </tr>
+            <tr>
+              <td class="skill-name">/mongodb /redis /prometheus etc.</td>
+              <td class="cell-no">—</td>
+              <td class="cell-no">—</td>
+              <td class="cell-req">✅</td>
+              <td class="cell-no">—</td>
+              <td class="cell-no">—</td>
+              <td class="cell-no">—</td>
+              <td class="cell-req">✅</td>
+              <td class="cell-no">—</td>
+              <td class="cell-req">✅</td>
+            </tr>
+            <tr>
+              <td class="skill-name">/contribute</td>
+              <td class="cell-no">—</td>
+              <td class="cell-req">✅</td>
+              <td class="cell-no">—</td>
+              <td class="cell-no">—</td>
+              <td class="cell-no">—</td>
+              <td class="cell-no">—</td>
+              <td class="cell-no">—</td>
+              <td class="cell-no">—</td>
+              <td class="cell-no">—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="info-box" style="margin-top:16px;">
+        <strong>GitLab Token note:</strong> GITLAB_TOKEN is needed to <em>sync/update</em> platform skills from the private GitLab repo. If platform skills are already synced on disk, the staleness check is <strong>non-blocking</strong> — it logs "staleness unknown, proceeding with existing copy" and continues. Basic <code>/troubleshoot</code> sessions (adapters, workflows, jobs, logs, infra) work without it. It's required when syncing from upstream.
+      </div>
+    </div>
+
+    <!-- Section 2: One-Time Setup -->
+    <div class="section">
+      <div class="section-label">One-Time Setup</div>
+      <h2 class="section-heading">One-Time Setup</h2>
+      <div class="prereq-setup-grid">
+
+        <div class="prereq-setup-card">
+          <div class="prereq-setup-icon">🖥️</div>
+          <div>
+            <div class="prereq-setup-title">Claude Code</div>
+            <div class="prereq-setup-desc">Install from <code>claude.ai/code</code>. CLAUDE.md auto-loads on launch — no manual setup needed.</div>
+          </div>
+        </div>
+
+        <div class="prereq-setup-card">
+          <div class="prereq-setup-icon">🎫</div>
+          <div>
+            <div class="prereq-setup-title">Jira API Token</div>
+            <div class="prereq-setup-desc"><code>id.atlassian.net → Security → API tokens</code><br/>Add to <code>.env</code> as <code>JIRA_API_TOKEN</code>. The Jira account must have permission to view and comment on ISD/ENG/IPSO tickets.</div>
+          </div>
+        </div>
+
+        <div class="prereq-setup-card">
+          <div class="prereq-setup-icon">📦</div>
+          <div>
+            <div class="prereq-setup-title">JFrog Identity Token</div>
+            <div class="prereq-setup-desc"><code>itential.jfrog.io → User Profile → Generate Identity Token</code><br/>Add as <code>JFROG_TOKEN</code>. Used by RPM downloads and auto-populates Themis <code>repository_api_key</code>.</div>
+          </div>
+        </div>
+
+        <div class="prereq-setup-card">
+          <div class="prereq-setup-icon">🔑</div>
+          <div>
+            <div class="prereq-setup-title">GitLab Deploy Token</div>
+            <div class="prereq-setup-desc">GitLab → <code>platform-claude-skills</code> → Settings → Repository → Deploy tokens. Scope: <code>read_repository</code>. Add as <code>GITLAB_TOKEN</code> in <code>.env</code>.</div>
+          </div>
+        </div>
+
+        <div class="prereq-setup-card">
+          <div class="prereq-setup-icon">☁️</div>
+          <div>
+            <div class="prereq-setup-title">AWS SSO Profile</div>
+            <div class="prereq-setup-desc">Default: <code>pe-team-sbx</code> (pre-configured). Custom account: add AWS overrides to <code>.env</code> — see Admin Guide → Environment Build Setup.</div>
+          </div>
+        </div>
+
+        <div class="prereq-setup-card">
+          <div class="prereq-setup-icon">🗝️</div>
+          <div>
+            <div class="prereq-setup-title">SSH Key(s)</div>
+            <div class="prereq-setup-desc">EC2 key pair from team lead (<code>chmod 400</code> required). PE infra key: <code>~/.ssh/claude_perflab</code>. Path goes in <code>.env</code> as <code>SSH_KEY_PATH_N</code> or in <code>run-vars.yml</code> as <code>ssh_key_path</code>.</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Themis first-time setup -->
+      <div class="info-box" style="margin-top:20px;">
+        <strong>Themis first-time setup:</strong> <code>run-vars.yml</code> is gitignored. Copy the template and fill in your values:<br/>
+        <code style="display:block;margin-top:6px;font-size:12px;">cp .claude/skills/themis-aws-deploy/run-vars.yml.example .claude/skills/themis-aws-deploy/run-vars.yml</code>
+        Leave <code>repository_api_key</code> blank — auto-populated from <code>JFROG_TOKEN</code> in <code>.env</code>. See <button onclick="showTab('admin')" style="background:none;border:none;color:var(--pink-soft);cursor:pointer;text-decoration:underline;font-size:12px;padding:0;">Admin Guide → Environment Build Setup</button> for the full field reference.
+      </div>
+
+      <!-- Required tools -->
+      <div style="margin-top:24px;">
+        <h3 style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:12px;">Required Tools (Themis only)</h3>
+        <table class="prereq-iam-table">
+          <thead><tr><th>Tool</th><th>Min Version</th><th>Install</th></tr></thead>
+          <tbody>
+            <tr><td>OpenTofu</td><td>≥ 1.6</td><td>opentofu.org</td></tr>
+            <tr><td>Ansible</td><td>≥ 2.13</td><td><code>pip install ansible</code></td></tr>
+            <tr><td>Python</td><td>≥ 3.8</td><td>python.org</td></tr>
+            <tr><td>AWS CLI</td><td>v2</td><td>aws.amazon.com/cli</td></tr>
+            <tr><td>gh CLI</td><td>any</td><td>cli.github.com</td></tr>
+            <tr><td>Ansible Collections</td><td>—</td><td><code>ansible-galaxy collection install itential.deployer itential.tls community.crypto</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Section 3: Per-Skill Requirements -->
+    <div class="section">
+      <div class="section-label">Per-Skill Access</div>
+      <h2 class="section-heading">Per-Skill Minimum Access</h2>
+      <div class="prereq-skill-grid">
+
+        <div class="prereq-skill-card pink">
+          <div class="prereq-skill-title">Troubleshooting Skills</div>
+          <div class="prereq-skill-row"><span class="dot">●</span><span><strong>Required:</strong> IAP URL + credentials, Jira API token</span></div>
+          <div class="prereq-skill-row"><span class="dot">●</span><span><strong>Optional tier 1:</strong> SSH key(s) → enables OS-level log collection and infra checks</span></div>
+          <div class="prereq-skill-row"><span class="dot">●</span><span><strong>Optional tier 2:</strong> MONGO_URL, REDIS_HOST → deep DB diagnostics</span></div>
+          <div class="prereq-skill-row"><span class="dot">●</span><span><strong>Optional tier 3:</strong> AWS keys, Prometheus URL → CloudWatch and metrics analysis</span></div>
+          <div class="prereq-skill-row"><span class="dot">●</span><span><strong>Platform skills:</strong> GitLab Deploy Token for sync; Vault token for PE infra ops skills</span></div>
+        </div>
+
+        <div class="prereq-skill-card purple">
+          <div class="prereq-skill-title">/themis-aws-deploy</div>
+          <div class="prereq-skill-row"><span class="dot">●</span><span><strong>AWS profile</strong> with EC2 CRUD permissions (see AWS IAM section)</span></div>
+          <div class="prereq-skill-row"><span class="dot">●</span><span><strong>SSH private key</strong> for EC2 instances (<code>chmod 400</code>)</span></div>
+          <div class="prereq-skill-row"><span class="dot">●</span><span><strong>JFrog Identity Token</strong> — pulls platform RPMs via repository_api_key</span></div>
+          <div class="prereq-skill-row"><span class="dot">●</span><span><strong>GitLab Deploy Token</strong> — syncs <code>itential.tls</code> Ansible collection</span></div>
+          <div class="prereq-skill-row"><span class="dot">●</span><span><strong>3 local git checkouts:</strong> themis, itential.deployer, itential.tls</span></div>
+        </div>
+
+        <div class="prereq-skill-card blue">
+          <div class="prereq-skill-title">Operational Platform Skills</div>
+          <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;font-family:'JetBrains Mono',monospace;">/mongodb /redis /prometheus /itential-platform /itential-gateway</div>
+          <div class="prereq-skill-row"><span class="dot">●</span><span><strong>SSH key</strong> at <code>~/.ssh/claude_perflab</code> (team-provisioned)</span></div>
+          <div class="prereq-skill-row"><span class="dot">●</span><span><strong>Vault token</strong> in <code>vault-env.sh</code> (HashiCorp Vault)</span></div>
+          <div class="prereq-skill-row"><span class="dot">●</span><span><strong><code>environments/&lt;env&gt;/CLAUDE.md</code></strong> per target cluster</span></div>
+          <div class="prereq-skill-row"><span class="dot">●</span><span>PE-managed infrastructure only — not for arbitrary customer environments</span></div>
+        </div>
+
+        <div class="prereq-skill-card olive">
+          <div class="prereq-skill-title">Builder &amp; Contribute Skills</div>
+          <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;font-family:'JetBrains Mono',monospace;">/builder-agent /qa-agent /contribute</div>
+          <div class="prereq-skill-row"><span class="dot">●</span><span>Same IAP credentials as troubleshooting skills</span></div>
+          <div class="prereq-skill-row"><span class="dot">●</span><span><strong>Jira API token</strong> for <code>/contribute</code> PR filing and ticket comments</span></div>
+          <div class="prereq-skill-row"><span class="dot">●</span><span>All write operations (PUT/POST, Jira comments, GitHub PRs) require explicit engineer approval per action</span></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Section 4: IAP Role Requirements -->
+    <div class="section">
+      <div class="section-label">IAP Roles</div>
+      <h2 class="section-heading">IAP Application Role Requirements</h2>
+      <table class="prereq-iam-table">
+        <thead>
+          <tr>
+            <th>Capability</th>
+            <th>Minimum IAP Role</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Read adapter settings, job history, application health</td>
+            <td>Read-only / Viewer</td>
+          </tr>
+          <tr>
+            <td>POST to Automation Studio (import workflow fixes)</td>
+            <td>Platform Admin or Studio role</td>
+          </tr>
+          <tr>
+            <td>Restart adapters / applications</td>
+            <td>Platform Admin</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="info-box" style="margin-top:14px;">
+        The troubleshooting orchestrator is <strong>read-only by default</strong>. Write operations (restart, import, settings update) are gated by explicit engineer approval per action and require Platform Admin on the target IAP instance.
+      </div>
+    </div>
+
+    <!-- Section 5: AWS IAM -->
+    <div class="section">
+      <div class="section-label">AWS IAM</div>
+      <h2 class="section-heading">AWS IAM Requirements (Themis)</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin-bottom:16px;">For <strong>pe-team-sbx</strong>, the IAM role is pre-configured — no action needed. For custom AWS accounts, the profile must allow these actions:</p>
+      <table class="prereq-iam-table">
+        <thead>
+          <tr><th>AWS Action</th><th>Purpose</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>sts:GetCallerIdentity</td><td>Pre-flight identity check</td></tr>
+          <tr><td>ec2:RunInstances</td><td>Launch EC2 instances (up to 18 for ASA architecture)</td></tr>
+          <tr><td>ec2:TerminateInstances</td><td>Destroy instances after testing</td></tr>
+          <tr><td>ec2:DescribeInstances</td><td>Orphan detection and status polling</td></tr>
+          <tr><td>ec2:DescribeKeyPairs</td><td>Pre-flight key pair verification</td></tr>
+          <tr><td>ec2:DescribeSecurityGroups</td><td>Pre-flight SG verification</td></tr>
+          <tr><td>ec2:DescribeSubnets</td><td>Subnet mapping for OpenTofu</td></tr>
+          <tr><td>ec2:CreateTags</td><td>Tag instances with <code>owner</code> variable</td></tr>
+          <tr><td>VPC read actions</td><td>Subnet and SG lookups by Terraform VPC resources</td></tr>
+        </tbody>
+      </table>
+      <div class="warning" style="margin-top:14px;">
+        <strong>Custom accounts:</strong> The full IAM policy is defined in the Themis repo's terraform configuration. Request it from the platform-engineering team or derive it from <code>themis_root/vms/aws/*.tf</code>. For pe-team-sbx the role is already provisioned.
+      </div>
+    </div>
+
+    <!-- Section 6: OS Access -->
+    <div class="section">
+      <div class="section-label">OS Access</div>
+      <h2 class="section-heading">OS &amp; Infrastructure Access</h2>
+      <table class="prereq-os-table">
+        <thead>
+          <tr><th>Skill</th><th>OS User</th><th>Sudo Level</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>/troubleshoot-infra (SSH)</td>
+            <td>Customer-provided (<code>SSH_USER_N</code>)</td>
+            <td>None required</td>
+            <td><code>sudo tail</code> may be needed for root-owned log files</td>
+          </tr>
+          <tr>
+            <td>/themis-aws-deploy</td>
+            <td><code>rocky</code> (Rocky Linux 9 on EC2)</td>
+            <td>Full sudo via Ansible deployer</td>
+            <td>SSH user = <code>rocky</code>; <code>become</code> method governed by <code>itential.deployer</code> collection roles</td>
+          </tr>
+          <tr>
+            <td>/perflab</td>
+            <td><code>claude</code> (PE infra hosts)</td>
+            <td><code>NOPASSWD: ALL</code> via <code>/etc/sudoers.d/claude</code></td>
+            <td>Team-provisioned automation user; <code>pet-user</code> used as Ansible remote user on pe-ansible</td>
+          </tr>
+          <tr>
+            <td>/mongodb /redis /prometheus etc.</td>
+            <td><code>claude</code> or team SSH user</td>
+            <td>Varies per host</td>
+            <td>Vault credentials queried via SSH hop to pe-hashivault (172.85.0.30)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Section 7: Pre-Run Checklist -->
+    <div class="section">
+      <div class="section-label">Pre-Run Checklist</div>
+      <h2 class="section-heading">Themis Pre-Run Decision Checklist</h2>
+      <div class="prereq-checklist">
+        <div class="prereq-check-item"><div class="prereq-check-box"></div><span>AWS identity confirmed (<code>aws sts get-caller-identity</code>) and key pair + SG exist in the account (or <code>.env</code> overrides set)</span></div>
+        <div class="prereq-check-item"><div class="prereq-check-box"></div><span><code>itential.tls</code> cloned; <code>tls_repo</code> in <code>run-vars.yml</code> points at it</span></div>
+        <div class="prereq-check-item"><div class="prereq-check-box"></div><span><code>repository_password</code> filled in <code>run-vars.yml</code> OR <code>JFROG_TOKEN</code> in <code>.env</code> for auto-populate</span></div>
+        <div class="prereq-check-item"><div class="prereq-check-box"></div><span>Platform version decided — use Themis default or set both <code>platform_release</code> + <code>platform_packages</code> in <code>run-vars.yml</code></span></div>
+        <div class="prereq-check-item"><div class="prereq-check-box"></div><span>Gateway decision — <code>gateway_release</code> commented out (skip) OR set + <code>.whl</code> on disk / <code>JFROG_TOKEN</code> present</span></div>
+        <div class="prereq-check-item"><div class="prereq-check-box"></div><span>Required run-vars filled: <code>architecture</code>, <code>os</code>, <code>themis_root</code>, <code>owner</code>, <code>deployer_repo</code>, <code>tls_repo</code>, <code>aws_profile</code>, <code>ssh_key_path</code></span></div>
+        <div class="prereq-check-item"><div class="prereq-check-box"></div><span>Cost acknowledged — know how many VMs will be created and have a destroy plan ready</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <div id="tab-user" class="tab-content">
 
   <!-- Quick Start -->
@@ -3103,20 +3638,7 @@ git commit -m "chore: sync platform-skills from upstream"</pre>
     <div class="warning" style="margin-top:12px;"><strong>Verify all three paths before the first run.</strong> A bad <code>deployer_repo</code> or <code>tls_repo</code> passes every check silently — the symlink works even when the path is wrong. The failure only surfaces at Step 5 (Ansible playbook), after AWS instances are already provisioned. Run the path checks in Step 2 of SKILL.md before invoking the skill.</div>
 
     <h3 style="margin-top:24px;color:var(--pink-soft);">Required Tools</h3>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Tool</th><th>Min version</th><th>Check</th><th>Install</th></tr></thead>
-        <tbody>
-          <tr><td><strong>OpenTofu</strong> (or Terraform)</td><td>1.6</td><td><code>tofu version</code></td><td><a href="https://opentofu.org/docs/intro/install/" style="color:#f26bac">opentofu.org</a> — <code>terraform</code> works as fallback</td></tr>
-          <tr><td><strong>Ansible</strong></td><td>2.13</td><td><code>ansible --version</code></td><td><code>pip install ansible</code></td></tr>
-          <tr><td><strong>Python 3</strong></td><td>3.8</td><td><code>python3 --version</code></td><td>System package manager or <a href="https://python.org" style="color:#f26bac">python.org</a></td></tr>
-          <tr><td><strong>AWS CLI</strong></td><td>v2</td><td><code>aws sts get-caller-identity --profile pe-team-sbx</code></td><td>If expired: <code>aws sso login --profile pe-team-sbx</code></td></tr>
-          <tr><td><strong>SSH key</strong></td><td>—</td><td><code>ls -la ~/.ssh/pet-east1.open.pem</code></td><td>Obtain from team; <code>chmod 400 ~/.ssh/pet-east1.open.pem</code></td></tr>
-          <tr><td><strong>Ansible collections</strong></td><td>—</td><td><code>ansible-galaxy collection list | grep community.crypto</code></td><td>See Required Repos → Ansible Collections below</td></tr>
-          <tr><td><strong>gh CLI</strong></td><td>2.x</td><td><code>gh auth status</code></td><td><code>brew install gh</code> or <a href="https://cli.github.com" style="color:#f26bac">cli.github.com</a>; then <code>gh auth login</code>. Required for <code>/contribute</code> to open PRs automatically.</td></tr>
-        </tbody>
-      </table>
-    </div>
+    <div class="info-box">The full list of required tools (OpenTofu ≥ 1.6, Ansible ≥ 2.13, Python ≥ 3.8, AWS CLI, gh CLI, Ansible collections) is in the <button onclick="showTab('prereqs')" style="background:none;border:none;color:var(--pink-soft);cursor:pointer;text-decoration:underline;font-size:inherit;padding:0;">Prerequisites tab → One-Time Setup</button>.</div>
 
     <h3 style="margin-top:24px;color:var(--pink-soft);">AWS Account Setup</h3>
     <p style="margin:0 0 10px;">The skill defaults to the <code>pe-team-sbx</code> AWS SSO profile maintained by the PE team. Engineers on a different account must add three lines to <code>.env</code> — the skill reads them at Step 1 and generates a runtime <code>tfvars-overrides/auto-account.tfvars</code> override automatically.</p>
@@ -3309,16 +3831,7 @@ aws ec2 authorize-security-group-ingress \
     </div>
 
     <h3 style="margin-top:24px;color:var(--pink-soft);">Pre-Run Decision Checklist</h3>
-    <p style="margin:0 0 12px;">Confirm all items before invoking <span class="inline-code">/themis-aws-deploy</span>. Each item maps to a known first-run blocker.</p>
-    <div class="rules" style="grid-template-columns: 1fr;">
-      <div class="rule"><div class="rule-text"><strong>1. AWS account valid + resources exist</strong> — <code>aws sts get-caller-identity --profile &lt;aws_profile&gt;</code> succeeds. If not on <code>pe-team-sbx</code>: key pair and SG exist in target account (<code>aws ec2 describe-key-pairs</code> / <code>describe-security-groups</code>), and <code>AWS_KEY_NAME</code> / <code>AWS_SECURITY_GROUP_IDS</code> / <code>AWS_SUBNET_IDS</code> are set in <code>.env</code>.</div></div>
-      <div class="rule"><div class="rule-text"><strong>2. itential.tls cloned and <code>tls_repo</code> set</strong> — <code>[ -f &lt;tls_repo&gt;/playbooks/gen_ca_cert.yml ]</code> must succeed. A bad path passes every check until Step 4a (after provisioning runs). Clone if missing: <code>git clone git@gitlab.com:itential/platform-engineering/ansible/collections/itential.tls.git</code></div></div>
-      <div class="rule"><div class="rule-text"><strong>3. <code>repository_password</code> resolved</strong> — either paste your <code>JFROG_TOKEN</code> value into <code>run-vars.yml</code>, or leave it blank and ensure <code>JFROG_TOKEN=&lt;value&gt;</code> is in <code>.env</code> for auto-populate. The deployer cannot pull RPMs without this.</div></div>
-      <div class="rule"><div class="rule-text"><strong>4. Platform version decided</strong> — use Themis's pinned default (currently 6.3.4), or set <em>both</em> <code>platform_release</code> and <code>platform_packages</code> in <code>run-vars.yml</code>. Setting only one has no effect — Themis's own group_vars override it. Browse exact JFrog URLs with: <code>scripts/pull-platform-rpms.sh --version X.Y.Z --list</code></div></div>
-      <div class="rule"><div class="rule-text"><strong>5. Gateway decision made</strong> — leave <code>gateway_release</code> commented out to skip (safe default), or set it and ensure either: (a) the <code>.whl</code> file exists at <code>&lt;deployer_repo&gt;/playbooks/files/</code>, or (b) <code>JFROG_TOKEN</code> is in <code>.env</code> for auto-pull from JFrog <code>automation-gateway</code> repo.</div></div>
-      <div class="rule"><div class="rule-text"><strong>6. Required run-vars filled</strong> — <code>architecture</code>, <code>os</code>, <code>themis_root</code>, <code>owner</code>, <code>deployer_repo</code>, <code>tls_repo</code>, <code>aws_profile</code>, <code>ssh_key_path</code> are all set and non-empty in <code>run-vars.yml</code>.</div></div>
-      <div class="rule"><div class="rule-text"><strong>7. Cost acknowledged</strong> — EC2 instances accrue AWS spend until <code>tofu destroy</code> is run. Know how many instances your architecture creates (see Architecture Reference table above) and have a plan to destroy them when done. The skill runs fully autonomously — it will not pause before <code>tofu apply</code>.</div></div>
-    </div>
+    <div class="info-box">The pre-run decision checklist has moved to the <button onclick="showTab('prereqs')" style="background:none;border:none;color:var(--pink-soft);cursor:pointer;text-decoration:underline;font-size:inherit;padding:0;">Prerequisites tab → Themis Pre-Run Checklist</button>.</div>
   </div>
 
   <hr class="section-divider" />
