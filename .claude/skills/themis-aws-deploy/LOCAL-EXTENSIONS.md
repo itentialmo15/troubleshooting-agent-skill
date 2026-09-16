@@ -411,3 +411,339 @@ tofu destroy \
 - [ ] Gateway: `gateway_release` commented out (skip) OR set + `.whl` on disk / `JFROG_TOKEN` present
 - [ ] Required run-vars filled: `architecture`, `os`, `themis_root`, `owner`, `deployer_repo`, `tls_repo`, `aws_profile`, `ssh_key_path`
 - [ ] Cost acknowledged: know VM count, have a destroy plan
+
+---
+
+## [INSERT AFTER Step 2] Step 2a — Pre-Build Confirmation Gate
+
+> **This gate fires before every `tofu apply`, regardless of `--auto` mode or the
+> "run fully autonomously" clause in vendor SKILL.md.** It is a hard stop: Claude does
+> not proceed to Step 3 until the engineer responds "yes" to the confirmation prompt.
+> If any check is FAIL, Claude must explain the fix and re-run the gate rather than
+> proceeding.
+
+Run every check below, capture PASS / FAIL / WARN / SKIP per item, then present the
+formatted summary table and cost context. Only advance to Step 3 on explicit "yes".
+
+---
+
+### Check 1 — Required run-vars fields present
+
+```bash
+python3 - <<'EOF'
+import re, sys
+with open(".claude/skills/themis-aws-deploy/run-vars.yml") as f:
+    text = f.read()
+
+REQUIRED = ["architecture", "os", "themis_root", "owner",
+            "deployer_repo", "tls_repo", "aws_profile", "ssh_key_path"]
+missing = []
+for key in REQUIRED:
+    m = re.search(rf'^{key}:\s*(.+)$', text, re.MULTILINE)
+    if not m or m.group(1).strip().strip('"').strip("'") in ("", "<>",
+        f"<absolute-path-to-{key}>", f"<absolute-path-to-ssh-private-key>"):
+        missing.append(key)
+if missing:
+    print(f"FAIL: empty required fields: {', '.join(missing)}")
+    sys.exit(1)
+print("PASS")
+EOF
+```
+
+---
+
+### Check 2 — AWS STS identity (token freshness)
+
+```bash
+aws sts get-caller-identity --profile <aws_profile> --output json 2>&1
+```
+
+- **PASS** if the command returns a JSON blob with `Account` and `Arn`.
+- **FAIL** if it returns `ExpiredToken` or `InvalidClientTokenId` — re-provision static
+  STS credentials in `.env` (`aws_access_key_id`, `aws_secret_access_key`,
+  `aws_session_token`) before continuing.
+- **FAIL** if it returns `NoCredentialProviders` — the profile is missing from `~/.aws`.
+
+Capture the returned `Account` and `Arn` values for display in the summary.
+
+---
+
+### Check 3 — Architecture tfvars file exists
+
+```bash
+ls <themis_root>/vms/aws/tfvars/<architecture>.tfvars 2>/dev/null \
+  && echo "PASS" || echo "FAIL: <themis_root>/vms/aws/tfvars/<architecture>.tfvars not found"
+```
+
+---
+
+### Check 4 — OS tfvars file exists
+
+```bash
+ls <themis_root>/vms/aws/tfvars/<os>.tfvars 2>/dev/null \
+  && echo "PASS" || echo "FAIL: <themis_root>/vms/aws/tfvars/<os>.tfvars not found"
+```
+
+---
+
+### Check 5 — Repo checkouts valid (not dangling symlinks)
+
+For each of `themis_root`, `deployer_repo`, `tls_repo`:
+
+```bash
+git -C <repo_path> rev-parse --short HEAD 2>&1 \
+  && echo "PASS (<short_sha>)" \
+  || echo "FAIL: <repo_path> is not a valid git checkout"
+```
+
+A dangling symlink (directory exists but `git rev-parse` fails) is treated as FAIL.
+
+---
+
+### Check 6 — SSH key file exists and permissions are 400
+
+```bash
+if [ ! -f "<ssh_key_path>" ]; then
+  echo "FAIL: file not found at <ssh_key_path>"
+elif [ "$(stat -f '%A' '<ssh_key_path>')" != "400" ]; then
+  echo "WARN: exists but permissions are not 400 — run: chmod 400 <ssh_key_path>"
+else
+  echo "PASS"
+fi
+```
+
+**WARN** (not FAIL) allows the build to proceed; Ansible will surface a clear error if
+the key is truly unusable.
+
+---
+
+### Check 7 — EC2 key pair exists in AWS account
+
+Read the key pair name from `run-vars.yml`'s `ssh_key_path` filename (strip path and
+`.pem` extension) OR from `AWS_KEY_NAME` in `.env` (takes precedence):
+
+```bash
+KEY_NAME=$(grep -E "^AWS_KEY_NAME=" .env 2>/dev/null | cut -d= -f2)
+if [ -z "${KEY_NAME}" ]; then
+  KEY_NAME=$(basename <ssh_key_path> .pem)
+fi
+
+aws ec2 describe-key-pairs \
+  --key-names "${KEY_NAME}" \
+  --profile <aws_profile> \
+  --query 'KeyPairs[0].KeyName' --output text 2>&1
+# PASS if output is the key name
+# FAIL if output contains "InvalidKeyPair.NotFound"
+```
+
+---
+
+### Check 8 — Security groups exist (non-pe-team-sbx accounts only)
+
+Skip (SKIP) if `AWS_SECURITY_GROUP_IDS` is not set in `.env`.
+
+```bash
+SG_IDS=$(grep -E "^AWS_SECURITY_GROUP_IDS=" .env 2>/dev/null | cut -d= -f2)
+if [ -z "${SG_IDS}" ]; then
+  echo "SKIP (pe-team-sbx default SGs — no override set)"
+else
+  aws ec2 describe-security-groups \
+    --group-ids ${SG_IDS//,/ } \
+    --profile <aws_profile> \
+    --query 'SecurityGroups[*].{Id:GroupId,Name:GroupName}' --output table 2>&1
+  # PASS if every ID resolves without error
+  # FAIL if any ID returns "InvalidGroup.NotFound"
+fi
+```
+
+---
+
+### Check 9 — PyYAML available
+
+```bash
+python3 -c "import yaml; print('PASS')" 2>/dev/null || echo "FAIL: PyYAML missing"
+```
+
+**Fix if FAIL:**
+```bash
+python3 -m pip install --user --break-system-packages pyyaml
+```
+
+---
+
+### Check 10 — OpenTofu binary architecture (Apple Silicon)
+
+```bash
+TOFU_ARCH=$(file "$(which tofu)" 2>/dev/null)
+if echo "${TOFU_ARCH}" | grep -q "arm64"; then
+  echo "PASS (arm64)"
+elif echo "${TOFU_ARCH}" | grep -q "x86_64"; then
+  echo "FAIL: tofu binary is x86_64 (running under Rosetta — plugin timeouts expected)"
+  echo "      Fix: brew reinstall opentofu"
+else
+  echo "WARN: could not determine tofu architecture — ${TOFU_ARCH}"
+fi
+```
+
+Skip this check on non-Apple-Silicon hosts (Linux x86_64, CI).
+
+---
+
+### Check 11 — JFrog authentication present
+
+```bash
+REPO_KEY=$(grep -E "^repository_api_key:" .claude/skills/themis-aws-deploy/run-vars.yml \
+  | awk -F': ' '{print $2}' | tr -d '"' | xargs)
+JFROG_ENV=$(grep -E "^JFROG_TOKEN=" .env 2>/dev/null | cut -d= -f2)
+
+if [ -n "${REPO_KEY}" ]; then
+  echo "PASS (repository_api_key set in run-vars.yml)"
+elif [ -n "${JFROG_ENV}" ]; then
+  echo "PASS (JFROG_TOKEN in .env — auto-populate via Step 1a)"
+else
+  echo "FAIL: no JFrog credential found — set JFROG_TOKEN in .env"
+fi
+```
+
+---
+
+### Check 12 — platform_packages URLs point at JFrog (not dead registry)
+
+Skip (SKIP) if `platform_packages` is not set in `run-vars.yml`.
+
+```bash
+python3 - <<'EOF'
+import re, sys
+with open(".claude/skills/themis-aws-deploy/run-vars.yml") as f:
+    text = f.read()
+# Extract platform_packages block
+block = re.search(r'^platform_packages:\s*\n((?:  - .+\n?)+)', text, re.MULTILINE)
+if not block:
+    print("SKIP (platform_packages not set — using Themis pinned default)")
+    sys.exit(0)
+urls = re.findall(r'https?://[^\s]+', block.group(1))
+bad = [u for u in urls if "registry.aws.itential.com" in u or "itential.jfrog.io" not in u]
+if bad:
+    print(f"FAIL: dead/non-JFrog URLs detected:\n  " + "\n  ".join(bad))
+    print("      All platform_packages must use https://itential.jfrog.io/...")
+    sys.exit(1)
+print(f"PASS ({len(urls)} URL(s) — all point at itential.jfrog.io)")
+EOF
+```
+
+---
+
+### Check 13 — Gateway .whl readiness
+
+Skip (SKIP) if `gateway_release` is not set in `run-vars.yml`.
+
+```bash
+GW_REL=$(grep -E "^gateway_release:" .claude/skills/themis-aws-deploy/run-vars.yml \
+  | awk -F': ' '{print $2}' | tr -d '"' | xargs)
+if [ -z "${GW_REL}" ]; then
+  echo "SKIP (gateway_release not set)"
+else
+  WHL=$(ls <deployer_repo>/playbooks/files/*.whl 2>/dev/null | head -1)
+  JFROG_ENV=$(grep -E "^JFROG_TOKEN=" .env 2>/dev/null | cut -d= -f2)
+  if [ -n "${WHL}" ]; then
+    echo "PASS (.whl found: $(basename ${WHL}))"
+  elif [ -n "${JFROG_ENV}" ]; then
+    echo "PASS (JFROG_TOKEN present — Step 1c will auto-pull)"
+  else
+    echo "FAIL: gateway_release=${GW_REL} but no .whl at <deployer_repo>/playbooks/files/ and no JFROG_TOKEN"
+    echo "      Place the .whl manually or add JFROG_TOKEN to .env"
+  fi
+fi
+```
+
+---
+
+### Summary Table — Present After All Checks Complete
+
+After running checks 1–13, Claude renders the following summary (fill in actual results):
+
+```
+╔══════════════════════════════════════════════════════════════════════╗
+║  PRE-BUILD CONFIRMATION GATE                                         ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  Run vars & repo                                                     ║
+╠══════════════════════════════════════════════════════════════╦═══════╣
+║  Required run-vars fields (8/8 set)                          ║ PASS  ║
+║  themis_root: valid git checkout (<sha>)                     ║ PASS  ║
+║  deployer_repo: valid git checkout (<sha>)                   ║ PASS  ║
+║  tls_repo: valid git checkout (<sha>)                        ║ PASS  ║
+║  SSH key file (<path>) — mode 400                            ║ PASS  ║
+╠══════════════════════════════════════════════════════════════╬═══════╣
+║  AWS identity & resources                                            ║
+╠══════════════════════════════════════════════════════════════╬═══════╣
+║  AWS STS (<profile>) — <arn-snippet>                         ║ PASS  ║
+║  Architecture tfvars: <arch>.tfvars                          ║ PASS  ║
+║  OS tfvars: <os>.tfvars                                      ║ PASS  ║
+║  EC2 key pair: <key-name>                                    ║ PASS  ║
+║  Security groups                                             ║ SKIP  ║
+║    (pe-team-sbx default — no override)                              ║
+╠══════════════════════════════════════════════════════════════╬═══════╣
+║  Toolchain                                                           ║
+╠══════════════════════════════════════════════════════════════╬═══════╣
+║  PyYAML                                                      ║ PASS  ║
+║  OpenTofu binary (arm64)                                     ║ PASS  ║
+╠══════════════════════════════════════════════════════════════╬═══════╣
+║  Credentials & packages                                              ║
+╠══════════════════════════════════════════════════════════════╬═══════╣
+║  JFrog auth (JFROG_TOKEN in .env)                            ║ PASS  ║
+║  platform_packages URLs (<N> URLs — all JFrog)               ║ PASS  ║
+║  Gateway .whl                                                ║ SKIP  ║
+║    (gateway_release not set)                                         ║
+╚══════════════════════════════════════════════════════════════╩═══════╝
+```
+
+Status values:
+- **PASS** — check succeeded
+- **FAIL** — check failed; show the specific fix before presenting the confirmation prompt
+- **WARN** — non-blocking concern; build can proceed but Claude notes the risk
+- **SKIP** — not applicable for this run configuration
+
+**If any check is FAIL:** do not present the confirmation prompt. Instead explain each
+FAIL with the exact remediation step (from the check descriptions above), then re-run
+the gate after the engineer resolves it.
+
+---
+
+### Cost & Scope Context
+
+After the table, output:
+
+```
+About to provision:
+  Architecture : <architecture> (<N> VM(s))
+  OS           : <os>
+  AWS account  : <aws_profile>  [<account-id> — <arn-snippet>]
+  AWS region   : <region (from auto-account.tfvars or default us-east-1)>
+  Owner tag    : <owner>
+  EC2 key pair : <key-name>
+  Estimated runtime : <from Section 9 table above>
+  Platform     : <platform_release> (<N> package URLs) — OR — Themis pinned default
+
+EC2 instances accrue AWS spend until destroyed. Destroy command when done:
+  tofu destroy -var-file=tfvars/<architecture>.tfvars -var-file=tfvars/<os>.tfvars \
+    -var owner=<owner> -var profile=<aws_profile> -auto-approve
+```
+
+---
+
+### Confirmation Prompt (Hard Stop)
+
+Present this and **wait for engineer input** before executing any Step 3 command:
+
+```
+All checks passed. Ready to provision <N> VM(s) for <architecture>/<os> on <aws_profile>.
+
+Proceed with tofu apply? (yes / no / show-run-vars)
+```
+
+- **"yes"** → continue to Step 3 (tofu plan, then apply)
+- **"no"** → stop cleanly; print the destroy command as a reminder if any state already exists from a prior partial run
+- **"show-run-vars"** → print the full contents of `run-vars.yml` (masked: replace `repository_api_key` value with `***`) so the engineer can verify settings, then re-present the confirmation prompt
+
+**No other response proceeds.** Claude does not infer "yes" from silence, prior messages,
+or `--auto` flags. The engineer must type "yes" in the chat in response to this prompt.
