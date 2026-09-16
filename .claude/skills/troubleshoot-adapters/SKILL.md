@@ -137,8 +137,15 @@ print(model.split('/')[-1])
 ")
 
 echo "Fetching sampleProperties for: ${REPO_NAME}"
-curl -s "https://gitlab.com/itentialopensource/adapters/${REPO_NAME}/-/raw/master/sampleProperties.json" \
+# Use detected default_branch from Step 5a if available, otherwise try master then main
+BRANCH="${ADAPTER_DEFAULT_BRANCH:-master}"
+curl -s "https://gitlab.com/itentialopensource/adapters/${REPO_NAME}/-/raw/${BRANCH}/sampleProperties.json" \
   -o /tmp/{ADAPTER_NAME}_sample.json 2>/dev/null
+# Fallback: if file is empty/HTML (adapter uses 'main'), retry with 'main'
+if ! python3 -c "import json; json.load(open('/tmp/{ADAPTER_NAME}_sample.json'))" 2>/dev/null; then
+  curl -s "https://gitlab.com/itentialopensource/adapters/${REPO_NAME}/-/raw/main/sampleProperties.json" \
+    -o /tmp/{ADAPTER_NAME}_sample.json 2>/dev/null
+fi
 
 # Verify we got valid JSON (not a GitLab redirect page)
 head -c 100 /tmp/{ADAPTER_NAME}_sample.json
@@ -751,6 +758,10 @@ for a in results:
 | **sampleProperties unavailable** | Private adapter or npm fetch failed | Phase 5 — fetch direct from GitLab |
 | **Settings correct but OFFLINE** | Subtle code-level auth/path mismatch | Phase 5d — inspect adapter source |
 | **Need repro steps for ENG ticket** | Requires min-config + trigger steps | Phase 5e — construct reproduction steps |
+| **Adapter repo name unclear / not found** | package_id doesn't map cleanly to a repo | Phase 5g — fuzzy search GitLab group |
+| **Need to inspect helper files** | Auth logic in helpers/, not main entry | Phase 5h — browse repo tree, request specific file |
+| **"Install this adapter"** | New adapter needed for troubleshooting/testing | Phase 6a–6b — identify package + generate config |
+| **"Create a sample adapter instance"** | Engineer wants a ready-to-use config | Phase 6b — build config from ticket + user input |
 
 ---
 
@@ -1032,4 +1043,307 @@ Missing in live config: {cross-referenced against Step 1b settings}
 ```
 
 **Remind:** No source code is written to this file. Only the derived findings above.
+
+---
+
+### Step 5g — Adapter Search by Name (When Repo Not Found)
+
+Use when Step 5a returns "❌ Repo not found" or when the adapter's package_id does not cleanly map to a GitLab repo name (unusual naming, third-party adapters, whitelabel packages).
+
+```bash
+# Search the itentialopensource/adapters group by keyword
+SEARCH_QUERY=$(python3 -c "
+s = '{ADAPTER_NAME_OR_KEYWORD}'.lower()
+# strip common prefixes for better search results
+for prefix in ['adapter-', '@itentialopensource/', 'itential-']:
+    s = s.replace(prefix, '')
+print(s)
+")
+echo "Searching for: ${SEARCH_QUERY}"
+curl -s "https://gitlab.com/api/v4/groups/itentialopensource%2Fadapters/projects?search=${SEARCH_QUERY}&per_page=10" \
+  | python3 -c "
+import sys, json
+projects = json.load(sys.stdin)
+if not projects:
+    print('No matching adapter repos found.')
+else:
+    for i, p in enumerate(projects):
+        print(f'  [{i+1}] {p[\"name\"]}  (branch={p[\"default_branch\"]}, updated={p[\"last_activity_at\"][:10]})')
+        print(f'       {p[\"description\"] or \"(no description)\"}')
+        print(f'       {p[\"web_url\"]}')
+"
+```
+
+Present the numbered list to the engineer. Ask them to confirm which repo matches. Once selected:
+- Store the project's `id` as `ADAPTER_PROJECT_ID`
+- Store `default_branch` as `ADAPTER_DEFAULT_BRANCH`
+- Re-derive `REPO_NAME` from the project's `path` field
+- Continue with Step 5b using the confirmed repo
+
+---
+
+### Step 5h — Directory Browse & File Inspection
+
+Use after Step 5a or 5g when the root cause may be in a helper or utility file not captured by the main entry point analysis in Step 5d. Also useful when the engineer wants to explore the adapter's test fixtures or configuration samples.
+
+```bash
+# List the adapter's full file structure
+curl -s "https://gitlab.com/api/v4/projects/${ADAPTER_PROJECT_ID}/repository/tree?ref=${ADAPTER_DEFAULT_BRANCH}&recursive=true&per_page=100" \
+  | python3 -c "
+import sys, json
+files = json.load(sys.stdin)
+# Group by directory
+dirs = {}
+for f in files:
+    if f['type'] == 'blob':
+        d = f['path'].rsplit('/', 1)[0] if '/' in f['path'] else '.'
+        dirs.setdefault(d, []).append(f['path'].rsplit('/', 1)[-1])
+for d in sorted(dirs):
+    print(f'  {d}/')
+    for fn in sorted(dirs[d]):
+        print(f'    {fn}')
+"
+```
+
+Identify files that may be relevant (auth helpers, request utilities, error handlers). Ask the engineer: "Would you like me to inspect any of these files?" For each file the engineer requests:
+
+```bash
+# Fetch and analyze a specific file (in-memory only — apply same privacy rules as Step 5d)
+FILE_PATH="helpers/authentication.js"   # or whichever file was requested
+curl -s "https://gitlab.com/itentialopensource/adapters/${REPO_NAME}/-/raw/${ADAPTER_DEFAULT_BRANCH}/${FILE_PATH}" \
+  | python3 -c "
+import sys, re
+src = sys.stdin.read()
+# Apply same extraction logic as Step 5d: auth patterns, required props, timeouts, SSL options
+# RECORD derived findings only — do not print raw source
+auth_patterns   = re.findall(r'auth_method[\"\']\s*:\s*[\"\'](.*?)[\"\'|,]', src)
+required_props  = re.findall(r'if\s*\(!this\.props\.(\w+)\)', src)
+timeout_values  = re.findall(r'timeout\s*[:=]\s*(\d+)', src)
+tls_flags       = re.findall(r'(rejectUnauthorized|strictSSL|ca:|cert:)[^;]{0,40}', src)
+silent_catches  = src.count('catch') - src.count('catch.*console') if 'catch' in src else 0
+print('File:', '${FILE_PATH}')
+print('Auth patterns detected:', auth_patterns or 'none')
+print('Required props found:', required_props or 'none')
+print('Timeout values:', timeout_values or 'none')
+print('TLS/SSL flags:', tls_flags or 'none')
+print('catch blocks without logging:', silent_catches)
+"
+```
+
+Same rule applies: **no file content is saved or included in any report**. Only the derived findings (patterns detected, required props, flags) are recorded.
+
+---
+
+## Phase 6: Adapter Installation & Sample Instance Creation
+
+**When to invoke:** Engineer explicitly requests "install this adapter", "create a sample instance", or "set up adapter X for testing". Also runs when Phase 1 shows the adapter is absent from `/health/adapters`.
+
+**Safety rules:**
+- Any POST to IAP (creating a new adapter instance) requires showing the full request body to the engineer and waiting for explicit "yes" before sending
+- Never embed actual passwords, tokens, or secrets in the configuration — use `<YOUR_SECRET_HERE>` placeholders
+- All npm install commands must be shown and approved before running via SSH
+
+---
+
+### Step 6a — Identify Adapter Package
+
+Run Step 5a (or 5g) to resolve the GitLab repo. Then fetch package.json to extract the npm package name and version:
+
+```bash
+curl -s "https://gitlab.com/itentialopensource/adapters/${REPO_NAME}/-/raw/${ADAPTER_DEFAULT_BRANCH}/package.json" \
+  | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print('npm package name:', d.get('name'))
+print('Current version:', d.get('version'))
+print('Required Node.js:', d.get('engines', {}).get('node', 'not specified'))
+"
+```
+
+Check if the adapter is already installed:
+```bash
+curl -s "${PLATFORM_URL}/health/adapters?token=${TOKEN}" \
+  | python3 -c "
+import sys, json
+adapters = json.load(sys.stdin)
+for a in adapters:
+    name = a.get('id','')
+    if '{ADAPTER_KEYWORD}' in name.lower():
+        print(f'  Already installed: {name}  state={a[\"state\"]}  connection={a[\"connection\"]}')
+"
+```
+
+If already installed: confirm with engineer whether to proceed with configuration only (skip to Step 6b) or upgrade.
+
+---
+
+### Step 6b — Generate Sample Adapter Configuration
+
+Build the configuration from three layers, in order:
+
+**Layer 1 — Extract from ticket_context.md (automatic):**
+
+Read `{project_path}/data/{TIMESTAMP}/{TICKET_KEY}/ticket_context.md` and extract:
+- `host` or target system hostname/IP (look for connection strings, error messages with hostnames)
+- `port` (look for port references in error messages or description)
+- `auth_method` (infer from ticket keywords: "401" → basic/oauth2, "token" → token auth, "API key" → header-based)
+- `protocol` (infer from "SSL error" → https, "connection refused 80" → http)
+- `base_path` or API root path (look for endpoint references like "/api/v2/")
+
+```python
+import re, sys
+
+ticket_context = open('{project_path}/data/{TIMESTAMP}/{TICKET_KEY}/ticket_context.md').read()
+
+# Extract hints
+host_match    = re.search(r'(?:host|endpoint|server)[:\s]+([a-zA-Z0-9._-]+\.[a-zA-Z]{2,})', ticket_context, re.I)
+port_match    = re.search(r':(\d{2,5})\b', ticket_context)
+auth_hint     = 'oauth2' if re.search(r'oauth|client.?id|access.?token', ticket_context, re.I) else \
+                'basic'  if re.search(r'username|password|basic.?auth', ticket_context, re.I) else \
+                'token'  if re.search(r'api.?key|bearer.?token|x-api-key', ticket_context, re.I) else 'unknown'
+protocol_hint = 'https' if re.search(r'https|ssl|tls|443', ticket_context, re.I) else 'http'
+
+extracted = {
+    'host':        host_match.group(1) if host_match else None,
+    'port':        int(port_match.group(1)) if port_match else (443 if protocol_hint=='https' else 80),
+    'auth_method': auth_hint,
+    'protocol':    protocol_hint,
+}
+print('Extracted from ticket:', extracted)
+```
+
+**Layer 2 — Prompt engineer for missing required fields:**
+
+After Layer 1, identify which required fields are still missing. Ask the engineer in a single grouped prompt (do NOT ask one field at a time):
+
+```
+Building sample adapter configuration for {ADAPTER_NAME}.
+
+Extracted from ticket:
+  • host:        {extracted_host or "?"}
+  • port:        {extracted_port or "?"}
+  • auth_method: {inferred_auth or "?"}
+  • protocol:    {inferred_protocol or "?"}
+
+I need a few more values. Please confirm or correct:
+  • host: {extracted_host} — correct, or enter the actual host?
+  • port: {extracted_port} — correct, or enter the actual port?
+  • auth_method: {inferred_auth} — correct? (options: basic | oauth2 | token | custom)
+  • protocol: https — correct?
+  • base_path: (leave blank to use sampleProperties default)
+  • instance id: what should this adapter instance be called? (e.g. adapter-servicenow-test)
+
+Note: Do NOT provide actual passwords, tokens, or secrets.
+Those fields will be marked <YOUR_SECRET_HERE> — fill them in the IAP UI after creation.
+```
+
+**Layer 3 — Build and display the complete configuration:**
+
+Merge: Layer 1 (auto-extracted) + Layer 2 (engineer-supplied) + sampleProperties defaults (for optional fields engineer didn't specify). Replace all credential fields with `<YOUR_SECRET_HERE>` placeholders.
+
+```python
+import json
+
+# Load sampleProperties as the base template
+sample = json.load(open('/tmp/{ADAPTER_NAME}_sample.json'))
+
+# Override with extracted and engineer-supplied values
+sample['id'] = '{ENGINEER_SUPPLIED_ID}'
+if '{EXTRACTED_HOST}': sample['host'] = '{EXTRACTED_HOST}'
+if '{EXTRACTED_PORT}': sample['port'] = {EXTRACTED_PORT}
+sample['protocol'] = '{PROTOCOL}'
+sample['stub'] = False   # always disable stub for real testing
+
+# Replace credential fields with placeholders
+def mask_credentials(obj, depth=0):
+    if depth > 5: return obj
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if any(x in k.lower() for x in ['password', 'secret', 'token', 'key', 'credential', 'client_secret']):
+                obj[k] = '<YOUR_SECRET_HERE>'
+            else:
+                mask_credentials(v, depth+1)
+    elif isinstance(obj, list):
+        for item in obj: mask_credentials(item, depth+1)
+    return obj
+
+config = mask_credentials(sample)
+print(json.dumps(config, indent=2))
+```
+
+Show the complete JSON to the engineer. They may correct any field before approving. Auth credential placeholders are clearly marked — the engineer fills real values in the IAP UI after creation.
+
+---
+
+### Step 6c — Adapter Installation (If Not Already Installed)
+
+**Prerequisite check:** Is SSH access available to the IAP server? Check `.env` for `SSH_HOST_N` with role `iap`.
+
+**If no SSH access available:**
+- Present the npm install command for manual execution:
+  ```
+  npm install {NPM_PACKAGE_NAME}@{VERSION}
+  ```
+  Direct the engineer to the IAP server and ask them to run it, then return to Step 6d.
+
+**If SSH available** (role `iap` in `SSH_HOST_N` from `.env`):
+
+Detect the IAP deployment type from Phase 1 or ticket_context:
+```bash
+# Docker deployment:
+INSTALL_CMD="docker exec iap-app npm install {NPM_PACKAGE_NAME}@{VERSION}"
+
+# VM / bare-metal:
+INSTALL_CMD="cd /opt/IAP && npm install {NPM_PACKAGE_NAME}@{VERSION}"
+
+# Kubernetes:
+IAP_POD=$(kubectl get pods -n {KUBE_NAMESPACE} -l app=iap -o jsonpath='{.items[0].metadata.name}')
+INSTALL_CMD="kubectl exec -n {KUBE_NAMESPACE} ${IAP_POD} -- npm install {NPM_PACKAGE_NAME}@{VERSION}"
+```
+
+**Show the exact command to the engineer and wait for explicit approval before running:**
+
+```
+I'm ready to install the adapter package on the IAP server.
+
+Command: {INSTALL_CMD}
+Server:  {SSH_HOST_N}
+
+Shall I proceed? (yes / no)
+```
+
+Only run the SSH command after explicit "yes". After install, verify the package appeared:
+```bash
+# Verify installation (adjust path to deployment type)
+ssh {SSH_USER}@{SSH_HOST} "ls /opt/IAP/node_modules/{NPM_PACKAGE_NAME}" 2>/dev/null && echo "✅ Package found" || echo "❌ Package not found"
+```
+
+---
+
+### Step 6d — Create Adapter Instance
+
+**Show the complete POST request to the engineer before sending:**
+
+```
+I'll create the adapter instance with this request:
+
+POST {PLATFORM_URL}/adapters?token=****
+Content-Type: application/json
+Body:
+{FULL_CONFIGURATION_JSON_FROM_STEP_6B}
+
+This will add the adapter to IAP. Shall I proceed? (yes / no)
+```
+
+Wait for explicit "yes". Then POST:
+```bash
+curl -s -X POST "${PLATFORM_URL}/adapters?token=${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d @/tmp/{ADAPTER_NAME}_new_config.json
+```
+
+After creation, run Phase 1 Steps 1a and 1b automatically to verify the adapter appears in `/health/adapters` and its state:
+- If state = RUNNING / connection = ONLINE → success. Remind the engineer to fill in `<YOUR_SECRET_HERE>` fields via IAP Admin UI → Adapters → {instance id} → Edit.
+- If state = RUNNING / connection = OFFLINE → continue with Phase 1d (settings comparison) immediately.
+- If the POST returns 404 → the `/adapters` endpoint is not available in this IAP version. Present the configuration JSON for manual entry via IAP Admin UI → Adapters → Add and note the missing endpoint for ENG investigation.
 
