@@ -2,8 +2,14 @@
 """
 PreToolUse hook for Bash commands.
 Blocks MongoDB writes, Redis writes, service/container restarts, platform
-adapter/application PUT writes, and git staging of customer investigation data
-— all without explicit engineer consent. Exit 2 = block; exit 0 = allow.
+adapter/application PUT writes, adapter instance creation (POST), and git
+staging of customer investigation data — all without explicit engineer
+consent. Exit 2 = block; exit 0 = allow.
+
+Note: staging adapter model package files onto disk (npm pack, tar extract,
+npm install under services/adapter-<name>/) is intentionally NOT gated here —
+only the state-changing steps that follow (restart to load the new model,
+and creating/starting adapter instances) require consent.
 """
 import json, re, sys
 
@@ -45,6 +51,32 @@ if not IS_GIT_CMD:
                 "Safety rule: Never restart an adapter via the platform API without\n"
                 "explicit engineer consent. Present the restart plan, wait for a clear\n"
                 "'yes', then re-run this command."
+            )
+            print(f"\nCommand that triggered this guard:\n  {cmd[:300]}")
+            sys.exit(2)
+
+# ── Compound check: curl POST creating a new adapter instance ────────────────
+# Must match BOTH (a) curl with POST method AND (b) the createAdapter /
+# importAdapter path. Covers /adapters and /adapters/import specifically —
+# does not block GET (listing/health) or PUT (start/restart, handled above).
+# May proceed only with explicit engineer consent, confirmed via the
+# ADAPTER_CREATE_APPROVED=yes marker (mirrors RESTART_APPROVED below).
+if not IS_GIT_CMD:
+    _is_curl_post = (
+        re.search(r"\bcurl\b", cmd)
+        and re.search(r"(-X\s+POST|--request\s+POST)", cmd, re.IGNORECASE)
+    )
+    if _is_curl_post and re.search(r"/adapters(/import)?\b", cmd):
+        if re.search(r"\bADAPTER_CREATE_APPROVED=yes\b", cmd):
+            pass  # explicit engineer approval given — allow
+        else:
+            print(
+                "BLOCKED — Adapter instance creation (createAdapter/importAdapter) detected.\n"
+                "Safety rule: Creating a new adapter or adapter sample instance requires\n"
+                "explicit engineer approval before execution. Present the instance name,\n"
+                "model type, and auth config to the engineer, wait for a clear 'yes',\n"
+                "then re-run this command prefixed with ADAPTER_CREATE_APPROVED=yes\n"
+                "to confirm consent was given."
             )
             print(f"\nCommand that triggered this guard:\n  {cmd[:300]}")
             sys.exit(2)

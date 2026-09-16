@@ -18,6 +18,7 @@ argument-hint: "[adapter name]"
 - **Always run Cleanup (Phase 3) after Debug (Phase 2)** — leaving `auth_logging: true` exposes credentials in logs
 - **Read `.env` for credentials** — never ask the user for credentials already in `.env`
 - **builder-skill invocations also use `.env`** — when invoking builder-skills for fixes or workarounds (after Phase 1 or Phase 2 confirms root cause), source `.env` before invoking so the skill targets the correct platform with the correct credentials
+- **Install (Phase 6): file staging is unattended, activation is not** — deploying a new adapter package's files to disk (`npm pack`/tar extract/`npm install` under `services/adapter-<name>/`) requires no consent and may proceed automatically. Everything that makes the new adapter *live* — the platform restart that loads the model, and creating the adapter/sample instance — requires explicit engineer consent first, enforced by `.claude/hooks/bash-safety-guard.py` (`RESTART_APPROVED=yes` / `ADAPTER_CREATE_APPROVED=yes`). Never add either marker without a clear "yes" from the engineer in the current conversation.
 
 ---
 
@@ -1284,86 +1285,74 @@ Present the full sequence of manual commands below and ask the engineer to run t
 
 ---
 
-#### Step 6c-i — Download adapter from GitLab
+#### Step 6c-i — Stage adapter package files
 
-Two options depending on engineer preference and server network access:
+> **No engineer consent required for this step** — writing files to disk does not make
+> the adapter live. Consent gates come at Step 6c-iii (platform restart) and Step 6d
+> (instance creation), enforced by `bash-safety-guard.py`.
 
-**Option A — Git clone directly on the IAP server (preferred if server has outbound internet):**
+Itential Platform stores each adapter as its own directory under
+`/opt/itential/platform/services/` (VM deployments) or equivalent for Docker/K8s.
+This is separate from `node_modules/` — adapters are service directories, not
+npm dependencies of the platform process itself.
+
+**Option A — npm pack + extract (preferred for any deployment):**
 ```bash
-# On the IAP server via SSH
-ADAPTERS_DIR=$(ls -d /opt/IAP/node_modules/@itentialopensource 2>/dev/null \
-  || ls -d /usr/src/app/node_modules/@itentialopensource 2>/dev/null \
-  || echo "<UNKNOWN — see note below>")
-
-cd "${ADAPTERS_DIR}"
-git clone https://gitlab.com/itentialopensource/adapters/{REPO_NAME}.git {NPM_PACKAGE_BASENAME}
-cd {NPM_PACKAGE_BASENAME}
-npm install --production
-```
-
-> **Adapter directory note:** IAP stores open-source adapters as npm packages under
-> `node_modules/@itentialopensource/`. On VM deployments this is typically
-> `/opt/IAP/node_modules/@itentialopensource/`. On Docker it is typically
-> `/usr/src/app/node_modules/@itentialopensource/`. Confirm by running:
-> ```bash
-> # Find where existing adapters live
-> find /opt /usr/src -type d -name "@itentialopensource" 2>/dev/null | head -5
-> ```
-> The result is the target parent directory for the new adapter.
-
-**Option B — Clone locally then transfer (if IAP server has no outbound internet):**
-```bash
-# On the engineer's machine (local):
-git clone https://gitlab.com/itentialopensource/adapters/{REPO_NAME}.git /tmp/{REPO_NAME}
-cd /tmp/{REPO_NAME}
-npm install --production
-tar czf /tmp/{REPO_NAME}.tar.gz -C /tmp {REPO_NAME}
-
-# Transfer to IAP server:
-scp /tmp/{REPO_NAME}.tar.gz {SSH_USER}@{SSH_HOST}:/tmp/
+ADAPTER_NAME=adapter-{name}                        # e.g. adapter-servicenow
+PACKAGE_ID=@itentialopensource/adapter-{name}      # e.g. @itentialopensource/adapter-servicenow
+VERSION=$(npm show ${PACKAGE_ID} dist-tags.latest 2>/dev/null || echo "{VERSION_FROM_STEP_6A}")
 
 # On the IAP server via SSH:
-ADAPTERS_DIR=$(find /opt /usr/src -type d -name "@itentialopensource" 2>/dev/null | head -1)
-cd "${ADAPTERS_DIR}"
-tar xzf /tmp/{REPO_NAME}.tar.gz
-mv {REPO_NAME} {NPM_PACKAGE_BASENAME}
+mkdir -p /tmp/adapter-install-work && cd /tmp/adapter-install-work
+npm pack ${PACKAGE_ID}@${VERSION}
+
+sudo mkdir -p /opt/itential/platform/services/${ADAPTER_NAME}
+sudo tar -xzf ${PACKAGE_ID##*/}-${VERSION}.tgz \
+  -C /opt/itential/platform/services/${ADAPTER_NAME} --strip-components=1
+
+cd /opt/itential/platform/services/${ADAPTER_NAME}
+sudo -u itential npm install --omit=dev --no-audit --no-fund
+sudo chown -R itential:itential /opt/itential/platform/services/${ADAPTER_NAME}
+
+rm -rf /tmp/adapter-install-work
 ```
 
-> `{NPM_PACKAGE_BASENAME}` is the last segment of the npm package name — for
-> `@itentialopensource/adapter-servicenow` it is `adapter-servicenow`.
-
-**Option C — Install via npm (if IAP server can reach the npm registry):**
+**Option B — Git clone + transfer (if server has no npm registry access):**
 ```bash
-# Detect IAP deployment type and install accordingly
-# VM / bare-metal:
-cd /opt/IAP && npm install {NPM_PACKAGE_NAME}@{VERSION}
+# On the engineer's machine (local):
+git clone https://gitlab.com/itentialopensource/adapters/adapter-{name}.git /tmp/adapter-{name}
+cd /tmp/adapter-{name} && npm install --omit=dev
+tar czf /tmp/adapter-{name}.tar.gz -C /tmp adapter-{name}
 
+# Transfer to IAP server:
+scp /tmp/adapter-{name}.tar.gz {SSH_USER}@{SSH_HOST}:/tmp/
+
+# On the IAP server via SSH:
+sudo mkdir -p /opt/itential/platform/services/adapter-{name}
+sudo tar -xzf /tmp/adapter-{name}.tar.gz \
+  -C /opt/itential/platform/services/adapter-{name} --strip-components=1
+sudo chown -R itential:itential /opt/itential/platform/services/adapter-{name}
+```
+
+**Option C — Docker / Kubernetes (if platform runs containerised):**
+```bash
 # Docker:
-docker exec iap-app npm install {NPM_PACKAGE_NAME}@{VERSION}
+docker exec iap-app bash -c \
+  "npm pack @itentialopensource/adapter-{name}@{VERSION} && \
+   mkdir -p /opt/itential/platform/services/adapter-{name} && \
+   tar -xzf adapter-{name}-{VERSION}.tgz -C /opt/itential/platform/services/adapter-{name} --strip-components=1 && \
+   cd /opt/itential/platform/services/adapter-{name} && npm install --omit=dev"
 
 # Kubernetes:
 IAP_POD=$(kubectl get pods -n {KUBE_NAMESPACE} -l app=iap -o jsonpath='{.items[0].metadata.name}')
-kubectl exec -n {KUBE_NAMESPACE} ${IAP_POD} -- npm install {NPM_PACKAGE_NAME}@{VERSION}
+kubectl exec -n {KUBE_NAMESPACE} ${IAP_POD} -- bash -c "... same as Docker above ..."
 ```
 
-**Show the chosen option to the engineer and wait for explicit approval before running:**
-```
-Ready to download and install {NPM_PACKAGE_NAME} on the IAP server.
-
-Option selected: {A / B / C}
-GitLab source:   https://gitlab.com/itentialopensource/adapters/{REPO_NAME}
-Version:         {VERSION}
-Target server:   {SSH_HOST_N}
-Install path:    {ADAPTERS_DIR}/{NPM_PACKAGE_BASENAME}
-
-Shall I proceed with the download and install? (yes / no)
-```
-
-Only execute after explicit "yes". After install, verify the package is in place:
+After staging, verify the package is in place before proceeding to the restart:
 ```bash
 ssh {SSH_USER}@{SSH_HOST} \
-  "ls \$(find /opt /usr/src -type d -name '@itentialopensource' 2>/dev/null | head -1)/{NPM_PACKAGE_BASENAME}/package.json" \
-  && echo "PASS: adapter package found" || echo "FAIL: package not found — check install path"
+  "ls /opt/itential/platform/services/adapter-{name}/package.json" \
+  && echo "PASS: package staged" || echo "FAIL: package missing — check install"
 ```
 
 ---
@@ -1383,37 +1372,36 @@ Expect to see `package.json` and at least one `.js` file. If the directory is em
 
 #### Step 6c-iii — Platform restart (required; explicit permission gate)
 
-IAP must be restarted to load the newly installed adapter package. **This causes a brief service interruption.** Present the following confirmation and wait for explicit "yes" before proceeding:
+IAP must be restarted to load the newly installed adapter package. **This causes a brief
+service interruption.** Present the following confirmation and wait for explicit "yes":
 
 ```
-The adapter package has been installed. IAP must be restarted to load it.
+The adapter package has been staged. IAP must be restarted to load the new adapter model.
 
-  Adapter installed : {NPM_PACKAGE_NAME}@{VERSION}
+  Adapter staged    : adapter-{name}@{VERSION}
   Server            : {SSH_HOST_N}
-  Restart method    : {systemctl restart iap / docker restart iap-app / kubectl rollout restart ...}
-  Expected downtime : ~60–120 seconds (platform restart)
+  Restart method    : {systemctl restart itential-platform / docker restart iap-app / kubectl rollout restart ...}
+  Expected downtime : ~60–120 seconds
 
 ⚠️  This will interrupt any running workflows or active adapter connections.
 
 Shall I restart the IAP platform now? (yes / no)
 ```
 
-Only restart after explicit "yes". Detect the restart command from the deployment type:
+Only restart after explicit "yes". The restart command must be prefixed with
+`RESTART_APPROVED=yes` — this is the bypass marker checked by
+`.claude/hooks/bash-safety-guard.py`. Never add this prefix without a clear "yes" from
+the engineer in the current conversation.
 
 ```bash
 # VM / bare-metal (systemd):
-RESTART_CMD="sudo systemctl restart iap"
+RESTART_APPROVED=yes ssh {SSH_USER}@{SSH_HOST} "sudo systemctl restart itential-platform"
 
 # Docker:
-RESTART_CMD="docker restart iap-app"
+RESTART_APPROVED=yes docker restart iap-app
 
 # Kubernetes (rolling restart — zero-downtime if replicas > 1):
-RESTART_CMD="kubectl rollout restart deployment/iap -n {KUBE_NAMESPACE}"
-```
-
-Execute via SSH:
-```bash
-ssh {SSH_USER}@{SSH_HOST} "{RESTART_CMD}"
+RESTART_APPROVED=yes kubectl rollout restart deployment/iap -n {KUBE_NAMESPACE}
 ```
 
 **Wait for platform to come back up** — poll `/health` until it responds or 3 minutes elapse:
@@ -1455,28 +1443,79 @@ else:
 
 ### Step 6d — Create Adapter Instance
 
-**Show the complete POST request to the engineer before sending:**
+> **Use `POST /adapters/import` (importAdapter), not `POST /adapters` (createAdapter).**
+>
+> `POST /adapters` rejects any adapter whose `pronghorn.json` declares no `brokers` array
+> — common for pure REST and custom-method adapters (e.g. `adapter-aws_s3`,
+> `adapter-aws_cloudformation`, `adapter-servicenow`) — returning:
+> `"Currently this feature is not supported for services of type: {type}."`
+> in ~2ms with no server-side log entry. `POST /adapters/import` accepts the **identical**
+> request schema with no such restriction. Default to `importAdapter` for any adapter
+> you haven't confirmed declares `brokers` in its `pronghorn.json`.
+
+**Show the complete request to the engineer before sending:**
 
 ```
 I'll create the adapter instance with this request:
 
-POST {PLATFORM_URL}/adapters?token=****
+POST {PLATFORM_URL}/adapters/import?token=****
 Content-Type: application/json
 Body:
 {FULL_CONFIGURATION_JSON_FROM_STEP_6B}
 
-This will add the adapter to IAP. Shall I proceed? (yes / no)
+This will register the adapter instance in IAP (state will be DEAD until started).
+Shall I proceed? (yes / no)
 ```
 
-Wait for explicit "yes". Then POST:
+Wait for explicit "yes". The POST must be prefixed with `ADAPTER_CREATE_APPROVED=yes` —
+the bypass marker checked by `.claude/hooks/bash-safety-guard.py`. Never add this prefix
+without a clear "yes" from the engineer in the current conversation.
+
 ```bash
-curl -s -X POST "${PLATFORM_URL}/adapters?token=${TOKEN}" \
+ADAPTER_CREATE_APPROVED=yes curl -s -X POST \
+  "${PLATFORM_URL}/adapters/import?token=${TOKEN}" \
   -H "Content-Type: application/json" \
   -d @/tmp/{ADAPTER_NAME}_new_config.json
 ```
 
-After creation, run Phase 1 Steps 1a and 1b automatically to verify the adapter appears in `/health/adapters` and its state:
-- If state = RUNNING / connection = ONLINE → success. Remind the engineer to fill in `<YOUR_SECRET_HERE>` fields via IAP Admin UI → Adapters → {instance id} → Edit.
-- If state = RUNNING / connection = OFFLINE → continue with Phase 1d (settings comparison) immediately.
-- If the POST returns 404 → the `/adapters` endpoint is not available in this IAP version. Present the configuration JSON for manual entry via IAP Admin UI → Adapters → Add and note the missing endpoint for ENG investigation.
+**Expected state after creation: `DEAD` / `OFFLINE`** — this is normal. A freshly
+created instance has not been started yet. Starting it is a separate explicit action:
+present the start plan and get engineer consent before running
+`PUT /adapters/{instance_id}/start` (also gated by the existing PUT consent rule in
+`bash-safety-guard.py`).
+
+If the POST returns 404 → the `/adapters/import` endpoint is not available in this IAP
+version. Present the configuration JSON for manual entry via IAP Admin UI → Adapters →
+Add and note the missing endpoint for ENG investigation.
+
+---
+
+### Step 6e — Verify New Instance
+
+```bash
+# Confirm instance appears in the adapters list
+curl -s "${PLATFORM_URL}/adapters?token=${TOKEN}" \
+  | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+matches = [a['name'] for a in d.get('data', []) if '{INSTANCE_NAME}' in a.get('name','')]
+print('Registered instances:', matches if matches else 'NOT FOUND')
+"
+
+# Check health state (expect DEAD/OFFLINE until started)
+curl -s "${PLATFORM_URL}/health/adapters?token=${TOKEN}" \
+  | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+for a in d.get('results', []):
+    if '{INSTANCE_NAME}' in a.get('id', ''):
+        print(f'{a[\"id\"]}: state={a[\"state\"]}  connection={a.get(\"connection\",{}).get(\"state\",\"?\")}'  )
+"
+```
+
+- **`DEAD` / `OFFLINE`** — expected on a new instance. Remind the engineer to:
+  1. Fill in `<YOUR_SECRET_HERE>` credential fields via IAP Admin UI → Adapters → {instance id} → Edit
+  2. Start the adapter with explicit consent: `PUT /adapters/{instance_id}/start`
+- **Instance not found** → the import POST may have failed silently — check the response body from Step 6d
+- **`RUNNING` / `OFFLINE`** (started but can't connect) → proceed directly to Phase 1d (settings comparison)
 
