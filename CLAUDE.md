@@ -71,8 +71,17 @@ JFROG_TOKEN=...            # JFrog Identity Token — pull platform RPMs from it
 AWS_REGION=                # AWS region (default: us-east-1 from Themis terraform.tfvars)
                            #   /themis-aws-deploy writes this to auto-account.tfvars
 AWS_KEY_NAME=              # EC2 key pair name (non-pe-team-sbx accounts only)
+                           #   NOTE: if aws_profile uses static STS creds (aws_access_key_id/
+                           #   aws_secret_access_key/aws_session_token, not SSO-backed), those
+                           #   sessions expire and need periodic re-provisioning — run
+                           #   `aws sts get-caller-identity --profile <profile>` before a build
+                           #   to check freshness (ExpiredToken fails fast at tofu plan/apply)
 AWS_SECURITY_GROUP_IDS=    # comma-separated SG IDs; must allow SSH (22) inbound (non-pe-team-sbx only)
+                           #   Re-verify these IDs still exist before every run, not just the
+                           #   first — SGs can be deleted/rotated between sessions and only
+                           #   surface as InvalidGroup.NotFound at `tofu plan`
 AWS_SUBNET_IDS=            # comma-separated subnet IDs — maps to public-1a/b/c aliases in subnet_map
+                           #   Re-verify these IDs still exist before every run, same reason as above
 AWS_DEFAULT_SUBNET=        # which public-1x alias to use as default_subnet (optional, default: public-1a)
 AWS_INSTANCE_TYPE_PLATFORM=  # instance type for platform nodes (e.g. t3.large); default: t3.medium
 AWS_INSTANCE_TYPE_REDIS=     # instance type for redis nodes; default: t3.medium
@@ -170,6 +179,11 @@ Other skills in the library (`/deployer-inventory`, `/perf-test-analysis`, `/per
 > pre-flight steps. `[OVERRIDE]` sections replace the corresponding vendor instruction;
 > `[INSERT AFTER Step N]` sections add to it. This file is not vendored and survives syncs.
 
+> **`/themis-aws-deploy` first-time setup:** `run-vars.yml` is gitignored (per-engineer, contains
+> absolute local paths). On first use, copy the committed template and fill in your values:
+> `cp .claude/skills/themis-aws-deploy/run-vars.yml.example .claude/skills/themis-aws-deploy/run-vars.yml`
+> Leave `repository_api_key` blank — it is auto-populated from `JFROG_TOKEN` in `.env` (Step 1a).
+
 ### Vendor Skill Extension Policy
 
 **Rule: never modify any file listed in `vendor/platform-skills/SYNC_MANIFEST.json` or any file under `vendor/builder-skills/`.** A future `sync-platform-skills.sh` or `sync-builder-skills.sh` run silently overwrites those files. Local changes are lost without warning.
@@ -216,6 +230,16 @@ or to feed into the Ansible deployer (`platform_packages` in `run-vars.yml`).
 | `SERVICE` | Service Manager app | All versions |
 | `automation-gateway` | IAG4 Python wheel (.whl) | All IAG4 versions |
 | `gateway5` | IAG5 server RPM + client tarball | All IAG5 versions |
+
+**URL structure quirk — `GATEWAY-MANAGER` doubles its own repo name in the path.**
+Every other P6 repo above uses `<REPO>/<Product Name>/<Product Version>/<file>.rpm`
+(e.g. `PLATFORM/Platform%206/Platform%206.5.2/itential-platform-6.5.2-1.noarch.rpm`),
+but `GATEWAY-MANAGER` requires the repo segment twice —
+`GATEWAY-MANAGER/GATEWAY-MANAGER/<file>.rpm` (e.g.
+`https://itential.jfrog.io/artifactory/GATEWAY-MANAGER/GATEWAY-MANAGER/itential-gateway_manager-1.0.4.noarch.rpm`).
+Using the single-segment pattern here 404s. See
+`.claude/skills/themis-aws-deploy/LOCAL-EXTENSIONS.md` for the full worked example used
+by `run-vars.yml`'s `platform_packages` list.
 
 ```bash
 scripts/pull-platform-rpms.sh --check                          # verify token
