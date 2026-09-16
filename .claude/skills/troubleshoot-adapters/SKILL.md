@@ -760,8 +760,8 @@ for a in results:
 | **Need repro steps for ENG ticket** | Requires min-config + trigger steps | Phase 5e — construct reproduction steps |
 | **Adapter repo name unclear / not found** | package_id doesn't map cleanly to a repo | Phase 5g — fuzzy search GitLab group |
 | **Need to inspect helper files** | Auth logic in helpers/, not main entry | Phase 5h — browse repo tree, request specific file |
-| **"Install this adapter"** | New adapter needed for troubleshooting/testing | Phase 6a–6b — identify package + generate config |
-| **"Create a sample adapter instance"** | Engineer wants a ready-to-use config | Phase 6b — build config from ticket + user input |
+| **"Install this adapter"** | New adapter needed for troubleshooting/testing | Phase 6a → 6c (clone from GitLab → install → restart with permission) → 6d |
+| **"Create a sample adapter instance"** | Engineer wants a ready-to-use config | Phase 6b — build config from ticket + user input; 6d — POST instance |
 
 ---
 
@@ -1280,43 +1280,176 @@ Show the complete JSON to the engineer. They may correct any field before approv
 **Prerequisite check:** Is SSH access available to the IAP server? Check `.env` for `SSH_HOST_N` with role `iap`.
 
 **If no SSH access available:**
-- Present the npm install command for manual execution:
-  ```
-  npm install {NPM_PACKAGE_NAME}@{VERSION}
-  ```
-  Direct the engineer to the IAP server and ask them to run it, then return to Step 6d.
+Present the full sequence of manual commands below and ask the engineer to run them on the IAP server, then return here after completion for the restart gate (Step 6c-iii).
 
-**If SSH available** (role `iap` in `SSH_HOST_N` from `.env`):
+---
 
-Detect the IAP deployment type from Phase 1 or ticket_context:
+#### Step 6c-i — Download adapter from GitLab
+
+Two options depending on engineer preference and server network access:
+
+**Option A — Git clone directly on the IAP server (preferred if server has outbound internet):**
 ```bash
-# Docker deployment:
-INSTALL_CMD="docker exec iap-app npm install {NPM_PACKAGE_NAME}@{VERSION}"
+# On the IAP server via SSH
+ADAPTERS_DIR=$(ls -d /opt/IAP/node_modules/@itentialopensource 2>/dev/null \
+  || ls -d /usr/src/app/node_modules/@itentialopensource 2>/dev/null \
+  || echo "<UNKNOWN — see note below>")
 
+cd "${ADAPTERS_DIR}"
+git clone https://gitlab.com/itentialopensource/adapters/{REPO_NAME}.git {NPM_PACKAGE_BASENAME}
+cd {NPM_PACKAGE_BASENAME}
+npm install --production
+```
+
+> **Adapter directory note:** IAP stores open-source adapters as npm packages under
+> `node_modules/@itentialopensource/`. On VM deployments this is typically
+> `/opt/IAP/node_modules/@itentialopensource/`. On Docker it is typically
+> `/usr/src/app/node_modules/@itentialopensource/`. Confirm by running:
+> ```bash
+> # Find where existing adapters live
+> find /opt /usr/src -type d -name "@itentialopensource" 2>/dev/null | head -5
+> ```
+> The result is the target parent directory for the new adapter.
+
+**Option B — Clone locally then transfer (if IAP server has no outbound internet):**
+```bash
+# On the engineer's machine (local):
+git clone https://gitlab.com/itentialopensource/adapters/{REPO_NAME}.git /tmp/{REPO_NAME}
+cd /tmp/{REPO_NAME}
+npm install --production
+tar czf /tmp/{REPO_NAME}.tar.gz -C /tmp {REPO_NAME}
+
+# Transfer to IAP server:
+scp /tmp/{REPO_NAME}.tar.gz {SSH_USER}@{SSH_HOST}:/tmp/
+
+# On the IAP server via SSH:
+ADAPTERS_DIR=$(find /opt /usr/src -type d -name "@itentialopensource" 2>/dev/null | head -1)
+cd "${ADAPTERS_DIR}"
+tar xzf /tmp/{REPO_NAME}.tar.gz
+mv {REPO_NAME} {NPM_PACKAGE_BASENAME}
+```
+
+> `{NPM_PACKAGE_BASENAME}` is the last segment of the npm package name — for
+> `@itentialopensource/adapter-servicenow` it is `adapter-servicenow`.
+
+**Option C — Install via npm (if IAP server can reach the npm registry):**
+```bash
+# Detect IAP deployment type and install accordingly
 # VM / bare-metal:
-INSTALL_CMD="cd /opt/IAP && npm install {NPM_PACKAGE_NAME}@{VERSION}"
+cd /opt/IAP && npm install {NPM_PACKAGE_NAME}@{VERSION}
+
+# Docker:
+docker exec iap-app npm install {NPM_PACKAGE_NAME}@{VERSION}
 
 # Kubernetes:
 IAP_POD=$(kubectl get pods -n {KUBE_NAMESPACE} -l app=iap -o jsonpath='{.items[0].metadata.name}')
-INSTALL_CMD="kubectl exec -n {KUBE_NAMESPACE} ${IAP_POD} -- npm install {NPM_PACKAGE_NAME}@{VERSION}"
+kubectl exec -n {KUBE_NAMESPACE} ${IAP_POD} -- npm install {NPM_PACKAGE_NAME}@{VERSION}
 ```
 
-**Show the exact command to the engineer and wait for explicit approval before running:**
-
+**Show the chosen option to the engineer and wait for explicit approval before running:**
 ```
-I'm ready to install the adapter package on the IAP server.
+Ready to download and install {NPM_PACKAGE_NAME} on the IAP server.
 
-Command: {INSTALL_CMD}
-Server:  {SSH_HOST_N}
+Option selected: {A / B / C}
+GitLab source:   https://gitlab.com/itentialopensource/adapters/{REPO_NAME}
+Version:         {VERSION}
+Target server:   {SSH_HOST_N}
+Install path:    {ADAPTERS_DIR}/{NPM_PACKAGE_BASENAME}
 
-Shall I proceed? (yes / no)
+Shall I proceed with the download and install? (yes / no)
 ```
 
-Only run the SSH command after explicit "yes". After install, verify the package appeared:
+Only execute after explicit "yes". After install, verify the package is in place:
 ```bash
-# Verify installation (adjust path to deployment type)
-ssh {SSH_USER}@{SSH_HOST} "ls /opt/IAP/node_modules/{NPM_PACKAGE_NAME}" 2>/dev/null && echo "✅ Package found" || echo "❌ Package not found"
+ssh {SSH_USER}@{SSH_HOST} \
+  "ls \$(find /opt /usr/src -type d -name '@itentialopensource' 2>/dev/null | head -1)/{NPM_PACKAGE_BASENAME}/package.json" \
+  && echo "PASS: adapter package found" || echo "FAIL: package not found — check install path"
 ```
+
+---
+
+#### Step 6c-ii — Verify adapter is visible to platform (pre-restart check)
+
+Before restarting, confirm the package directory structure looks correct:
+```bash
+ssh {SSH_USER}@{SSH_HOST} \
+  "find \$(find /opt /usr/src -type d -name '@itentialopensource' 2>/dev/null | head -1)/{NPM_PACKAGE_BASENAME} \
+   -maxdepth 1 -name 'package.json' -o -name '*.js' | head -10"
+```
+
+Expect to see `package.json` and at least one `.js` file. If the directory is empty or missing `package.json`, the install did not complete — resolve before restarting the platform.
+
+---
+
+#### Step 6c-iii — Platform restart (required; explicit permission gate)
+
+IAP must be restarted to load the newly installed adapter package. **This causes a brief service interruption.** Present the following confirmation and wait for explicit "yes" before proceeding:
+
+```
+The adapter package has been installed. IAP must be restarted to load it.
+
+  Adapter installed : {NPM_PACKAGE_NAME}@{VERSION}
+  Server            : {SSH_HOST_N}
+  Restart method    : {systemctl restart iap / docker restart iap-app / kubectl rollout restart ...}
+  Expected downtime : ~60–120 seconds (platform restart)
+
+⚠️  This will interrupt any running workflows or active adapter connections.
+
+Shall I restart the IAP platform now? (yes / no)
+```
+
+Only restart after explicit "yes". Detect the restart command from the deployment type:
+
+```bash
+# VM / bare-metal (systemd):
+RESTART_CMD="sudo systemctl restart iap"
+
+# Docker:
+RESTART_CMD="docker restart iap-app"
+
+# Kubernetes (rolling restart — zero-downtime if replicas > 1):
+RESTART_CMD="kubectl rollout restart deployment/iap -n {KUBE_NAMESPACE}"
+```
+
+Execute via SSH:
+```bash
+ssh {SSH_USER}@{SSH_HOST} "{RESTART_CMD}"
+```
+
+**Wait for platform to come back up** — poll `/health` until it responds or 3 minutes elapse:
+```bash
+for i in $(seq 1 18); do
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${PLATFORM_URL}/health" 2>/dev/null)
+  if [ "${STATUS}" = "200" ]; then
+    echo "Platform is up (attempt ${i})"
+    break
+  fi
+  echo "Waiting... (attempt ${i}/18, status=${STATUS})"
+  sleep 10
+done
+if [ "${STATUS}" != "200" ]; then
+  echo "WARN: platform did not respond within 3 minutes — check server logs before proceeding"
+fi
+```
+
+After platform is up, confirm the new adapter is now visible:
+```bash
+curl -s "${PLATFORM_URL}/health/adapters?token=${TOKEN}" \
+  | python3 -c "
+import sys, json
+adapters = json.load(sys.stdin)
+names = [a.get('id','') for a in adapters]
+matches = [n for n in names if '{ADAPTER_KEYWORD}' in n.lower()]
+if matches:
+    print('Adapter package loaded by platform:', matches)
+else:
+    print('Adapter not yet visible in /health/adapters — it will appear after Step 6d instance creation')
+"
+```
+
+> If the adapter package is absent from `/health/adapters` even after restart, check
+> that the install path matches where IAP loads adapters from. The platform only loads
+> packages it finds in its configured `node_modules/@itentialopensource/` path.
 
 ---
 
