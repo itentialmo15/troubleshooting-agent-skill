@@ -11,6 +11,44 @@ This file is NOT in `vendor/platform-skills/SYNC_MANIFEST.json` — it survives
 
 ---
 
+## [OVERRIDE] Pre-flight Section 1 — OpenTofu Binary (Apple Silicon)
+
+> Extends vendor `references/preflight.md` Section 1, which only checks `tofu`/`terraform`
+> is on PATH and `>= 1.6` — it does not check architecture, which is the actual failure
+> mode confirmed on Apple Silicon Macs (2026-09-15).
+
+The PATH-resolved `tofu` on macOS is commonly an x86_64 build. Running it under Rosetta on
+Apple Silicon causes the AWS provider plugin to fail to launch, surfacing as either:
+
+```
+Error: timeout while waiting for plugin to start
+```
+
+or
+
+```
+Error: Failed to load plugin schemas
+Error while loading schemas for plugin components: Failed to ...
+```
+
+Neither error message mentions architecture, so this is easy to misdiagnose as a state
+lock, network, or credentials problem — rule this out first on Apple Silicon.
+
+**Verify before running any `tofu plan`/`apply`/`destroy`:**
+```bash
+file "$(which tofu)"
+# Expect: Mach-O 64-bit executable arm64
+# If it reports x86_64 instead, that is the cause.
+```
+
+**Fix:** use a native arm64 binary. Either reinstall via Homebrew (arm64 Homebrew installs
+arm64 binaries by default — `brew reinstall opentofu` if a stale x86_64 copy is cached), or
+point every tofu invocation in this session at a known-good arm64 binary directly, e.g.
+`/tmp/tofu-arm64/tofu` (the workaround used in the first AIO build), instead of the
+PATH-resolved `tofu`.
+
+---
+
 ## [OVERRIDE] Architecture Reference
 
 > Replaces `references/architectures.md` — that file reflects an older Themis branch
@@ -120,31 +158,63 @@ tofu destroy \
 
 ---
 
-## [INSERT AFTER Step 1] Step 1a — Auto-populate repository_password from JFROG_TOKEN
+## [INSERT AFTER Step 1] Step 1a — Auto-populate repository_api_key from JFROG_TOKEN
 
-If `repository_password` is blank in `run-vars.yml` **and** `JFROG_TOKEN` is set in `.env`,
-use the token as the repository password for this session. Write it to
+`itential.deployer`'s `roles/platform/tasks/validate-vars.yml` requires EITHER
+`repository_username` + `repository_password` together, OR `repository_api_key` alone —
+setting only `repository_password` (with no username) fails that assert. Since JFrog
+Identity Tokens are bearer-style credentials (no companion username), always route
+`JFROG_TOKEN` to `repository_api_key`, never to `repository_password`.
+
+If `repository_api_key` is blank in `run-vars.yml` **and** `JFROG_TOKEN` is set in `.env`,
+use the token as the repository API key for this session. Write it to
 `group_vars/all/jfrog_auth.yml` at Step 4c time — do NOT write it back to `run-vars.yml`.
+`repository_username`/`repository_password` should stay unset in this path.
 
 ```bash
 JFROG_TOKEN=$(grep -E "^JFROG_TOKEN=" .env 2>/dev/null | cut -d= -f2)
-REPO_PASS=$(grep -E "^repository_password:" <SKILL_DIR>/run-vars.yml | awk -F': ' '{print $2}' | tr -d '"')
-if [ -z "${REPO_PASS}" ] && [ -n "${JFROG_TOKEN}" ]; then
-  echo "==> Auto-populating repository_password from JFROG_TOKEN (.env)"
-  AUTO_REPO_PASSWORD="${JFROG_TOKEN}"
+REPO_API_KEY=$(grep -E "^repository_api_key:" <SKILL_DIR>/run-vars.yml | awk -F': ' '{print $2}' | tr -d '"')
+if [ -z "${REPO_API_KEY}" ] && [ -n "${JFROG_TOKEN}" ]; then
+  echo "==> Auto-populating repository_api_key from JFROG_TOKEN (.env)"
+  AUTO_REPO_API_KEY="${JFROG_TOKEN}"
 fi
 ```
 
-At Step 4c, after `apply_run_vars.py` runs, if `AUTO_REPO_PASSWORD` is set:
+At Step 4c, after `apply_run_vars.py` runs, if `AUTO_REPO_API_KEY` is set:
 
 ```bash
 mkdir -p <ENV_DIR>/inventory/group_vars/all
-printf -- "---\nrepository_password: %s\n" "${AUTO_REPO_PASSWORD}" \
+printf -- "---\nrepository_api_key: %s\n" "${AUTO_REPO_API_KEY}" \
   > <ENV_DIR>/inventory/group_vars/all/jfrog_auth.yml
-echo "==> Wrote repository_password to group_vars/all/jfrog_auth.yml"
+echo "==> Wrote repository_api_key to group_vars/all/jfrog_auth.yml"
 ```
 
-`repository_password` in `run-vars.yml` can be left blank as long as `JFROG_TOKEN` is in `.env`.
+`repository_api_key` in `run-vars.yml` can be left blank as long as `JFROG_TOKEN` is in
+`.env`. `repository_username`/`repository_password` are not needed for JFrog auth.
+
+### `platform_packages` URL construction — GATEWAY-MANAGER path quirk
+
+`run-vars.yml`'s `platform_packages` URLs must point at `itential.jfrog.io` — not
+`registry.aws.itential.com`, which is dead and 401s. Every P6 repo (`PLATFORM`, `CONFIG`,
+`LIFECYCLE`, `SERVICE`) uses the same nested path shape:
+
+```
+https://itential.jfrog.io/artifactory/<REPO>/<Product Name>/<Product Version>/<file>.rpm
+```
+
+**`GATEWAY-MANAGER` is the one exception** — it requires the repo name doubled as a path
+segment, not the product-name/version nesting the other repos use:
+
+```
+https://itential.jfrog.io/artifactory/GATEWAY-MANAGER/GATEWAY-MANAGER/<file>.rpm
+```
+
+Confirmed via AQL's raw `path` field (shows `GATEWAY-MANAGER`, not root) and a live
+`curl -sIL` redirect chain (302 → 200). Using the nested pattern from the other repos here
+404s. Verified working example:
+```
+https://itential.jfrog.io/artifactory/GATEWAY-MANAGER/GATEWAY-MANAGER/itential-gateway_manager-1.0.4.noarch.rpm
+```
 
 ---
 
@@ -216,6 +286,30 @@ fi
 
 ---
 
+## [INSERT AFTER Step 1c] Step 1d — AWS STS Credential Freshness Check
+
+Some accounts (including `mohan-env-sts`) use **static STS credentials** in `.env`
+(`aws_access_key_id`/`aws_secret_access_key`/`aws_session_token`, case-insensitive lookup)
+rather than an SSO-backed profile. These are NOT auto-refreshed by `aws sso login` and will
+silently expire mid-session, surfacing at `tofu plan`/`apply` time as:
+
+```
+An error occurred (ExpiredToken) when calling the GetCallerIdentity operation:
+The security token included in the request is expired
+```
+
+Check this **before** Step 3 provisioning starts, not after a failure:
+
+```bash
+aws sts get-caller-identity --profile <aws_profile>
+```
+
+If expired, re-provision fresh STS credentials into `.env` (`aws_access_key_id`,
+`aws_secret_access_key`, `aws_session_token`) before continuing — there is no in-session
+refresh command for static creds, unlike SSO profiles.
+
+---
+
 ## [OVERRIDE] Extended Pre-flight (replaces preflight.md Section 4, adds Sections 5a/9/10)
 
 ### Section 4 — AWS Credentials and Resources
@@ -240,7 +334,12 @@ AWS_INSTANCE_TYPE_GATEWAY=t3.medium
 
 Step 1b generates `auto-account.tfvars` from these automatically.
 
-Verify key pair and SG exist before running:
+**Verify key pair and SG exist before every run, not just the first time** — SG IDs get
+deleted/rotated between sessions on shared or sandbox AWS accounts. Confirmed failure mode:
+`AWS_SECURITY_GROUP_IDS` in `.env` referenced a SG from a prior session that no longer
+existed, only caught at `tofu plan` time as `InvalidGroup.NotFound`. Re-run this check even
+if `.env` hasn't changed since last time:
+
 ```bash
 aws ec2 describe-key-pairs \
   --key-names <key_name> --profile <aws_profile> \
@@ -249,6 +348,22 @@ aws ec2 describe-key-pairs \
 aws ec2 describe-security-groups \
   --group-ids <sg_id> --profile <aws_profile> \
   --query 'SecurityGroups[0].{Id:GroupId,Name:GroupName}' --output table
+```
+
+### Section 4b — PyYAML for apply_run_vars.py
+
+`scripts/apply_run_vars.py` (Step 4c, distributes `run-vars.yml` into generated
+`group_vars`) requires `PyYAML`. Confirmed missing on both Homebrew Python 3.13 and system
+Python 3.9 on macOS — check before Step 4c, not after it fails:
+
+```bash
+python3 -c "import yaml" 2>&1 && echo "PyYAML OK" || echo "PyYAML MISSING"
+```
+
+**If missing on Homebrew Python:** PEP 668's externally-managed-environment guard blocks a
+plain `pip install`. Use:
+```bash
+python3 -m pip install --user --break-system-packages pyyaml
 ```
 
 ### Section 5a — Gateway .whl Pre-flight
@@ -281,10 +396,18 @@ tofu destroy \
 
 ### Section 10 — Pre-Run Decision Checklist
 
-- [ ] AWS identity confirmed and key pair + SG exist in account (or `.env` overrides set)
+- [ ] AWS identity confirmed and key pair + SG exist in account **right now** (or `.env`
+      overrides set) — re-check even on a repeat run, SG IDs can go stale between sessions
+- [ ] On Apple Silicon: `file "$(which tofu)"` confirms `arm64`, not `x86_64`
+- [ ] If `aws_profile` uses static STS creds (not SSO): `aws sts get-caller-identity
+      --profile <aws_profile>` succeeds right now
+- [ ] `python3 -c "import yaml"` succeeds (PyYAML present for `apply_run_vars.py`)
 - [ ] `itential.tls` cloned; `tls_repo` in `run-vars.yml` points at a valid checkout
 - [ ] `repository_password` filled in `run-vars.yml` **OR** `JFROG_TOKEN` in `.env` for auto-populate
 - [ ] Platform version decided: Themis default or both `platform_release` + `platform_packages` set
+      — URLs must be `itential.jfrog.io`, not the dead `registry.aws.itential.com`; if
+      `platform_packages` includes Gateway Manager, use the doubled `GATEWAY-MANAGER/GATEWAY-MANAGER/`
+      path (see Step 1a note above), not the nested-path pattern the other repos use
 - [ ] Gateway: `gateway_release` commented out (skip) OR set + `.whl` on disk / `JFROG_TOKEN` present
 - [ ] Required run-vars filled: `architecture`, `os`, `themis_root`, `owner`, `deployer_repo`, `tls_repo`, `aws_profile`, `ssh_key_path`
 - [ ] Cost acknowledged: know VM count, have a destroy plan
