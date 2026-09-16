@@ -4,10 +4,194 @@ These extensions layer on top of the vendor SKILL.md without modifying it.
 `CLAUDE.md` instructs Claude to read this file alongside SKILL.md for every
 `/themis-aws-deploy` invocation. Sections marked **[OVERRIDE]** replace the
 corresponding vendor instruction entirely; sections marked **[INSERT AFTER Step N]**
-add steps at the specified position.
+or **[INSERT BEFORE Step N]** add steps at the specified position.
 
 This file is NOT in `vendor/platform-skills/SYNC_MANIFEST.json` — it survives
 `sync-platform-skills.sh` runs unchanged.
+
+---
+
+## [INSERT BEFORE Step 1] Step 0 — AWS Credentials Source Selection
+
+> **Run this step before any other step, every time a build is invoked.**  
+> It discovers available credential sources and lets the engineer pick one interactively.
+> The selection sets `SESSION_AWS_PROFILE` and/or exports `AWS_*` environment variables
+> that all subsequent steps (Step 1b, Step 2a Check 2, Step 3 tofu commands) consume.
+> Never skip this step by assuming the `run-vars.yml` profile is the right one — the
+> engineer may be targeting a different account than the file's default.
+
+### Step 0a — Discover credential sources
+
+Run all discovery commands in parallel, then present a unified numbered list.
+
+```bash
+# 1. Named profiles from ~/.aws/credentials and ~/.aws/config
+aws configure list-profiles 2>/dev/null | sort -u
+```
+
+```bash
+# 2. Classify each profile: SSO-backed (has sso_start_url in ~/.aws/config) or static
+python3 - <<'PYEOF'
+import configparser, os, sys
+
+cfg_path = os.path.expanduser("~/.aws/config")
+creds_path = os.path.expanduser("~/.aws/credentials")
+cfg = configparser.ConfigParser()
+cfg.read([cfg_path, creds_path])
+
+profiles = {}
+for section in cfg.sections():
+    name = section.replace("profile ", "")
+    is_sso = "sso_start_url" in cfg[section]
+    has_static = "aws_access_key_id" in cfg[section]
+    profiles[name] = "SSO" if is_sso else ("static-key" if has_static else "assumed-role/other")
+
+for name, kind in sorted(profiles.items()):
+    print(f"{name}  ({kind})")
+PYEOF
+```
+
+```bash
+# 3. Env files in repo that carry AWS credentials
+find . -maxdepth 3 \( -name ".env" -o -name ".env.*" \) \
+  -not -path "*/.git/*" -not -path "*/node_modules/*" -not -path "*/.venv/*" \
+  2>/dev/null | sort -u | while IFS= read -r f; do
+    has_key=$(grep -lE "^AWS_ACCESS_KEY_ID=|^aws_access_key_id=" "$f" 2>/dev/null && echo yes || true)
+    has_profile=$(grep -lE "^AWS_PROFILE=|^aws_profile=" "$f" 2>/dev/null && echo yes || true)
+    if [ -n "$has_key" ]; then
+      echo "$f  → static STS creds (AWS_ACCESS_KEY_ID)"
+    elif [ -n "$has_profile" ]; then
+      profile_val=$(grep -m1 -E "^AWS_PROFILE=|^aws_profile=" "$f" | cut -d= -f2)
+      echo "$f  → AWS_PROFILE=${profile_val}"
+    else
+      echo "$f  → (no AWS keys detected)"
+    fi
+  done
+```
+
+### Step 0b — Present the numbered menu to the engineer
+
+Format the results as a compact numbered list in chat, grouping by source type.
+Always include the current `run-vars.yml` value as the last option so it is
+explicit and not silently inherited.
+
+Example output:
+```
+AWS Credentials for this build — choose a source:
+
+  Profiles (~/.aws/credentials / ~/.aws/config):
+    [1] pe-team-sbx          (SSO)
+    [2] mohan-env-sts         (static-key — check freshness before tofu apply)
+    [3] default               (static-key)
+
+  Env files with AWS credentials:
+    [4] .env                  → static STS (AWS_ACCESS_KEY_ID)
+    [5] environments/dev.env  → AWS_PROFILE=dev-account
+
+  [6] Use run-vars.yml setting (current: pe-team-sbx)
+
+Select [1–N]:
+```
+
+**Wait for engineer response before continuing.** Do not assume a default.
+
+### Step 0c — Apply the selection
+
+#### Engineer selects a `~/.aws` profile (options in the "Profiles" group)
+
+```bash
+SESSION_AWS_PROFILE="<selected-profile>"
+```
+
+If the profile is SSO-backed, verify the session is active — if not, trigger login:
+
+```bash
+aws sts get-caller-identity --profile "${SESSION_AWS_PROFILE}" --output json 2>/dev/null \
+  || aws sso login --profile "${SESSION_AWS_PROFILE}"
+```
+
+Export so child processes (tofu, Ansible) can also read the profile:
+```bash
+export AWS_PROFILE="${SESSION_AWS_PROFILE}"
+```
+
+Set for use in all subsequent steps:
+```bash
+# Used by Step 2a Check 2 and Step 3 tofu commands
+CRED_MODE="profile"
+```
+
+---
+
+#### Engineer selects an env file with `AWS_ACCESS_KEY_ID` (static STS)
+
+```bash
+# Extract and export the static STS keys from the chosen env file.
+# Use a subshell grep — never source the file into the main shell (it may contain
+# non-AWS keys that would overwrite PLATFORM_URL and other session variables).
+_ENV_FILE="<selected-env-file>"
+
+export AWS_ACCESS_KEY_ID=$(grep -m1 -E "^AWS_ACCESS_KEY_ID=" "${_ENV_FILE}" | cut -d= -f2- | tr -d '"')
+export AWS_SECRET_ACCESS_KEY=$(grep -m1 -E "^AWS_SECRET_ACCESS_KEY=" "${_ENV_FILE}" | cut -d= -f2- | tr -d '"')
+_SESSION_TOKEN=$(grep -m1 -E "^AWS_SESSION_TOKEN=" "${_ENV_FILE}" | cut -d= -f2- | tr -d '"')
+[ -n "${_SESSION_TOKEN}" ] && export AWS_SESSION_TOKEN="${_SESSION_TOKEN}"
+
+# When AWS_ACCESS_KEY_ID/SECRET/SESSION_TOKEN are set in the environment, OpenTofu
+# uses them directly — no -var profile= flag needed or safe to use (it would try to
+# load a named profile and may conflict).
+SESSION_AWS_PROFILE=""
+CRED_MODE="static-env-vars"
+```
+
+Verify the credentials are valid:
+```bash
+aws sts get-caller-identity --output json 2>&1
+# PASS: returns JSON with Account + Arn
+# FAIL: "ExpiredToken" — the STS session in this env file has expired; obtain fresh creds
+```
+
+---
+
+#### Engineer selects an env file with `AWS_PROFILE`
+
+```bash
+SESSION_AWS_PROFILE=$(grep -m1 -E "^AWS_PROFILE=|^aws_profile=" "<selected-env-file>" | cut -d= -f2 | tr -d '"')
+export AWS_PROFILE="${SESSION_AWS_PROFILE}"
+CRED_MODE="profile"
+```
+
+Then follow the SSO/static check from the profile path above.
+
+---
+
+#### Engineer selects "Use run-vars.yml setting"
+
+```bash
+SESSION_AWS_PROFILE=$(grep -E "^aws_profile:" .claude/skills/themis-aws-deploy/run-vars.yml \
+  | awk -F': ' '{print $2}' | tr -d '"' | xargs)
+export AWS_PROFILE="${SESSION_AWS_PROFILE}"
+CRED_MODE="profile"
+```
+
+---
+
+### Step 0d — Confirm selection to engineer
+
+Print a one-line confirmation before moving to Step 1:
+
+```
+✔ AWS credentials: <CRED_MODE>
+  Profile : <SESSION_AWS_PROFILE>   ← (or "n/a — using static env vars" if CRED_MODE=static-env-vars)
+  Account : <aws-account-id>  (<arn-snippet from sts get-caller-identity>)
+```
+
+If `CRED_MODE=profile`, record `SESSION_AWS_PROFILE` for substitution in Step 3's
+`-var profile=<aws_profile>` argument.
+
+If `CRED_MODE=static-env-vars`, omit `-var profile=` entirely from Step 3 tofu commands
+— tofu reads `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` from the
+environment directly. Include a reminder that static STS tokens expire and Step 2a Check 2
+will catch an expired token before `tofu apply` starts.
 
 ---
 
@@ -117,9 +301,27 @@ fi
 
 > Replaces vendor Step 3's tofu plan/apply/destroy command blocks.
 
-Themis's `terraform.tfvars` hardcodes `profile = "pe-team-sbx"`. Always pass
-`-var profile=<aws_profile>` explicitly so engineers on other accounts get the right
-profile. Also append `${ACCOUNT_TFVARS:-}` if Step 1b generated `auto-account.tfvars`.
+Themis's `terraform.tfvars` hardcodes `profile = "pe-team-sbx"`. The correct
+`-var profile=` value and whether to pass it at all depends on the credential
+mode set in Step 0:
+
+- **`CRED_MODE=profile`** — always pass `-var profile=${SESSION_AWS_PROFILE}` explicitly.
+- **`CRED_MODE=static-env-vars`** — omit `-var profile=` entirely; OpenTofu reads
+  `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` from the
+  environment. Passing `-var profile=` alongside env-var creds causes tofu to try to
+  load a named profile and may error or silently use the wrong account.
+
+Also append `${ACCOUNT_TFVARS:-}` if Step 1b generated `auto-account.tfvars`.
+
+Set the profile flag once based on Step 0 selection:
+```bash
+# Set once after Step 0; reuse in every tofu invocation below.
+if [ "${CRED_MODE:-profile}" = "static-env-vars" ]; then
+  PROFILE_FLAG=""
+else
+  PROFILE_FLAG="-var profile=${SESSION_AWS_PROFILE}"
+fi
+```
 
 ```bash
 cd <themis_root>/vms/aws
@@ -130,7 +332,7 @@ tofu plan \
   -var-file=tfvars/<os_tfvars>.tfvars \
   ${ACCOUNT_TFVARS:-} \
   -var owner=<owner> \
-  -var profile=<aws_profile>
+  ${PROFILE_FLAG}
 
 tofu apply \
   -var-file=tfvars/<architecture>.tfvars \
@@ -138,7 +340,7 @@ tofu apply \
   -var-file=tfvars/<os_tfvars>.tfvars \
   ${ACCOUNT_TFVARS:-} \
   -var owner=<owner> \
-  -var profile=<aws_profile> \
+  ${PROFILE_FLAG} \
   -parallelism=20 \
   -auto-approve
 ```
@@ -152,7 +354,7 @@ tofu destroy \
   -var-file=tfvars/<os_tfvars>.tfvars \
   ${ACCOUNT_TFVARS:-} \
   -var owner=<owner> \
-  -var profile=<aws_profile> \
+  ${PROFILE_FLAG} \
   -auto-approve
 ```
 
@@ -314,13 +516,20 @@ refresh command for static creds, unlike SSO profiles.
 
 ### Section 4 — AWS Credentials and Resources
 
-**Standard path (pe-team-sbx):**
+**Credential source is selected interactively at Step 0** — the engineer chooses from
+`~/.aws` profiles (SSO or static-key) or an env file with `AWS_ACCESS_KEY_ID`. The
+pre-flight section below covers supplemental `.env` resource overrides only.
+
+After Step 0, verify the identity is active:
 ```bash
-aws sso login --profile pe-team-sbx
-aws sts get-caller-identity --profile pe-team-sbx
+# profile mode
+aws sts get-caller-identity --profile "${SESSION_AWS_PROFILE}"
+# static env vars mode (AWS_ACCESS_KEY_ID exported in Step 0)
+aws sts get-caller-identity
 ```
 
-**Custom account — add to `.env`** (gitignored, per-engineer):
+**EC2 resource overrides — add to `.env`** (gitignored, per-engineer) when not on
+`pe-team-sbx` or when using custom account resources:
 ```bash
 AWS_KEY_NAME=your-ec2-key-pair-name
 AWS_SECURITY_GROUP_IDS=sg-xxxxxxxxxxxx        # must allow SSH (22) inbound
@@ -335,19 +544,17 @@ AWS_INSTANCE_TYPE_GATEWAY=t3.medium
 Step 1b generates `auto-account.tfvars` from these automatically.
 
 **Verify key pair and SG exist before every run, not just the first time** — SG IDs get
-deleted/rotated between sessions on shared or sandbox AWS accounts. Confirmed failure mode:
-`AWS_SECURITY_GROUP_IDS` in `.env` referenced a SG from a prior session that no longer
-existed, only caught at `tofu plan` time as `InvalidGroup.NotFound`. Re-run this check even
-if `.env` hasn't changed since last time:
+deleted/rotated between sessions on shared or sandbox AWS accounts. Step 2a Checks 7 and 8
+run these verifications automatically. Manual spot-check using the credential mode:
 
 ```bash
-aws ec2 describe-key-pairs \
-  --key-names <key_name> --profile <aws_profile> \
-  --query 'KeyPairs[0].KeyName' --output text
+# Profile mode
+aws ec2 describe-key-pairs --key-names <key_name> --profile "${SESSION_AWS_PROFILE}" --output text
+aws ec2 describe-security-groups --group-ids <sg_id> --profile "${SESSION_AWS_PROFILE}" --output table
 
-aws ec2 describe-security-groups \
-  --group-ids <sg_id> --profile <aws_profile> \
-  --query 'SecurityGroups[0].{Id:GroupId,Name:GroupName}' --output table
+# Static env vars mode (omit --profile)
+aws ec2 describe-key-pairs --key-names <key_name> --output text
+aws ec2 describe-security-groups --group-ids <sg_id> --output table
 ```
 
 ### Section 4b — PyYAML for apply_run_vars.py
@@ -454,15 +661,24 @@ EOF
 
 ### Check 2 — AWS STS identity (token freshness)
 
+The command to run depends on the credential mode set in Step 0:
+
 ```bash
-aws sts get-caller-identity --profile <aws_profile> --output json 2>&1
+if [ "${CRED_MODE:-profile}" = "static-env-vars" ]; then
+  # Static env vars already exported — no --profile needed
+  aws sts get-caller-identity --output json 2>&1
+else
+  aws sts get-caller-identity --profile "${SESSION_AWS_PROFILE}" --output json 2>&1
+fi
 ```
 
 - **PASS** if the command returns a JSON blob with `Account` and `Arn`.
-- **FAIL** if it returns `ExpiredToken` or `InvalidClientTokenId` — re-provision static
-  STS credentials in `.env` (`aws_access_key_id`, `aws_secret_access_key`,
-  `aws_session_token`) before continuing.
-- **FAIL** if it returns `NoCredentialProviders` — the profile is missing from `~/.aws`.
+- **FAIL `ExpiredToken`** — for static env var mode: the STS session exported from the
+  env file has expired; the engineer must obtain fresh `AWS_ACCESS_KEY_ID` /
+  `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` and re-run Step 0 to re-export them.
+  For profile mode: re-provision credentials or run `aws sso login`.
+- **FAIL `InvalidClientTokenId` / `NoCredentialProviders`** — credentials are missing
+  or the profile is not in `~/.aws`.
 
 Capture the returned `Account` and `Arn` values for display in the summary.
 
@@ -528,9 +744,16 @@ if [ -z "${KEY_NAME}" ]; then
   KEY_NAME=$(basename <ssh_key_path> .pem)
 fi
 
+# Build profile flag based on Step 0 credential mode
+if [ "${CRED_MODE:-profile}" = "static-env-vars" ]; then
+  _PROFILE_ARG=""
+else
+  _PROFILE_ARG="--profile ${SESSION_AWS_PROFILE}"
+fi
+
 aws ec2 describe-key-pairs \
   --key-names "${KEY_NAME}" \
-  --profile <aws_profile> \
+  ${_PROFILE_ARG} \
   --query 'KeyPairs[0].KeyName' --output text 2>&1
 # PASS if output is the key name
 # FAIL if output contains "InvalidKeyPair.NotFound"
@@ -547,9 +770,14 @@ SG_IDS=$(grep -E "^AWS_SECURITY_GROUP_IDS=" .env 2>/dev/null | cut -d= -f2)
 if [ -z "${SG_IDS}" ]; then
   echo "SKIP (pe-team-sbx default SGs — no override set)"
 else
+  if [ "${CRED_MODE:-profile}" = "static-env-vars" ]; then
+    _PROFILE_ARG=""
+  else
+    _PROFILE_ARG="--profile ${SESSION_AWS_PROFILE}"
+  fi
   aws ec2 describe-security-groups \
     --group-ids ${SG_IDS//,/ } \
-    --profile <aws_profile> \
+    ${_PROFILE_ARG} \
     --query 'SecurityGroups[*].{Id:GroupId,Name:GroupName}' --output table 2>&1
   # PASS if every ID resolves without error
   # FAIL if any ID returns "InvalidGroup.NotFound"
@@ -717,7 +945,8 @@ After the table, output:
 About to provision:
   Architecture : <architecture> (<N> VM(s))
   OS           : <os>
-  AWS account  : <aws_profile>  [<account-id> — <arn-snippet>]
+  AWS account  : <account-id> — <arn-snippet>
+  AWS creds    : <profile: SESSION_AWS_PROFILE>  ← or "static env vars (AWS_ACCESS_KEY_ID)"
   AWS region   : <region (from auto-account.tfvars or default us-east-1)>
   Owner tag    : <owner>
   EC2 key pair : <key-name>
@@ -726,7 +955,7 @@ About to provision:
 
 EC2 instances accrue AWS spend until destroyed. Destroy command when done:
   tofu destroy -var-file=tfvars/<architecture>.tfvars -var-file=tfvars/<os>.tfvars \
-    -var owner=<owner> -var profile=<aws_profile> -auto-approve
+    -var owner=<owner> ${PROFILE_FLAG} -auto-approve
 ```
 
 ---
