@@ -1368,6 +1368,71 @@ flowchart TD
 
   <hr class="section-divider" />
 
+  <!-- AI Agent Design -->
+  <div class="section">
+    <div class="section-label">Agent Design</div>
+    <h2>How the Agent Works — AI Design Patterns</h2>
+    <p class="desc">
+      The Troubleshooting Agent is built on a small set of well-established agentic AI patterns.
+      Understanding these helps explain why it behaves the way it does — why it pauses before writing,
+      why it loads different skill files for different problems, and how it accumulates knowledge across tickets.
+    </p>
+
+    <div class="cards">
+      <div class="card t-magenta">
+        <div class="icon">&#x2733;</div>
+        <h3>Orchestrator + Subagent</h3>
+        <p>One primary skill coordinates the investigation. It delegates targeted diagnostics to six specialist sub-skills — each owning a specific domain (adapters, databases, infra, etc.). Sub-skills run independently with their own authentication and report findings back to the orchestrator for synthesis.</p>
+        <span class="tag">Multi-agent</span><span class="tag">Delegation</span>
+      </div>
+      <div class="card t-purple">
+        <div class="icon">&#x1F4C4;</div>
+        <h3>Skill-as-Prompt</h3>
+        <p>Each "agent" is a structured markdown instruction file (<span class="inline-code">SKILL.md</span>) — not compiled code. The model loads the file, follows its phase-by-phase instructions, and executes the prescribed tool calls. Behavior is changed by editing a text file, not redeploying software.</p>
+        <span class="tag">Prompt-driven</span><span class="tag">No build step</span>
+      </div>
+      <div class="card t-blue">
+        <div class="icon">&#x1F504;</div>
+        <h3>Tool-Augmented Reasoning (ReAct)</h3>
+        <p>The model alternates between <em>reasoning</em> and <em>acting</em>: it formulates a hypothesis, calls a real tool (curl, SSH, AWS CLI, Jira MCP), observes the result, updates its model of the situation, and calls the next tool. This loop continues until the skill's exit condition is met.</p>
+        <span class="tag">Reason → Act → Observe</span><span class="tag">Real tool calls</span>
+      </div>
+      <div class="card t-orange">
+        <div class="icon">&#x1F512;</div>
+        <h3>Human-in-the-Loop Gates</h3>
+        <p>All destructive or write operations — Jira comments, adapter config changes, <span class="inline-code">tofu apply</span>, platform restart — require an explicit engineer "yes" before execution. The model presents the exact payload and waits. It cannot bypass a gate even in autonomous mode.</p>
+        <span class="tag">Approval required</span><span class="tag">Read-only default</span>
+      </div>
+      <div class="card t-olive">
+        <div class="icon">&#x1F5C2;</div>
+        <h3>Filesystem Memory</h3>
+        <p><strong>Short-term:</strong> per-ticket markdown files (<span class="inline-code">ticket_context.md</span>, <span class="inline-code">diagnostic_report.md</span>) written under <span class="inline-code">data/{TIMESTAMP}/</span>. <strong>Long-term:</strong> append-only <span class="inline-code">known-resolutions.md</span> that grows across all investigations. No vector database or embeddings — Claude's context window does the retrieval.</p>
+        <span class="tag">Per-ticket artifacts</span><span class="tag">Cumulative KB</span>
+      </div>
+      <div class="card t-red">
+        <div class="icon">&#x1F9E9;</div>
+        <h3>Vendor Skill Composition</h3>
+        <p>Platform skills and builder skills are vendored as instruction files from private/public GitLab and GitHub repos. Local overrides (<span class="inline-code">LOCAL-EXTENSIONS.md</span>) extend vendor behavior using <code>[OVERRIDE]</code> and <code>[INSERT AFTER Step N]</code> markers — without touching the upstream source, so syncs never overwrite customizations.</p>
+        <span class="tag">Plugin pattern</span><span class="tag">Sync-safe overrides</span>
+      </div>
+    </div>
+
+    <!-- Harness callout -->
+    <div style="margin-top: 28px;">
+      <div class="subsection-label">The Agent Harness — Claude Code</div>
+      <div class="rules">
+        <div class="rule"><div class="rule-text">
+          <strong>What is a harness?</strong> — An LLM can reason and produce text, but it cannot run a command, open a file, or call an API on its own. The <em>agent harness</em> is the runtime layer that wraps the model and gives it hands: it receives tool-call requests from the model, actually executes them (bash, file read, HTTP), and feeds the result back as the next observation in the loop. The harness also manages the context window (compacting old turns), enforces permission gates (allow/deny per tool), runs pre- and post-tool hooks, and controls the agentic loop itself (how many turns, when to stop).
+        </div></div>
+        <div class="rule"><div class="rule-text">
+          <strong>Claude Code is the harness here.</strong> — When an engineer types <span class="inline-code">/troubleshoot ISD-9261</span>, Claude Code loads <span class="inline-code">CLAUDE.md</span> and the relevant <span class="inline-code">SKILL.md</span> into context, starts the agentic loop, and executes every tool call the model emits — curl, SSH, AWS CLI, Jira MCP, file reads and writes. It enforces the permission mode (auto-approve safe reads, prompt for writes), runs the <span class="inline-code">Stop</span> hook when the session ends, and compacts context when it overflows — all invisible to the model. Without the harness, the SKILL.md files are just text; with it, they become a working agent.
+        </div></div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
   <!-- Sub-Skill Capabilities -->
   <div class="section">
     <div class="section-label">Sub-Skills</div>
@@ -1567,71 +1632,6 @@ flowchart TD
       <div class="indent-3"><span class="file">SYNC_CHANGELOG.md</span> <span class="comment">← diff history per sync run</span></div>
       <div class="indent-1"><span class="file">.env</span> <span class="comment">← credentials (never committed to git)</span></div>
       <div class="indent-1"><span class="file">.auth.json</span> <span class="comment">← cached auth token (50 min TTL)</span></div>
-    </div>
-  </div>
-
-  <hr class="section-divider" />
-
-  <!-- AI Agent Design -->
-  <div class="section">
-    <div class="section-label">Agent Design</div>
-    <h2>How the Agent Works — AI Design Patterns</h2>
-    <p class="desc">
-      The Troubleshooting Agent is built on a small set of well-established agentic AI patterns.
-      Understanding these helps explain why it behaves the way it does — why it pauses before writing,
-      why it loads different skill files for different problems, and how it accumulates knowledge across tickets.
-    </p>
-
-    <div class="cards">
-      <div class="card t-magenta">
-        <div class="icon">&#x2733;</div>
-        <h3>Orchestrator + Subagent</h3>
-        <p>One primary skill coordinates the investigation. It delegates targeted diagnostics to six specialist sub-skills — each owning a specific domain (adapters, databases, infra, etc.). Sub-skills run independently with their own authentication and report findings back to the orchestrator for synthesis.</p>
-        <span class="tag">Multi-agent</span><span class="tag">Delegation</span>
-      </div>
-      <div class="card t-purple">
-        <div class="icon">&#x1F4C4;</div>
-        <h3>Skill-as-Prompt</h3>
-        <p>Each "agent" is a structured markdown instruction file (<span class="inline-code">SKILL.md</span>) — not compiled code. The model loads the file, follows its phase-by-phase instructions, and executes the prescribed tool calls. Behavior is changed by editing a text file, not redeploying software.</p>
-        <span class="tag">Prompt-driven</span><span class="tag">No build step</span>
-      </div>
-      <div class="card t-blue">
-        <div class="icon">&#x1F504;</div>
-        <h3>Tool-Augmented Reasoning (ReAct)</h3>
-        <p>The model alternates between <em>reasoning</em> and <em>acting</em>: it formulates a hypothesis, calls a real tool (curl, SSH, AWS CLI, Jira MCP), observes the result, updates its model of the situation, and calls the next tool. This loop continues until the skill's exit condition is met.</p>
-        <span class="tag">Reason → Act → Observe</span><span class="tag">Real tool calls</span>
-      </div>
-      <div class="card t-orange">
-        <div class="icon">&#x1F512;</div>
-        <h3>Human-in-the-Loop Gates</h3>
-        <p>All destructive or write operations — Jira comments, adapter config changes, <span class="inline-code">tofu apply</span>, platform restart — require an explicit engineer "yes" before execution. The model presents the exact payload and waits. It cannot bypass a gate even in autonomous mode.</p>
-        <span class="tag">Approval required</span><span class="tag">Read-only default</span>
-      </div>
-      <div class="card t-olive">
-        <div class="icon">&#x1F5C2;</div>
-        <h3>Filesystem Memory</h3>
-        <p><strong>Short-term:</strong> per-ticket markdown files (<span class="inline-code">ticket_context.md</span>, <span class="inline-code">diagnostic_report.md</span>) written under <span class="inline-code">data/{TIMESTAMP}/</span>. <strong>Long-term:</strong> append-only <span class="inline-code">known-resolutions.md</span> that grows across all investigations. No vector database or embeddings — Claude's context window does the retrieval.</p>
-        <span class="tag">Per-ticket artifacts</span><span class="tag">Cumulative KB</span>
-      </div>
-      <div class="card t-red">
-        <div class="icon">&#x1F9E9;</div>
-        <h3>Vendor Skill Composition</h3>
-        <p>Platform skills and builder skills are vendored as instruction files from private/public GitLab and GitHub repos. Local overrides (<span class="inline-code">LOCAL-EXTENSIONS.md</span>) extend vendor behavior using <code>[OVERRIDE]</code> and <code>[INSERT AFTER Step N]</code> markers — without touching the upstream source, so syncs never overwrite customizations.</p>
-        <span class="tag">Plugin pattern</span><span class="tag">Sync-safe overrides</span>
-      </div>
-    </div>
-
-    <!-- Harness callout -->
-    <div style="margin-top: 28px;">
-      <div class="subsection-label">The Agent Harness — Claude Code</div>
-      <div class="rules">
-        <div class="rule"><div class="rule-text">
-          <strong>What is a harness?</strong> — An LLM can reason and produce text, but it cannot run a command, open a file, or call an API on its own. The <em>agent harness</em> is the runtime layer that wraps the model and gives it hands: it receives tool-call requests from the model, actually executes them (bash, file read, HTTP), and feeds the result back as the next observation in the loop. The harness also manages the context window (compacting old turns), enforces permission gates (allow/deny per tool), runs pre- and post-tool hooks, and controls the agentic loop itself (how many turns, when to stop).
-        </div></div>
-        <div class="rule"><div class="rule-text">
-          <strong>Claude Code is the harness here.</strong> — When an engineer types <span class="inline-code">/troubleshoot ISD-9261</span>, Claude Code loads <span class="inline-code">CLAUDE.md</span> and the relevant <span class="inline-code">SKILL.md</span> into context, starts the agentic loop, and executes every tool call the model emits — curl, SSH, AWS CLI, Jira MCP, file reads and writes. It enforces the permission mode (auto-approve safe reads, prompt for writes), runs the <span class="inline-code">Stop</span> hook when the session ends, and compacts context when it overflows — all invisible to the model. Without the harness, the SKILL.md files are just text; with it, they become a working agent.
-        </div></div>
-      </div>
     </div>
   </div>
 
