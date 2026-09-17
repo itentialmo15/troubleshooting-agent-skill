@@ -1666,6 +1666,61 @@ mcp__claude_ai_Atlassian_MCP__createIssueLink(
 
 Run this phase when a fix is confirmed — either by Engineering releasing a patch, or by a workaround resolving the customer's issue.
 
+### Step 6-pre — Confirm ENG Ticket Status
+
+Before writing the resolution record, determine whether an ENG ticket exists for this issue.
+This must run even when Phase 5 was skipped (e.g. a workaround resolved the issue without formal escalation).
+
+**Step 1 — Check Jira for any ENG ticket already linked to this ISD ticket:**
+```bash
+curl -s "${JIRA_URL}/rest/api/3/issue/${ISD_TICKET_KEY}/remotelink" \
+  -u "${JIRA_USER}:${JIRA_API_TOKEN}" | python3 -c "
+import sys, json
+for link in json.load(sys.stdin):
+    url = link.get('object', {}).get('url', '')
+    title = link.get('object', {}).get('title', '')
+    if 'ENG-' in title or 'ENG-' in url:
+        print('Linked ENG:', title)
+"
+```
+
+Also check for issue links (not just remote links):
+```bash
+curl -s "${JIRA_URL}/rest/api/3/issue/${ISD_TICKET_KEY}?fields=issuelinks" \
+  -u "${JIRA_USER}:${JIRA_API_TOKEN}" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+for link in d.get('fields', {}).get('issuelinks', []):
+    for side in ('inwardIssue', 'outwardIssue'):
+        issue = link.get(side, {})
+        key = issue.get('key', '')
+        if key.startswith('ENG-'):
+            print('Linked ENG:', key, '|', issue.get('fields', {}).get('summary', ''))
+"
+```
+
+**Step 2 — Check `diagnostic_report.md` and `eng_ticket_draft.md` for any ENG ticket key:**
+```bash
+grep -oE 'ENG-[0-9]+' data/*/*/diagnostic_report.md data/*/*/eng_ticket_draft.md 2>/dev/null | sort -u
+```
+
+**Step 3 — Evaluate and act:**
+
+- If an ENG ticket key is found (from any source above): set `ENG_TICKET_KEY = <found key>`. Proceed to Step 6a.
+- If no ENG ticket exists AND the root cause is a **platform bug** (not a misconfiguration or workaround-only issue):
+  Present to the engineer:
+  > "Root cause is a platform bug. No ENG ticket has been filed yet. File one now to track the fix?
+  > Proposed summary: `[{ISD_TICKET_KEY}] {SHORT_ROOT_CAUSE}`
+  > Reply yes/no — if yes, I will create the ENG ticket and link it to this ISD ticket before recording the resolution."
+  
+  If engineer says **yes**: follow Phase 5 Step 5b to create and link the ENG ticket, capture `ENG_TICKET_KEY`.
+  If engineer says **no**: set `ENG_TICKET_KEY = N/A`.
+- If no ENG ticket exists AND root cause is a misconfiguration or environment issue: set `ENG_TICKET_KEY = N/A`.
+
+**The `ENG_TICKET_KEY` value from this step is required for Step 6a. Never leave it as a placeholder — it must be a real key or the literal string `N/A`.**
+
+---
+
 ### Step 6a — Record the Resolution Pattern
 
 Append to `{project_path}/data/known-resolutions.md`:
@@ -1673,7 +1728,7 @@ Append to `{project_path}/data/known-resolutions.md`:
 ```markdown
 ---
 ## {SHORT_TITLE}
-**Ticket:** {ISD_TICKET_KEY} | **ENG:** {ENG_TICKET_KEY or N/A}
+**Ticket:** {ISD_TICKET_KEY} | **ENG:** {ENG_TICKET_KEY — from Step 6-pre; use actual key or literal N/A}
 **Date resolved:** {TODAY}
 **IAP Versions affected:** {list}
 **Fix version:** {vX.Y.Z or "workaround only"}
