@@ -192,17 +192,223 @@ else:
 
 ### Docker on VM
 
+**Step 2.vm.0 — VM source selection**
+
+Ask the engineer:
+
+```
+Do you have an existing Linux VM to SSH into, or should I provision a bare EC2 instance?
+
+  1) Existing VM  — read SSH_HOST_1 / SSH_USER_1 / SSH_KEY_PATH_1 from .env
+  2) New EC2      — provision a bare Rocky Linux 9 instance on AWS
+                    (uses the AWS profile selected in Step 1)
+
+Choice [1/2]:
+```
+
+---
+
+**If choice 2 — Provision bare EC2:**
+
+**Step 2.vm.1 — Collect EC2 parameters**
+
+Read from `.env` where already set; prompt for anything missing:
+
 ```bash
-# Read SSH vars from .env
-SSH_HOST=$(grep "^SSH_HOST_1=" .env | cut -d= -f2)
-SSH_USER=$(grep "^SSH_USER_1=" .env | cut -d= -f2)
-SSH_KEY=$(grep "^SSH_KEY_PATH_1=" .env | cut -d= -f2)
+# Key pair (for SSH access to the new instance)
+KEY_NAME="${AWS_KEY_NAME:-}"
+if [ -z "${KEY_NAME}" ]; then
+    echo "EC2 key pair name (must exist in AWS account): "
+    # read KEY_NAME
+fi
+
+# Security group — must allow SSH (22) inbound
+SG_IDS="${AWS_SECURITY_GROUP_IDS:-}"
+if [ -z "${SG_IDS}" ]; then
+    echo "Security group ID(s) that allow SSH inbound (e.g. sg-0abc1234): "
+    # read SG_IDS
+fi
+
+# Subnet
+SUBNET_ID="${AWS_SUBNET_IDS:-}"
+if [ -z "${SUBNET_ID}" ]; then
+    echo "Subnet ID for the instance (e.g. subnet-0abc1234): "
+    # read SUBNET_ID — use first value if comma-separated
+    SUBNET_ID="${SUBNET_ID%%,*}"
+fi
+```
+
+Present instance type menu:
+
+```
+Select instance type for the Docker VM:
+
+  1) t3.large     — 2 vCPU / 8 GB RAM  (minimum for platform + gateway)
+  2) t3.xlarge    — 4 vCPU / 16 GB RAM  (recommended — comfortable headroom)
+  3) m5.xlarge    — 4 vCPU / 16 GB RAM  (better network; use if t3 unavailable)
+  4) Custom       — enter your own type
+
+Choice [1-4]:
+```
+
+**Step 2.vm.2 — Find Rocky Linux 9 AMI**
+
+Look up the latest Rocky Linux 9 AMI in the active region:
+
+```bash
+REGION="${AWS_REGION:-us-east-1}"
+
+CRED_FLAGS=""
+[ "${CRED_MODE}" = "profile" ] && CRED_FLAGS="--profile ${SESSION_AWS_PROFILE}"
+
+ROCKY9_AMI=$(aws ec2 describe-images \
+    ${CRED_FLAGS} \
+    --region "${REGION}" \
+    --owners 679593333241 \
+    --filters \
+        "Name=name,Values=Rocky-9-EC2-Base-9.*-x86_64*" \
+        "Name=state,Values=available" \
+        "Name=architecture,Values=x86_64" \
+    --query 'sort_by(Images, &CreationDate)[-1].ImageId' \
+    --output text 2>/dev/null)
+
+if [ -z "${ROCKY9_AMI}" ] || [ "${ROCKY9_AMI}" = "None" ]; then
+    echo "Could not auto-detect Rocky Linux 9 AMI in ${REGION}."
+    echo "Enter AMI ID manually (find at console.aws.amazon.com → EC2 → AMIs, owner 679593333241): "
+    # read ROCKY9_AMI
+else
+    echo "✅ Rocky Linux 9 AMI: ${ROCKY9_AMI} (${REGION})"
+fi
+```
+
+**Step 2.vm.3 — Show and confirm the run-instances command**
+
+Show the full command before running:
+
+```
+══════════════════════════════════════════════════════════════
+  Proposed EC2 instance:
+══════════════════════════════════════════════════════════════
+  Region:           {REGION}
+  AMI:              {ROCKY9_AMI}  (Rocky Linux 9, x86_64)
+  Instance type:    {INSTANCE_TYPE}
+  Key pair:         {KEY_NAME}
+  Security groups:  {SG_IDS}
+  Subnet:           {SUBNET_ID}
+  Root volume:      60 GiB gp3
+  Name tag:         itential-docker-repro
+
+  aws ec2 run-instances \
+    --image-id {ROCKY9_AMI} \
+    --instance-type {INSTANCE_TYPE} \
+    --key-name {KEY_NAME} \
+    --security-group-ids {SG_IDS} \
+    --subnet-id {SUBNET_ID} \
+    --block-device-mappings '[{"DeviceName":"/dev/sda1","Ebs":{"VolumeSize":60,"VolumeType":"gp3","DeleteOnTermination":true}}]' \
+    --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=itential-docker-repro}]' \
+    --associate-public-ip-address \
+    --output json
+
+Provision this instance? [yes / abort]:
+══════════════════════════════════════════════════════════════
+```
+
+On approval:
+
+```bash
+INSTANCE_JSON=$(aws ec2 run-instances \
+    ${CRED_FLAGS} \
+    --region "${REGION}" \
+    --image-id "${ROCKY9_AMI}" \
+    --instance-type "${INSTANCE_TYPE}" \
+    --key-name "${KEY_NAME}" \
+    --security-group-ids ${SG_IDS} \
+    --subnet-id "${SUBNET_ID}" \
+    --block-device-mappings '[{"DeviceName":"/dev/sda1","Ebs":{"VolumeSize":60,"VolumeType":"gp3","DeleteOnTermination":true}}]' \
+    --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=itential-docker-repro}]' \
+    --associate-public-ip-address \
+    --output json)
+
+INSTANCE_ID=$(echo "${INSTANCE_JSON}" | python3 -c "import sys,json; print(json.load(sys.stdin)['Instances'][0]['InstanceId'])")
+echo "✅ Instance launched: ${INSTANCE_ID}"
+echo "Waiting for instance to reach running state..."
+```
+
+**Step 2.vm.4 — Wait for running and get public IP**
+
+```bash
+aws ec2 wait instance-running \
+    ${CRED_FLAGS} \
+    --region "${REGION}" \
+    --instance-ids "${INSTANCE_ID}"
+
+VM_PUBLIC_IP=$(aws ec2 describe-instances \
+    ${CRED_FLAGS} \
+    --region "${REGION}" \
+    --instance-ids "${INSTANCE_ID}" \
+    --query 'Reservations[0].Instances[0].PublicIpAddress' \
+    --output text)
+
+echo "✅ Instance running — Public IP: ${VM_PUBLIC_IP}"
+
+# Set SSH vars for subsequent steps
+SSH_HOST="${VM_PUBLIC_IP}"
+SSH_USER="rocky"        # default user for Rocky Linux 9 on EC2
+SSH_KEY="${KEY_NAME}"   # path to the local .pem file
+
+echo ""
+echo "╔══════════════════════════════════════════════════════════╗"
+echo "║  EC2 instance ready                                      ║"
+echo "╠══════════════════════════════════════════════════════════╣"
+echo "║  Instance ID:  ${INSTANCE_ID}                           ║"
+echo "║  Public IP:    ${VM_PUBLIC_IP}                           ║"
+echo "║  SSH user:     rocky                                     ║"
+echo "║  Key pair:     ${KEY_NAME}                               ║"
+echo "╚══════════════════════════════════════════════════════════╝"
+```
+
+Ask: "What is the local path to the `.pem` file for key pair `{KEY_NAME}`?"
+
+```bash
+# read KEY_PATH from engineer (e.g. ~/.ssh/my-key.pem)
+SSH_KEY="${KEY_PATH}"
+
+# Brief pause for SSH daemon to start
+echo "Waiting 30s for SSH daemon to initialize..."
+sleep 30
+```
+
+Offer to persist to `.env`:
+```
+Persist these SSH vars to .env so future steps can read them automatically?
+  SSH_HOST_1={VM_PUBLIC_IP}
+  SSH_USER_1=rocky
+  SSH_KEY_PATH_1={KEY_PATH}
+[yes / no]:
+```
+
+If yes, append to `.env`.
+
+---
+
+**If choice 1 — Existing VM (or after new EC2 is provisioned above):**
+
+```bash
+# Read SSH vars — either set above (new EC2) or from .env (existing VM)
+SSH_HOST="${SSH_HOST:-$(grep "^SSH_HOST_1=" .env 2>/dev/null | cut -d= -f2)}"
+SSH_USER="${SSH_USER:-$(grep "^SSH_USER_1=" .env 2>/dev/null | cut -d= -f2)}"
+SSH_KEY="${SSH_KEY:-$(grep "^SSH_KEY_PATH_1=" .env 2>/dev/null | cut -d= -f2)}"
+
+if [ -z "${SSH_HOST}" ] || [ -z "${SSH_USER}" ] || [ -z "${SSH_KEY}" ]; then
+    echo "❌ SSH vars not set. Add SSH_HOST_1, SSH_USER_1, SSH_KEY_PATH_1 to .env and retry."
+    exit 1
+fi
 
 echo "=== Docker VM preflight (${SSH_HOST}) ==="
 
 # SSH connectivity
-ssh -i "${SSH_KEY}" -o ConnectTimeout=5 "${SSH_USER}@${SSH_HOST}" "echo '✅ SSH connection OK'" \
-  || echo "❌ SSH failed — check SSH_HOST_1/SSH_USER_1/SSH_KEY_PATH_1 in .env"
+ssh -i "${SSH_KEY}" -o ConnectTimeout=10 "${SSH_USER}@${SSH_HOST}" "echo '✅ SSH connection OK'" \
+  || echo "❌ SSH failed — check host, user, and key path"
 
 # Docker + compose on VM
 ssh -i "${SSH_KEY}" "${SSH_USER}@${SSH_HOST}" "
@@ -210,12 +416,14 @@ ssh -i "${SSH_KEY}" "${SSH_USER}@${SSH_HOST}" "
   docker compose version > /dev/null 2>&1 && echo '✅ docker compose v2 available' \
     || echo '❌ docker compose plugin missing — sudo dnf install docker-compose-plugin'
   aws --version > /dev/null 2>&1 && echo '✅ AWS CLI available' \
-    || echo '⚠️  AWS CLI not found on VM — will transfer ECR token manually'
+    || echo '⚠️  AWS CLI not found on VM — will transfer ECR token from local machine'
   df -BG / | tail -1 | awk '{print \"Disk free: \" \$4}'
 "
 ```
 
-**VM resource minimum:** 4 vCPU / 16 GB RAM / 50 GB disk.
+**Note for freshly provisioned EC2:** Docker Engine is not pre-installed on Rocky Linux 9. The preflight will show `❌ Docker not running`. Step 3 will install Docker automatically before transferring the dev stack.
+
+**VM resource minimum:** 4 vCPU / 16 GB RAM / 50 GB disk (Step 2.vm.3 provisions 60 GiB by default).
 
 ### Kubernetes
 
@@ -279,6 +487,26 @@ fi
 
 cd "${DEVSTACK_DIR}"
 echo "Dev stack version: $(git log -1 --format='%h %s')"
+```
+
+**For Docker on VM — install Docker Engine if not present (freshly provisioned EC2):**
+
+If the Step 2 preflight showed `❌ Docker not running`, install Docker Engine on the VM before transferring the dev stack:
+
+```bash
+ssh -i "${SSH_KEY}" "${SSH_USER}@${SSH_HOST}" "
+set -e
+echo '==> Installing Docker Engine on Rocky Linux 9...'
+sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+sudo usermod -aG docker \${USER}
+echo '✅ Docker Engine installed and started'
+docker info > /dev/null && echo '✅ Docker responding' || echo '❌ Docker not responding — check systemctl status docker'
+"
+echo ""
+echo "⚠️  SSH reconnect needed to pick up docker group membership."
+echo "   Subsequent commands re-open the SSH session automatically."
 ```
 
 **For Docker on VM:** after cloning locally, transfer to the VM:
@@ -693,6 +921,30 @@ echo "  Credentials: admin@itential.com / admin"
 
 ## Step 6 — Cleanup
 
+### EC2 instance cleanup (if provisioned in Step 2.vm)
+
+If an EC2 instance was provisioned during this session (`INSTANCE_ID` is set):
+
+```
+Do you want to terminate the EC2 instance ({INSTANCE_ID} — {VM_PUBLIC_IP})?
+
+  ⚠️  Termination is permanent — all instance storage is destroyed.
+  Type 'yes terminate {INSTANCE_ID}' to confirm:
+```
+
+On confirmation:
+```bash
+aws ec2 terminate-instances \
+    ${CRED_FLAGS} \
+    --region "${REGION}" \
+    --instance-ids "${INSTANCE_ID}"
+echo "✅ Instance ${INSTANCE_ID} termination initiated."
+```
+
+If engineer wants to keep the instance: remind them it will continue incurring AWS costs. Print the instance ID and public IP for their records.
+
+---
+
 ### Docker cleanup
 
 ```bash
@@ -758,7 +1010,8 @@ fi
 | Path | Steps | Time estimate |
 |---|---|---|
 | Docker local | 0 → 1 → 2 → 3 → 4 | ~5 min |
-| Docker on VM | 0 → 1 → 2 → 3 → 4 | ~10 min |
+| Docker on existing VM | 0 → 1 → 2 (existing) → 3 → 4 | ~10 min |
+| Docker on new EC2 | 0 → 1 → 2 (2.vm.1–2.vm.4, new EC2) → 3 (Docker install) → 3 → 4 | ~15-20 min |
 | Kubernetes | 0 → 1 → 2 → 5a → 5b → 5c → 5d → 5e → 5f | ~15-20 min |
 
 | Image | ECR path |
