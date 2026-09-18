@@ -3595,6 +3595,23 @@ git commit -m "chore: sync platform-skills from upstream"</pre>
       <div class="rule"><div class="rule-text"><strong>Step 3 — Add a CLAUDE.md pointer</strong> in the platform-skills section of <code>CLAUDE.md</code> so Claude always reads the extension file alongside the vendor SKILL.md. See the <code>/themis-aws-deploy</code> entry in <code>CLAUDE.md</code> as the template.</div></div>
       <div class="rule"><div class="rule-text"><strong>Canonical example:</strong> <code>.claude/skills/themis-aws-deploy/LOCAL-EXTENSIONS.md</code> — the reference implementation for all future vendor skill extensions.</div></div>
     </div>
+
+    <h3 style="margin-top:24px;color:var(--pink-soft);">Post-Sync Validation — Keeping Extensions in Sync</h3>
+    <p style="margin:0 0 10px;font-size:13px;color:var(--muted);">Every <code>scripts/sync-platform-skills.sh</code> run automatically validates any <code>LOCAL-EXTENSIONS.md</code> files for changed skills. Three issue types are detected:</p>
+    <div class="rules" style="margin-top:8px;">
+      <div class="rule"><div class="rule-text">
+        <strong>🔴 CRITICAL (exit 2)</strong> — An <code>[OVERRIDE]</code> or <code>[INSERT AFTER]</code> anchor no longer exists in the updated vendor SKILL.md. The extension section is silently inert until repaired. Run <code>/sync-vendor-skills</code> to find the renamed step and update the label.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>🟠 MODIFIED (exit 1)</strong> — Vendor step content changed (SHA1 hash diff against <code>git show HEAD:{path}</code>). Override may miss vendor improvements. <code>/sync-vendor-skills</code> shows a unified diff and offers keep / merge / skip.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>🟡 NEW (exit 1)</strong> — Vendor added a new step not covered by any extension. Vendor step runs as-is — review whether local customization is needed. <code>/sync-vendor-skills</code> shows the full step and offers skip / override / insert.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Validator script:</strong> <code>scripts/validate-extensions.py [--skill &lt;name&gt;] [--json] [--save]</code>. Report saved to <code>.claude/skills/&lt;name&gt;/sync-validation-latest.md</code> with <code>--save</code>. Run <code>/sync-vendor-skills --report-only</code> in Claude Code to regenerate reports without applying fixes.
+      </div></div>
+    </div>
   </div>
 
   <hr class="section-divider" />
@@ -4706,6 +4723,126 @@ tofu destroy \
         </tr>
       </tbody>
     </table>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- ── /deploy-containers ─────────────────────────────── -->
+  <div class="section">
+    <h2 id="sk-deploy-containers">&#9632; /deploy-containers — Containerized Environment Provisioning</h2>
+    <p class="desc">Provisions an isolated Itential Platform reproduction environment using Docker Compose (local or VM) or Kubernetes (Helm charts). Wired into <code>/troubleshoot</code> Phase 3 via Step 3b.0 — the reproduction deployment type selection. ECR authentication reuses the same CRED_MODE pattern as <code>/themis-aws-deploy</code>.</p>
+
+    <div class="cards" style="margin-bottom:24px;">
+      <div class="card t-blue">
+        <div class="icon">DL</div>
+        <h3>Docker Local</h3>
+        <p>Run the <code>itential-dev-stack</code> Docker Compose stack on this machine (macOS / Windows / Linux). Fastest path — platform + MongoDB + Redis on localhost. Ports bound to <code>127.0.0.1:</code> by default.</p>
+      </div>
+      <div class="card t-purple">
+        <div class="icon">VM</div>
+        <h3>Docker on VM</h3>
+        <p>Deploy the dev stack onto an SSH-accessible Linux VM. Two sub-options: use an existing VM, or provision a fresh bare EC2 instance (Rocky Linux 9) using the AWS profile selected for ECR auth. Docker Engine auto-installed on fresh EC2.</p>
+      </div>
+      <div class="card t-magenta">
+        <div class="icon">K8</div>
+        <h3>Kubernetes</h3>
+        <p>Deploy IAP (<code>iap-helm</code>), IAG5 (<code>iag5-helm</code>), or IAG4 (<code>iag4-helm</code>) via Helm 3.15+ onto an existing cluster. Requires <code>iap-ebs-gp3</code> StorageClass and external MongoDB + Redis. Helm dry-run shown before apply.</p>
+      </div>
+    </div>
+
+    <div class="rule-list">
+      <div class="rule-item">
+        <div class="rule-label">Step 0 — menu</div>
+        <div class="rule-body">Four-option menu: Docker local / Docker on VM / Kubernetes / VMs on AWS (redirects to <code>/themis-aws-deploy</code>). Can be bypassed by passing an argument: <code>/deploy-containers docker-local</code>.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Step 1 — ECR auth</div>
+        <div class="rule-body">Discovers AWS profiles from <code>~/.aws</code> and <code>.env</code> files. Engineer selects via numbered menu. Sets <code>CRED_MODE=profile</code> or <code>static-env-vars</code>. Runs <code>aws ecr get-login-password --region us-east-2 | docker login</code> against <code>497639811223.dkr.ecr.us-east-2.amazonaws.com</code>.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">EC2 provisioning (Docker-on-VM)</div>
+        <div class="rule-body">If engineer has no existing VM: auto-detects latest Rocky Linux 9 AMI, presents instance type menu (t3.large / t3.xlarge / m5.xlarge / custom), reads SG and subnet from <code>.env</code> or prompts if missing, shows the full <code>aws ec2 run-instances</code> command before running, waits for running state, extracts public IP. Reuses the AWS profile from Step 1 — no separate credential prompt.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Docker Engine install</div>
+        <div class="rule-body">On a freshly provisioned EC2 instance, Docker is not pre-installed. Step 3a installs <code>docker-ce</code> + <code>docker-compose-plugin</code> via <code>dnf</code> automatically before transferring the dev stack — no manual steps needed.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Dev stack setup</div>
+        <div class="rule-body">Clones <code>https://github.com/itential/itential-dev-stack</code> (or pulls latest). Prompts for IAP version and IAG type (4/5/none). Generates <code>ITENTIAL_ENCRYPTION_KEY</code> via <code>openssl rand -hex 32</code>. Builds <code>.env</code> from <code>.env.example</code>. Runs <code>make setup</code> (first-time) or <code>make up</code> (subsequent). Polls for healthy state (3-min timeout).</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">K8s secrets</div>
+        <div class="rule-body">Creates <code>itential-platform-secrets</code>, <code>itential-ca</code>, and <code>itential-gateway-secrets</code> (IAG5 only) via <code>kubectl create secret --dry-run=client -o yaml | kubectl apply -f -</code>. Each manifest is shown for engineer review before applying. Secrets require explicit "yes" — never applied silently.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Cleanup safety</div>
+        <div class="rule-body">Docker: <code>make down</code> (safe, preserves volumes) vs. <code>make clean</code> (destructive). <code>make clean</code> requires typing <code>yes I want to delete all data</code>. K8s namespace deletion requires typing <code>yes delete namespace {NAMESPACE}</code>. EC2 termination requires typing <code>yes terminate {INSTANCE_ID}</code>.</div>
+      </div>
+    </div>
+
+    <div class="table-wrap" style="margin-top:16px;">
+      <table>
+        <thead><tr><th>Path</th><th>Steps</th><th>Time estimate</th></tr></thead>
+        <tbody>
+          <tr><td>Docker local</td><td>0 → 1 → 2 → 3 → 4</td><td>~5 min</td></tr>
+          <tr><td>Docker on existing VM</td><td>0 → 1 → 2 (existing) → 3 → 4</td><td>~10 min</td></tr>
+          <tr><td>Docker on new EC2</td><td>0 → 1 → 2 (EC2 provision) → 3 (Docker install) → 3 → 4</td><td>~15–20 min</td></tr>
+          <tr><td>Kubernetes</td><td>0 → 1 → 2 → 5a → 5b → 5c → 5d → 5e → 5f</td><td>~15–20 min</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── /sync-vendor-skills ─────────────────────────────── -->
+  <div class="section">
+    <h2 id="sk-sync-vendor">&#9632; /sync-vendor-skills — Post-Sync Extension Repair</h2>
+    <p class="desc">Run after <code>scripts/sync-platform-skills.sh</code> when the post-sync validator (<code>scripts/validate-extensions.py</code>) detects issues with <code>LOCAL-EXTENSIONS.md</code> files. Reads the validation report, diffs old vs. new vendor step content, drafts specific label fixes and content merges, and applies them with engineer approval — so extensions stay aligned with updated vendor skills without being rewritten from scratch.</p>
+
+    <div class="cards" style="margin-bottom:24px;">
+      <div class="card t-red">
+        <div class="icon">CR</div>
+        <h3>🔴 CRITICAL — Broken Anchor</h3>
+        <p>An <code>[OVERRIDE]</code> or <code>[INSERT AFTER]</code> label targets a step that was renamed or removed in the updated vendor SKILL.md. The extension section has <strong>no effect</strong> until repaired. The skill finds the closest renamed step and proposes a label update.</p>
+      </div>
+      <div class="card t-orange">
+        <div class="icon">MD</div>
+        <h3>🟠 MODIFIED — Stale Override</h3>
+        <p>Vendor step content changed between old and new sync (detected by SHA1 content hash diff). The override still applies (anchor exists) but may miss vendor improvements. Shows a unified diff; engineer chooses keep / merge / skip.</p>
+      </div>
+      <div class="card t-olive">
+        <div class="icon">NW</div>
+        <h3>🟡 NEW — Uncovered Step</h3>
+        <p>Vendor added a new step with no <code>LOCAL-EXTENSIONS.md</code> coverage. Not necessarily a problem — vendor step runs as-is unless local customization is needed. Shows full step content; engineer chooses skip / override / insert-before / insert-after.</p>
+      </div>
+    </div>
+
+    <div class="rule-list">
+      <div class="rule-item">
+        <div class="rule-label">When it runs</div>
+        <div class="rule-body"><code>scripts/sync-platform-skills.sh</code> automatically calls <code>scripts/validate-extensions.py</code> after each sync for any changed skill that has a <code>LOCAL-EXTENSIONS.md</code>. Prints ✅ / ⚠️ / 🔴 per skill. If issues are found, it prompts: <em>"Run '/sync-vendor-skills' in Claude Code to repair them."</em></div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">How to invoke</div>
+        <div class="rule-body"><code>/sync-vendor-skills</code> — review all skills with validation reports. <code>/sync-vendor-skills themis-aws-deploy</code> — review one skill only. <code>/sync-vendor-skills --report-only</code> — regenerate and print the report without applying any fixes.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Validator mechanics</div>
+        <div class="rule-body"><code>scripts/validate-extensions.py</code> uses <code>git show HEAD:.claude/skills/{name}/SKILL.md</code> to get the pre-sync version for comparison. Detects anchor existence (CRITICAL), SHA1 content hash changes (MODIFIED), and new steps absent from the old version (NEW). Exit codes: 0 = clean, 1 = warnings, 2 = critical.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Approval gates</div>
+        <div class="rule-body">Every fix is presented as a diff of <code>LOCAL-EXTENSIONS.md</code> before writing. For CRITICAL: shows old label → proposed new label. For MODIFIED: shows vendor diff + engineer's current override + draft merged content. For NEW: shows full new vendor step + draft extension section. Nothing is written without explicit engineer "yes".</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">After applying fixes</div>
+        <div class="rule-body">Re-runs the validator to confirm clean. Stages <code>LOCAL-EXTENSIONS.md</code> with <code>git add</code>. Prints a recommended commit message. Does NOT auto-commit — engineer commits together with the vendor SKILL.md changes.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Safety rule</div>
+        <div class="rule-body">Only modifies <code>LOCAL-EXTENSIONS.md</code> files — never the vendor <code>SKILL.md</code> itself. Never removes existing extension sections without explicit engineer confirmation — they may contain site-specific overrides that are still correct even if the validator flagged them.</div>
+      </div>
+    </div>
   </div>
 
   <hr class="section-divider" />
