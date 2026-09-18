@@ -21,6 +21,7 @@ One orchestrator skill delegates to a triage sub-skill (Phase 1) and six special
 | Infrastructure | `/troubleshoot-infra` | CPU/memory/disk, containers (OOMKilled), EKS, SSH multi-host, network |
 | Logs | `/troubleshoot-logs` | IAP/IAG/MongoDB/Redis/LB log collection and cross-component timestamp correlation |
 | **Contribute** | `/contribute [ISD-XXXX \| scan \| version-note \| skill-fix \| known-bug ENG-XXXX]` | Reads closed investigation artifacts, generates formatted resolution entries / version notes / skill fixes, presents for engineer approval, and opens a GitHub PR — full git branch → write → diff → commit → push → PR flow |
+| **Deploy Containers** | `/deploy-containers [docker-local \| docker-vm \| k8s]` | Provisions a containerized Itential Platform reproduction environment. Handles ECR auth (CRED_MODE pattern), Docker Compose dev stack setup, or Kubernetes Helm chart deployment. Wired into `/troubleshoot` Phase 3 via Step 3b.0 deployment type selection |
 
 Skills live in `.claude/skills/<skill-name>/SKILL.md`. Each SKILL.md is self-contained — it includes all curl commands, phase-by-phase instructions, gotchas, and cleanup steps.
 
@@ -89,6 +90,11 @@ AWS_INSTANCE_TYPE_MONGODB=   # instance type for mongo nodes; default: t3.medium
 AWS_INSTANCE_TYPE_GATEWAY=   # instance type for gateway nodes; default: t3.medium
 DEPLOY_GATEWAY_TFVARS=    # true = apply *-with-gateway.tfvars overrides (legacy Themis only)
                           #   Current Themis main already includes gateway VMs in base tfvars.
+# ── /deploy-containers (Docker / Kubernetes reproduction) ──────────────────
+ECR_REGISTRY=497639811223.dkr.ecr.us-east-2.amazonaws.com   # Itential ECR account (us-east-2)
+DEVSTACK_DIR=              # override default ~/itential-dev-stack clone location
+K8S_NAMESPACE=itential     # target namespace for Helm deployments
+K8S_CONTEXT=               # kubectl context (blank = current-context)
 ```
 
 Auth tokens are cached in `.auth.json` (gitignored). The orchestrator reuses a token if it is less than 50 minutes old and `platform_url` matches; otherwise it re-authenticates silently.
@@ -183,6 +189,12 @@ Other skills in the library (`/deployer-inventory`, `/perf-test-analysis`, `/per
 > absolute local paths). On first use, copy the committed template and fill in your values:
 > `cp .claude/skills/themis-aws-deploy/run-vars.yml.example .claude/skills/themis-aws-deploy/run-vars.yml`
 > Leave `repository_api_key` blank — it is auto-populated from `JFROG_TOKEN` in `.env` (Step 1a).
+
+> **`/deploy-containers`:** A standalone skill for provisioning Docker and Kubernetes reproduction
+> environments. It is wired into `/troubleshoot` Phase 3 via Step 3b.0 (deployment type selection).
+> ECR auth uses the same CRED_MODE pattern as `themis-aws-deploy`. Reference docs are in
+> `.claude/skills/deploy-containers/references/` (docker-prerequisites.md, k8s-prerequisites.md).
+> The `run-vars.yml.example` template covers K8s namespace, Helm chart versions, and dev stack path.
 
 ### Vendor Skill Extension Policy
 

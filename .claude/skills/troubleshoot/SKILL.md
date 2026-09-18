@@ -392,13 +392,36 @@ Using the authenticated session from Step 3a, attempt to trigger the confirmed r
 
 **If the engineer selected a customer environment** (`.env` or `.env.{label}`): run the triggering steps directly. Do not make changes without explicit approval.
 
-**If the engineer wants an isolated local reproduction environment**: proceed to Step 3b.1 to scaffold a version-matched local stack.
+**If the engineer wants an isolated local reproduction environment**: proceed to Step 3b.0 to select the deployment type, then Step 3b.1 to scaffold the environment.
+
+---
+
+### Step 3b.0 — Select Reproduction Deployment Type (when isolated env needed)
+
+Before scaffolding, ask the engineer how they want to build the reproduction environment:
+
+```
+How would you like to build the reproduction environment?
+
+  1) Docker local   — this machine (fastest, dev/test only)
+  2) Docker on VM   — SSH to an existing Linux VM
+  3) Kubernetes     — Helm charts on an existing cluster
+  4) VMs on AWS     — Themis (/themis-aws-deploy)
+
+Choice [1-4] (default: 1 — Docker local):
+```
+
+- **Options 1-3:** invoke `/deploy-containers` skill. It handles ECR auth, dev stack setup, and creates `repro/{ISD_TICKET_KEY}/.env` automatically. Return here after `/deploy-containers` completes.
+- **Option 4:** invoke `/themis-aws-deploy` skill instead. Return here after the environment is up.
+- **If engineer has no preference or says "just docker":** default to option 1 (Docker local) without prompting further.
 
 ---
 
 ### Step 3b.1 — Scaffold Local Reproduction Environment (when needed)
 
 Create an isolated `.env` under `repro/{ISD_TICKET_KEY}/` to keep Docker-local credentials separate from customer credentials. This is the local reproduction path.
+
+> **Note:** If Step 3b.0 selected Docker or K8s, `/deploy-containers` already created `repro/{ISD_TICKET_KEY}/.env`. Skip to Step 3c — the env file is ready.
 
 ---
 

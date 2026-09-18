@@ -43,5 +43,8 @@ __pycache__/
 .claude/skills/themis-aws-deploy/tfvars-overrides/auto-account.tfvars
 .claude/skills/themis-aws-deploy/run-vars.yml
 
+# deploy-containers — per-engineer config (contains local paths, K8s context names)
+.claude/skills/deploy-containers/run-vars.yml
+
 # Claude Code worktrees — full working-tree copies, large and redundant
 .claude/worktrees/
