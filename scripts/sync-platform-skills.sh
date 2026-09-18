@@ -302,3 +302,55 @@ else
   printf '      - %s\n' "${CHANGED_SKILLS[@]}"
 fi
 echo "    Review ${CHANGELOG} and 'git diff', then commit."
+
+# ── Post-sync: validate LOCAL-EXTENSIONS.md against updated vendor files ──────
+
+VALIDATOR="${SCRIPT_DIR}/validate-extensions.py"
+if [[ -f "${VALIDATOR}" ]] && [[ ${#CHANGED_SKILLS[@]} -gt 0 ]]; then
+  echo ""
+  echo "==> Validating LOCAL-EXTENSIONS.md files against updated vendor skills..."
+
+  # Determine which changed skills also have LOCAL-EXTENSIONS.md
+  SKILLS_WITH_EXTENSIONS=()
+  for s in "${CHANGED_SKILLS[@]}"; do
+    # CHANGED_SKILLS entries are like "themis-aws-deploy/SKILL.md" or "themis-aws-deploy/scripts/..."
+    # Extract just the skill name (first path segment)
+    skill_name="${s%%/*}"
+    ext_path="${SKILLS_DIR}/${skill_name}/LOCAL-EXTENSIONS.md"
+    if [[ -f "${ext_path}" ]]; then
+      # Deduplicate
+      already=false
+      for seen in "${SKILLS_WITH_EXTENSIONS[@]:-}"; do
+        [[ "${seen}" == "${skill_name}" ]] && already=true && break
+      done
+      [[ "${already}" == false ]] && SKILLS_WITH_EXTENSIONS+=("${skill_name}")
+    fi
+  done
+
+  if [[ ${#SKILLS_WITH_EXTENSIONS[@]} -eq 0 ]]; then
+    echo "    No changed skills have LOCAL-EXTENSIONS.md — skipping."
+  else
+    for skill_name in "${SKILLS_WITH_EXTENSIONS[@]}"; do
+      echo "    Checking: ${skill_name}"
+      set +e
+      python3 "${VALIDATOR}" --skill "${skill_name}" --save 2>/dev/null
+      VALIDATION_EXIT=$?
+      set -e
+      if [[ ${VALIDATION_EXIT} -eq 0 ]]; then
+        echo "    ✅ ${skill_name}: LOCAL-EXTENSIONS.md is consistent."
+      elif [[ ${VALIDATION_EXIT} -eq 1 ]]; then
+        echo ""
+        echo "    ⚠️  ${skill_name}: New or modified vendor steps detected."
+        echo "       Review the report above and run '/sync-vendor-skills' in Claude Code"
+        echo "       to update LOCAL-EXTENSIONS.md interactively."
+        echo ""
+      elif [[ ${VALIDATION_EXIT} -eq 2 ]]; then
+        echo ""
+        echo "    🔴 ${skill_name}: CRITICAL — extension anchors no longer exist in vendor SKILL.md."
+        echo "       LOCAL-EXTENSIONS.md sections will have NO EFFECT until fixed."
+        echo "       Run '/sync-vendor-skills' in Claude Code to repair them."
+        echo ""
+      fi
+    done
+  fi
+fi

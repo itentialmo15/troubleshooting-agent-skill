@@ -22,6 +22,7 @@ One orchestrator skill delegates to a triage sub-skill (Phase 1) and six special
 | Logs | `/troubleshoot-logs` | IAP/IAG/MongoDB/Redis/LB log collection and cross-component timestamp correlation |
 | **Contribute** | `/contribute [ISD-XXXX \| scan \| version-note \| skill-fix \| known-bug ENG-XXXX]` | Reads closed investigation artifacts, generates formatted resolution entries / version notes / skill fixes, presents for engineer approval, and opens a GitHub PR — full git branch → write → diff → commit → push → PR flow |
 | **Deploy Containers** | `/deploy-containers [docker-local \| docker-vm \| k8s]` | Provisions a containerized Itential Platform reproduction environment. Handles ECR auth (CRED_MODE pattern), Docker Compose dev stack setup, or Kubernetes Helm chart deployment. Wired into `/troubleshoot` Phase 3 via Step 3b.0 deployment type selection |
+| **Sync Vendor Skills** | `/sync-vendor-skills [<skill-name> \| --all \| --report-only]` | Post-sync review and repair of LOCAL-EXTENSIONS.md files. Reads the validation report from `validate-extensions.py`, diffs old vs new vendor step content, drafts label fixes and content merges, and applies changes with engineer approval |
 
 Skills live in `.claude/skills/<skill-name>/SKILL.md`. Each SKILL.md is self-contained — it includes all curl commands, phase-by-phase instructions, gotchas, and cleanup steps.
 
@@ -219,6 +220,8 @@ Other skills in the library (`/deployer-inventory`, `/perf-test-analysis`, `/per
 4. **Do not put AWS, environment, or account config inside `LOCAL-EXTENSIONS.md` in plaintext.** Runtime secrets stay in `.env` (gitignored); `LOCAL-EXTENSIONS.md` holds structural instructions only (command templates with `<placeholder>` tokens).
 
 **Canonical example:** `.claude/skills/themis-aws-deploy/LOCAL-EXTENSIONS.md` — the template for every future vendor skill extension.
+
+**Post-sync validation:** `scripts/sync-platform-skills.sh` automatically runs `scripts/validate-extensions.py` after each sync. It detects broken anchors (CRITICAL), modified override targets (MODIFIED), and new uncovered vendor steps (NEW), and writes a report to `.claude/skills/<name>/sync-validation-latest.md`. Run `/sync-vendor-skills` in Claude Code to review issues and apply LOCAL-EXTENSIONS.md fixes interactively.
 
 ### JFrog RPM Repository (itential.jfrog.io)
 
