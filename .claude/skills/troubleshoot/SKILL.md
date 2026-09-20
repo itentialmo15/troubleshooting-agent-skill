@@ -217,6 +217,7 @@ Based on ticket context, platform version, symptom description, and Investigatio
 | Log evidence needed for any issue | `/troubleshoot-logs {component} {incident time}` | Sub-skill authenticates from `.env` |
 | IAG adapter OFFLINE / GatewayManager error | `/troubleshoot-adapters {IAG_ADAPTER_NAME}` | Inline IAG diagnostics follow adapter investigation |
 | Kafka adapter OFFLINE / consumer lag growing | `/troubleshoot-adapters {KAFKA_ADAPTER_NAME}` | Routes to Phase 4 (Kafka) in the sub-skill |
+| OSS tool issue (deployer, Helm chart, job-archiver, IPCTL, MCP, dev-stack) | `/troubleshoot-oss {OSS_TOOL}` | Uses GitHub public API — no auth needed; detects tool from ticket signals if no argument given |
 | UI slow / API timeouts | Inline diagnostics in Step 2b (see below) + `/troubleshoot-logs` | — |
 
 **Platform Skills Staleness Gate**

@@ -4847,6 +4847,74 @@ tofu destroy \
 
   <hr class="section-divider" />
 
+  <!-- /troubleshoot-oss -->
+  <div class="section">
+    <h2 id="sk-oss">&#9632; /troubleshoot-oss — Open-Source Itential Tools</h2>
+    <p class="desc">Diagnoses ISD and IPSO tickets about open-source Itential tools hosted at <span class="inline-code">github.com/itential</span>. Uses the GitHub public API (no authentication required) to correlate the customer's error with known issues, changelog fixes, and configuration requirements. Auto-detected from ticket signals; wired into Phase 2 routing when triage stamps <span class="inline-code">Component: OSS-Tool</span>.</p>
+
+    <div class="card-grid">
+      <div class="card t-purple">
+        <div class="card-title">Itential Deployer</div>
+        <div class="card-sub"><code>itential/itential.deployer</code></div>
+        <div class="card-body">Ansible collection for deploying IAP &amp; IAG on VMs. Ticket signals: "FAILED!" + Ansible task name, <code>become</code> privilege errors, JFrog RPM install failures, playbook UNREACHABLE.</div>
+      </div>
+      <div class="card t-magenta">
+        <div class="card-title">Helm Charts</div>
+        <div class="card-sub"><code>iap-helm / iag5-helm / iag4-helm</code></div>
+        <div class="card-body">Kubernetes Helm charts for IAP and IAG. Ticket signals: <code>helm install</code> / <code>helm upgrade</code> failures, ImagePullBackOff, PVC Pending, CrashLoopBackOff on IAP/IAG pods.</div>
+      </div>
+      <div class="card t-orange">
+        <div class="card-title">Job Archiver</div>
+        <div class="card-sub"><code>itential/job-archiver</code></div>
+        <div class="card-body">Job retention and archival service. Ticket signals: "job archiver", "archiver crash", jobs not archived, OOM on archiver process.</div>
+      </div>
+      <div class="card t-blue">
+        <div class="card-title">IPCTL</div>
+        <div class="card-sub"><code>itential/ipctl</code></div>
+        <div class="card-body">IAP command-line control tool. Ticket signals: "ipctl", CLI command failure, <code>command not found: ipctl</code>, 401 from IAP on CLI calls.</div>
+      </div>
+      <div class="card t-red">
+        <div class="card-title">itential-MCP</div>
+        <div class="card-sub"><code>itential/itential-mcp</code></div>
+        <div class="card-body">MCP server exposing IAP tools to Claude and other AI agents. Ticket signals: "MCP server", "tool not found", "tool call fail", Claude integration errors.</div>
+      </div>
+      <div class="card t-olive">
+        <div class="card-title">itential-dev-stack</div>
+        <div class="card-sub"><code>itential/itential-dev-stack</code></div>
+        <div class="card-body">Docker Compose local development environment. Ticket signals: "dev stack", <code>make setup</code> / <code>make up</code> failures, unhealthy containers, ECR login issues.</div>
+      </div>
+    </div>
+
+    <div class="rule-list" style="margin-top:20px;">
+      <div class="rule-item">
+        <div class="rule-label">Detection</div>
+        <div class="rule-body">Triage Step 1b auto-detects OSS tool signals (e.g. "FAILED!" + Ansible, "helm install", "ipctl", "job archiver") and writes <code>Component: OSS-Tool</code> + <code>OSS Tool: {name}</code> + <code>OSS Version: {version}</code> to <code>ticket_context.md</code>. Phase 2 routing then invokes <code>/troubleshoot-oss</code>. Can also be invoked directly: <code>/troubleshoot-oss deployer</code> or <code>/troubleshoot-oss --list</code>.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">GitHub baseline (Phase 1)</div>
+        <div class="rule-body">Fetches README (minimum version requirements, config prerequisites), latest releases (computes <em>releases behind</em>), and CHANGELOG (bug-fix entries between customer version and latest). All GitHub API calls are unauthenticated GET requests — no token needed. Source code is never saved; only derived facts are recorded.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Issue correlation (Phase 2)</div>
+        <div class="rule-body">Searches <code>api.github.com/search/issues</code> for the customer's error string (cleaned: UUIDs / IPs / hostnames stripped) in both open and closed issues on the tool's repo. Classifies as <strong>KNOWN_BUG — open</strong> (link to issue, draft ISD internal comment), <strong>KNOWN_BUG — fixed in vX.Y.Z</strong> (advise upgrade), <strong>WONT_FIX</strong>, or <strong>NO_MATCH</strong> (continue to tool-specific diagnostics).</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Tool-specific diagnostics (Phase 3)</div>
+        <div class="rule-body">Each tool has a dedicated branch: <strong>Deployer</strong> — checks required Ansible variables, privilege escalation setup, RPM URL patterns, Ansible version constraint; <strong>Helm</strong> — extracts <code>existingSecret</code> names, StorageClass, <code>kubeVersion</code>, resource requests; <strong>Job Archiver</strong> — IAP connectivity, batch_size OOM risk; <strong>IPCTL</strong> — config file, auth method, PATH; <strong>MCP</strong> — available tool list from repo, required env vars; <strong>dev-stack</strong> — required <code>.env</code> keys, Docker Compose version.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Escalation paths (Phase 4)</div>
+        <div class="rule-body">KNOWN_BUG open → draft ISD internal comment with GitHub URL (requires engineer "yes" to post). Fixed in newer version → draft upgrade recommendation. No issue found + reproducible → drafts a GitHub issue (title + body pre-filled from ticket context) and asks engineer before opening. IPSO tickets → GitHub findings added to the ENG ticket draft.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Safety rules</div>
+        <div class="rule-body">GitHub API calls are GET-only — the skill never creates or modifies GitHub content without explicit engineer approval and a displayed draft. Source code fetched from GitHub is analyzed in-memory only; only config key names, version strings, and error summaries are saved. <code>make clean</code> on the dev-stack path requires explicit engineer confirmation (same rule as <code>/deploy-containers</code>).</div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
   <!-- Platform Skills Reference -->
   <div class="section">
     <h2 id="sk-platform">Platform Skills — Deep-Diagnostic Library</h2>

@@ -333,7 +333,11 @@ Parse and save to `{project_path}/data/{TIMESTAMP}/{TICKET_KEY}/ticket_context.m
 
   PROBLEM
   ───────
-  Component:     IAP | IAG | Adapter | MongoDB | Redis | OS | Kafka | unknown
+  Component:     IAP | IAG | Adapter | MongoDB | Redis | OS | Kafka | OSS-Tool | unknown
+  OSS Tool:      ← set only when Component = OSS-Tool
+                    itential.deployer | iap-helm | iag5-helm | iag4-helm |
+                    job-archiver | ipctl | itential-mcp | itential-dev-stack | unknown
+  OSS Version:   {version if stated in ticket | unknown}
   Symptom:       {what the customer sees — their words}
   Error Message: {exact error string | "none provided"}
   Job ID:        {if provided | none}
@@ -472,6 +476,7 @@ Save titles, URLs, and key excerpts to `{project_path}/data/{TIMESTAMP}/{TICKET_
 | IAG5 / GatewayManager / IAG ≥ 5.x | IAG Gateway 5 | `site:docs.itential.com/itential-gateway/5` |
 | IAG4 / AGManager / IAG ≤ 4.x | IAG Gateway 4 | `site:docs.itential.com/itential-gateway/4` |
 | OSS adapter (`adapter-*` package, not IAG) | Open-Source Adapters | `site:docs.itential.com/adapters` |
+| OSS tool (deployer, helm, job-archiver, ipctl, MCP, dev-stack) | GitHub README | `WebFetch https://raw.githubusercontent.com/itential/{repo}/main/README.md` |
 | SaaS/cloud customer (`*.itential.io` platform URL) | Itential Cloud | `site:docs.itential.com/itential-cloud` |
 | Cisco NSO / adapter-nso / NSO-related | Cisco NSO | `site:docs.itential.com/cisco-nso` |
 
