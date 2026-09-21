@@ -4730,7 +4730,7 @@ tofu destroy \
   <!-- ── /deploy-containers ─────────────────────────────── -->
   <div class="section">
     <h2 id="sk-deploy-containers">&#9632; /deploy-containers — Containerized Environment Provisioning</h2>
-    <p class="desc">Provisions an isolated Itential Platform reproduction environment using Docker Compose (local or VM) or Kubernetes (Helm charts). Wired into <code>/troubleshoot</code> Phase 3 via Step 3b.0 — the reproduction deployment type selection. ECR authentication reuses the same CRED_MODE pattern as <code>/themis-aws-deploy</code>.</p>
+    <p class="desc">Provisions an isolated Itential Platform reproduction environment using Docker Compose (local or VM) or Kubernetes Helm charts on EKS. Wired into <code>/troubleshoot</code> Phase 3 via Step 3b.0 — the reproduction deployment type selection. ECR authentication reuses the same CRED_MODE pattern as <code>/themis-aws-deploy</code>.</p>
 
     <div class="cards" style="margin-bottom:24px;">
       <div class="card t-blue">
@@ -4741,54 +4741,96 @@ tofu destroy \
       <div class="card t-purple">
         <div class="icon">VM</div>
         <h3>Docker on VM</h3>
-        <p>Deploy the dev stack onto an SSH-accessible Linux VM. Two sub-options: use an existing VM, or provision a fresh bare EC2 instance (Rocky Linux 9) using the AWS profile selected for ECR auth. Docker Engine auto-installed on fresh EC2.</p>
+        <p>Deploy the dev stack onto an SSH-accessible Linux VM. Two sub-options: use an existing VM, or provision a fresh bare EC2 instance (Rocky Linux 9) using the AWS profile from ECR auth. Docker Engine auto-installed on fresh EC2.</p>
       </div>
       <div class="card t-magenta">
         <div class="icon">K8</div>
-        <h3>Kubernetes</h3>
-        <p>Deploy IAP (<code>iap-helm</code>), IAG5 (<code>iag5-helm</code>), or IAG4 (<code>iag4-helm</code>) via Helm 3.15+ onto an existing cluster. Requires <code>iap-ebs-gp3</code> StorageClass and external MongoDB + Redis. Helm dry-run shown before apply.</p>
+        <h3>Kubernetes on EKS</h3>
+        <p>Deploy IAP, IAG5, or IAG4 via Helm 3.15+ on an existing cluster or a newly provisioned EKS cluster. Minimum grade: <code>m5a.xlarge</code> (4c/16G). Production grade: <code>c6a.4xlarge</code> (16c/32G). External MongoDB and Redis required.</p>
       </div>
     </div>
 
     <div class="rule-list">
       <div class="rule-item">
         <div class="rule-label">Step 0 — menu</div>
-        <div class="rule-body">Four-option menu: Docker local / Docker on VM / Kubernetes / VMs on AWS (redirects to <code>/themis-aws-deploy</code>). Can be bypassed by passing an argument: <code>/deploy-containers docker-local</code>.</div>
+        <div class="rule-body">Four-option menu: Docker local / Docker on VM / Kubernetes / VMs on AWS (redirects to <code>/themis-aws-deploy</code>). Bypassed by argument: <code>/deploy-containers k8s</code>.</div>
       </div>
       <div class="rule-item">
         <div class="rule-label">Step 1 — ECR auth</div>
-        <div class="rule-body">Discovers AWS profiles from <code>~/.aws</code> and <code>.env</code> files. Engineer selects via numbered menu. Sets <code>CRED_MODE=profile</code> or <code>static-env-vars</code>. Runs <code>aws ecr get-login-password --region us-east-2 | docker login</code> against <code>497639811223.dkr.ecr.us-east-2.amazonaws.com</code>.</div>
+        <div class="rule-body">Discovers AWS profiles from <code>~/.aws</code> and <code>.env</code>. Engineer selects via numbered menu. Sets <code>CRED_MODE=profile</code> or <code>static-env-vars</code>. Logs in to <code>497639811223.dkr.ecr.us-east-2.amazonaws.com</code>.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">2.k8s.0 — Cluster grade</div>
+        <div class="rule-body">Presents a sizing menu (from docs.itential.com): <strong>Minimum</strong> — 4 vCPU / 16 GB RAM / <code>m5a.xlarge</code> (dev/test); <strong>Production</strong> — 16 vCPU / 32 GB RAM / <code>c6a.4xlarge</code> (load testing). Grade drives replica count and resource requests in the Helm values file. Both grades support 1 Platform pod per node in separate AZs (StatefulSet).</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">2.k8s.1 — EKS cluster</div>
+        <div class="rule-body">Checks for an existing cluster via <code>kubectl cluster-info</code>. If none: offers to provision a new EKS cluster using <code>eksctl</code> (or AWS CLI fallback). Generates an <code>eksctl</code> ClusterConfig YAML with managed node group, EBS CSI add-on, and AZ distribution — shown for review before running. Cluster creation takes 15–20 minutes and incurs AWS costs. Requires explicit <em>"yes create cluster"</em> confirmation.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">2.k8s.2 — MongoDB</div>
+        <div class="rule-body">Four options: MongoDB Atlas (paste connection string), AWS DocumentDB (provide endpoint), existing on-prem host, or provision a new DocumentDB cluster. Builds <code>MONGO_URL</code> from components and offers to persist to <code>.env</code>. Helm charts do NOT include MongoDB — an external instance is mandatory.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">2.k8s.3 — Redis</div>
+        <div class="rule-body">Three options: AWS ElastiCache (provide endpoint), existing Redis host, or provision a new ElastiCache cluster (shows <code>aws elasticache create-replication-group</code> command before running). Sets <code>REDIS_HOST</code>, <code>REDIS_PORT</code>, and <code>ITENTIAL_REDIS_PASSWORD</code>. Helm charts do NOT include Redis — external required.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">2.k8s.4 — EKS prerequisites</div>
+        <div class="rule-body">Checks and optionally installs: <strong>cert-manager</strong> (required for TLS), <strong>AWS Load Balancer Controller</strong> (requires IRSA IAM role — <code>EKS_LBC_ROLE_ARN</code> in <code>.env</code>), <strong>EBS CSI driver</strong> (<code>ebs.csi.aws.com</code> provisioner — do NOT use EFS/NFS), and <strong>ExternalDNS</strong> (optional). Each component shows its install command and requires "yes / skip" approval. Prints a preflight summary table before proceeding to Step 5.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Step 5b — secrets (K8s)</div>
+        <div class="rule-body">Creates <code>itential-platform-secrets</code>, <code>itential-ca</code>, and <code>itential-gateway-secrets</code> (IAG5 only). Pre-populated from <code>.env</code> vars set in Steps 2.k8s.2–2.k8s.3 (MONGO_URL, REDIS_HOST, passwords). Generates <code>ITENTIAL_ENCRYPTION_KEY</code> via <code>openssl rand -hex 32</code> or reads from <code>.env</code>. Each manifest displayed with passwords masked; requires explicit "yes" before applying.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Step 5c — StorageClass</div>
+        <div class="rule-body">Creates <code>iap-ebs-gp3</code> StorageClass with <code>provisioner: ebs.csi.aws.com</code> if not present. Adapter PersistentVolumes start at 10 GB per Itential docs. <code>WaitForFirstConsumer</code> binding mode required. EFS and NFS are explicitly prohibited by the Itential deployment guide.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Step 5d — IAP Helm (K8s)</div>
+        <div class="rule-body">Generates a <code>/tmp/iap-values.yaml</code> with: image/tag from ECR, replica count from grade, resource requests (2–4 CPU / 4–16 GB minimum; 16 CPU / 32 GB production), external MongoDB/Redis URLs, and ALB ingress annotations. ALB annotations (from docs.itential.com): health check path <code>/health/status?exclude-service=true</code>, port 3443, WebSocket path <code>/ws</code>, stickiness 3600s, SSL policy TLS 1.3. Values file shown before dry-run; dry-run shown before apply. Requires explicit "yes" at each gate. ACM certificate ARN collected if <code>K8S_HOSTNAME</code> is set.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Step 5g — Ingress</div>
+        <div class="rule-body">Checks ALB provisioning status (<code>kubectl get ingress -o wide</code>). Troubleshoots common ALB failures: IAM permissions, ACM cert ARN, subnet tagging (<code>kubernetes.io/role/elb: 1</code>), pod readiness. NGINX ingress path also supported (annotations differ). Skip for port-forward-only repro sessions.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Step 5h — Adapter delivery</div>
+        <div class="rule-body">Two methods: <strong>Persistent Volumes (PV)</strong> — adapters installed into a 10 GB EBS volume per pod via <code>kubectl exec npm install</code>, no image rebuild needed (recommended for repro); <strong>Layered containers</strong> — adapters baked into a custom Docker image on top of the platform base, pushed to ECR (recommended for production stability). Selection shown before any action; ECR push requires explicit engineer approval.</div>
       </div>
       <div class="rule-item">
         <div class="rule-label">EC2 provisioning (Docker-on-VM)</div>
-        <div class="rule-body">If engineer has no existing VM: auto-detects latest Rocky Linux 9 AMI, presents instance type menu (t3.large / t3.xlarge / m5.xlarge / custom), reads SG and subnet from <code>.env</code> or prompts if missing, shows the full <code>aws ec2 run-instances</code> command before running, waits for running state, extracts public IP. Reuses the AWS profile from Step 1 — no separate credential prompt.</div>
-      </div>
-      <div class="rule-item">
-        <div class="rule-label">Docker Engine install</div>
-        <div class="rule-body">On a freshly provisioned EC2 instance, Docker is not pre-installed. Step 3a installs <code>docker-ce</code> + <code>docker-compose-plugin</code> via <code>dnf</code> automatically before transferring the dev stack — no manual steps needed.</div>
-      </div>
-      <div class="rule-item">
-        <div class="rule-label">Dev stack setup</div>
-        <div class="rule-body">Clones <code>https://github.com/itential/itential-dev-stack</code> (or pulls latest). Prompts for IAP version and IAG type (4/5/none). Generates <code>ITENTIAL_ENCRYPTION_KEY</code> via <code>openssl rand -hex 32</code>. Builds <code>.env</code> from <code>.env.example</code>. Runs <code>make setup</code> (first-time) or <code>make up</code> (subsequent). Polls for healthy state (3-min timeout).</div>
-      </div>
-      <div class="rule-item">
-        <div class="rule-label">K8s secrets</div>
-        <div class="rule-body">Creates <code>itential-platform-secrets</code>, <code>itential-ca</code>, and <code>itential-gateway-secrets</code> (IAG5 only) via <code>kubectl create secret --dry-run=client -o yaml | kubectl apply -f -</code>. Each manifest is shown for engineer review before applying. Secrets require explicit "yes" — never applied silently.</div>
+        <div class="rule-body">If no existing VM: auto-detects latest Rocky Linux 9 AMI, presents instance type menu, reads SG and subnet from <code>.env</code>, shows <code>aws ec2 run-instances</code> command before running, waits for running state. Docker Engine installed via <code>dnf</code> automatically on fresh EC2.</div>
       </div>
       <div class="rule-item">
         <div class="rule-label">Cleanup safety</div>
-        <div class="rule-body">Docker: <code>make down</code> (safe, preserves volumes) vs. <code>make clean</code> (destructive). <code>make clean</code> requires typing <code>yes I want to delete all data</code>. K8s namespace deletion requires typing <code>yes delete namespace {NAMESPACE}</code>. EC2 termination requires typing <code>yes terminate {INSTANCE_ID}</code>.</div>
+        <div class="rule-body">Docker: <code>make down</code> (safe) vs. <code>make clean</code> (destroys MongoDB volumes — requires typing confirmation phrase). K8s namespace deletion requires explicit approval. EC2 termination requires typing <code>yes terminate {INSTANCE_ID}</code>. EKS cluster deletion: not automated — engineer runs <code>eksctl delete cluster</code> manually.</div>
       </div>
     </div>
 
     <div class="table-wrap" style="margin-top:16px;">
       <table>
-        <thead><tr><th>Path</th><th>Steps</th><th>Time estimate</th></tr></thead>
+        <thead><tr><th>Path</th><th>Key steps</th><th>Time estimate</th></tr></thead>
         <tbody>
           <tr><td>Docker local</td><td>0 → 1 → 2 → 3 → 4</td><td>~5 min</td></tr>
           <tr><td>Docker on existing VM</td><td>0 → 1 → 2 (existing) → 3 → 4</td><td>~10 min</td></tr>
-          <tr><td>Docker on new EC2</td><td>0 → 1 → 2 (EC2 provision) → 3 (Docker install) → 3 → 4</td><td>~15–20 min</td></tr>
-          <tr><td>Kubernetes</td><td>0 → 1 → 2 → 5a → 5b → 5c → 5d → 5e → 5f</td><td>~15–20 min</td></tr>
+          <tr><td>Docker on new EC2</td><td>0 → 1 → 2.vm (EC2 provision) → 3 (Docker install) → 4</td><td>~15–20 min</td></tr>
+          <tr><td>K8s — existing cluster</td><td>0 → 1 → 2.k8s.0–2.k8s.4 → 5a–5f</td><td>~20–30 min</td></tr>
+          <tr><td>K8s — new EKS cluster (min)</td><td>0 → 1 → 2.k8s.0–2.k8s.4 (EKS provision) → 5a–5f</td><td>~35–45 min</td></tr>
+          <tr><td>K8s — new EKS cluster (prod)</td><td>same as above</td><td>~40–50 min</td></tr>
+          <tr><td>K8s + ALB ingress</td><td>…5f → 5g</td><td>+5–10 min (ALB provisioning)</td></tr>
+          <tr><td>K8s + adapter PV</td><td>…5f → 5h (PV option)</td><td>+5 min</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="table-wrap" style="margin-top:12px;">
+      <table>
+        <thead><tr><th>Grade</th><th>AWS instance</th><th>vCPU</th><th>RAM</th><th>Use case</th></tr></thead>
+        <tbody>
+          <tr><td>Minimum</td><td><code>m5a.xlarge</code></td><td>4</td><td>16 GB</td><td>Dev / test / reproduction</td></tr>
+          <tr><td>Production</td><td><code>c6a.4xlarge</code></td><td>16</td><td>32 GB</td><td>Customer-similar load testing</td></tr>
         </tbody>
       </table>
     </div>
