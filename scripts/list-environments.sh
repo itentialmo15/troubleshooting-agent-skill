@@ -54,10 +54,23 @@ echo
 THEMIS_ENV_DIR="${REPO_ROOT}/.claude/skills/themis-aws-deploy/environments"
 FOUND_THEMIS=0
 
+DESTROYED_ARCHS=()
+
 if [ -d "$THEMIS_ENV_DIR" ]; then
   while IFS= read -r hosts_file; do
     arch_dir=$(dirname "$(dirname "$hosts_file")")
     arch=$(basename "$arch_dir")
+    status_file="${arch_dir}/status.json"
+
+    # Skip (and remember) environments whose status.json marks them DESTROYED —
+    # the inventory/hosts file is a static build artifact and is never cleaned
+    # up after a `tofu destroy`, so without this check every torn-down
+    # environment would be listed as if it were still live.
+    if [ -f "$status_file" ] && grep -q '"overall"[[:space:]]*:[[:space:]]*"DESTROYED"' "$status_file" 2>/dev/null; then
+      DESTROYED_ARCHS+=("$arch")
+      continue
+    fi
+
     FOUND_THEMIS=1
     python3 - "$hosts_file" "$arch" <<'PYEOF'
 import json, sys
@@ -98,6 +111,11 @@ fi
 
 if [ "$FOUND_THEMIS" -eq 0 ]; then
   echo "  (none found)"
+fi
+
+if [ "${#DESTROYED_ARCHS[@]}" -gt 0 ]; then
+  echo
+  echo "  (destroyed, excluded above: ${DESTROYED_ARCHS[*]} — see environments/<arch>/status.json)"
 fi
 
 echo
