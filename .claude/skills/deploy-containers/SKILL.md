@@ -427,9 +427,292 @@ ssh -i "${SSH_KEY}" "${SSH_USER}@${SSH_HOST}" "
 
 ### Kubernetes
 
-```bash
-echo "=== Kubernetes preflight ==="
+The Kubernetes path supports two scenarios:
+- **Existing cluster** (EKS or AKS) — skip provisioning, go straight to prerequisites check
+- **New EKS cluster** — provision it from scratch with the right node sizing per grade
 
+Work through Steps 2.k8s.0 through 2.k8s.4 before proceeding to Step 5.
+
+---
+
+#### Step 2.k8s.0 — Cluster Grade Selection
+
+Present the sizing options (from docs.itential.com):
+
+```
+╔══════════════════════════════════════════════════════════════╗
+║  Kubernetes Cluster Grade                                    ║
+╠══════════════════════════════════════════════════════════════╣
+║                                                              ║
+║  1) Minimum  (dev/test/reproduction)                         ║
+║     4 vCPU / 16 GB RAM per node                             ║
+║     AWS: m5a.xlarge  |  Azure: Standard_D4as_v5              ║
+║     Pod distribution: 1–2 nodes, 1 AZ acceptable            ║
+║                                                              ║
+║  2) Production                                               ║
+║     16 vCPU / 32 GB RAM per node                            ║
+║     AWS: c6a.4xlarge  |  Azure: Standard_F16as_v5            ║
+║     Pod distribution: 1 Platform pod per node, 2–3 AZs      ║
+║     StatefulSet containers on dedicated nodes               ║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
+
+Note: Development environments often have similar resource needs
+to production. Avoid undersizing — engineers experiment with real
+automations in development.
+
+Grade [1/2]:
+```
+
+Set:
+```bash
+K8S_CLUSTER_GRADE="${K8S_CLUSTER_GRADE:-}"    # read from .env if set
+if [ "${GRADE}" = "1" ]; then
+    K8S_CLUSTER_GRADE=minimum
+    EKS_NODE_TYPE="${EKS_NODE_TYPE:-m5a.xlarge}"
+    EKS_NODE_COUNT="${EKS_NODE_COUNT:-2}"
+else
+    K8S_CLUSTER_GRADE=production
+    EKS_NODE_TYPE="${EKS_NODE_TYPE:-c6a.4xlarge}"
+    EKS_NODE_COUNT="${EKS_NODE_COUNT:-3}"
+fi
+```
+
+---
+
+#### Step 2.k8s.1 — Cluster Availability or EKS Provisioning
+
+Check if an existing cluster is configured:
+
+```bash
+KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config}"
+K8S_CONTEXT="${K8S_CONTEXT:-}"    # from .env
+
+if [ -n "${K8S_CONTEXT}" ]; then
+    kubectl config use-context "${K8S_CONTEXT}" 2>/dev/null
+fi
+
+kubectl cluster-info 2>/dev/null && CLUSTER_EXISTS=true || CLUSTER_EXISTS=false
+```
+
+**If `CLUSTER_EXISTS=true`:** Print cluster info and proceed to Step 2.k8s.2.
+
+**If `CLUSTER_EXISTS=false`:** Offer EKS provisioning:
+
+```
+No cluster is reachable (check KUBECONFIG / VPN, or K8S_CONTEXT in .env).
+
+Options:
+  1) Provision a new AWS EKS cluster  (uses the AWS profile from Step 1)
+  2) Connect to an existing cluster   (I'll wait while you run aws eks update-kubeconfig)
+
+Choice [1/2]:
+```
+
+**If choice 2:** Pause and show:
+```bash
+# Run this in another terminal to configure kubectl:
+aws eks update-kubeconfig \
+    --region "${EKS_CLUSTER_REGION:-us-east-2}" \
+    --name "${EKS_CLUSTER_NAME}" \
+    ${CRED_FLAGS}
+
+# Then press Enter here to re-check cluster connectivity.
+```
+
+---
+
+**If choice 1 — Provision EKS cluster:**
+
+Collect parameters from `.env` or prompt:
+
+```bash
+EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-itential-repro}"
+EKS_CLUSTER_REGION="${EKS_CLUSTER_REGION:-us-east-2}"
+EKS_K8S_VERSION="${EKS_K8S_VERSION:-1.31}"
+```
+
+Ask if not set:
+- "EKS cluster name [default: itential-repro]:"
+- "AWS region [default: us-east-2]:"
+- "Kubernetes version [default: 1.31]:"
+
+Check if `eksctl` is available:
+```bash
+eksctl version > /dev/null 2>&1 && EKS_TOOL=eksctl || EKS_TOOL=awscli
+```
+
+**Using eksctl (preferred):** Show config and confirm before running:
+
+```yaml
+# eksctl cluster config — review before applying
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: {EKS_CLUSTER_NAME}
+  region: {EKS_CLUSTER_REGION}
+  version: "{EKS_K8S_VERSION}"
+
+managedNodeGroups:
+  - name: itential-nodes
+    instanceType: {EKS_NODE_TYPE}
+    minSize: 1
+    maxSize: {EKS_NODE_COUNT + 1}
+    desiredCapacity: {EKS_NODE_COUNT}
+    volumeSize: 100
+    # One pod per node in separate AZs (production grade)
+    availabilityZones:
+      - {EKS_CLUSTER_REGION}a
+      - {EKS_CLUSTER_REGION}b
+      - {EKS_CLUSTER_REGION}c     # omit for minimum grade (2 AZs)
+    tags:
+      Name: itential-repro-node
+      managed-by: deploy-containers-skill
+
+addons:
+  - name: aws-ebs-csi-driver    # required for StorageClass
+  - name: vpc-cni
+  - name: coredns
+  - name: kube-proxy
+```
+
+```
+Provision EKS cluster '{EKS_CLUSTER_NAME}' in {EKS_CLUSTER_REGION}?
+  Node type:  {EKS_NODE_TYPE}
+  Nodes:      {EKS_NODE_COUNT} ({K8S_CLUSTER_GRADE})
+  K8s:        {EKS_K8S_VERSION}
+  Add-ons:    aws-ebs-csi-driver, vpc-cni, coredns, kube-proxy
+
+This will take 15–20 minutes and incur AWS costs.
+Type 'yes create cluster' to confirm:
+```
+
+On confirmation:
+```bash
+eksctl create cluster -f /tmp/eks-cluster-config.yaml \
+    ${CRED_FLAGS}
+
+# Configure kubectl
+aws eks update-kubeconfig \
+    --region "${EKS_CLUSTER_REGION}" \
+    --name "${EKS_CLUSTER_NAME}" \
+    ${CRED_FLAGS}
+
+echo "✅ EKS cluster ready — kubectl configured"
+kubectl get nodes
+```
+
+**Using AWS CLI (if eksctl not available):** Show the equivalent `aws eks create-cluster` command (verbose, confirm before running). After cluster creation, create a managed node group with `aws eks create-nodegroup` and install the EBS CSI driver add-on.
+
+---
+
+#### Step 2.k8s.2 — MongoDB Configuration
+
+The Itential Helm charts do NOT include MongoDB — an external instance is required.
+
+```
+External MongoDB is required. Select the source:
+
+  1) MongoDB Atlas (SaaS)    — paste connection string (mongodb+srv://...)
+  2) AWS DocumentDB          — provide cluster endpoint
+  3) Existing on-prem / VM  — provide host:port URL
+  4) Provision AWS DocumentDB — I'll create a new cluster (uses AWS profile from Step 1)
+
+Choice [1-4]:
+```
+
+**Choice 1 — MongoDB Atlas:**
+```
+MongoDB Atlas connection string (from Atlas UI → Connect → Drivers):
+  Format: mongodb+srv://<user>:<password>@<cluster>.mongodb.net/<dbname>?retryWrites=true&w=majority
+
+Paste connection string (credentials will not be echoed to terminal):
+```
+Set:
+```bash
+MONGO_URL="${ATLAS_CONNECTION_STRING}"
+MONGO_PASSWORD="${password-extracted-from-string}"
+```
+Note: store MONGO_URL in `.env` as `MONGO_URL=<value>` and `ITENTIAL_MONGO_PASSWORD=<password>`. Credentials are never written to tracked files.
+
+**Choice 2 / 3 — Existing endpoint:**
+```
+MongoDB host (e.g. my-docdb.cluster-xyz.us-east-2.docdb.amazonaws.com):
+MongoDB port [27017]:
+Database name [itential]:
+MongoDB username:
+MongoDB password (not echoed):
+```
+Build: `MONGO_URL="mongodb://${MONGO_USER}:${MONGO_PASS}@${MONGO_HOST}:${MONGO_PORT}/${MONGO_DB}?tls=true&tlsCAFile=/tmp/rds-combined-ca-bundle.pem"` (for DocumentDB TLS; adjust for other sources).
+
+**Choice 4 — Provision DocumentDB:**
+```
+AWS DocumentDB cluster name [itential-mongo]:
+Instance class [db.r6g.large] (minimum) or [db.r6g.2xlarge] (production):
+Number of instances [2]:
+```
+Show and confirm the `aws docdb create-db-cluster` + `create-db-instance` commands before running. After provisioning, retrieve the endpoint and set `MONGO_URL`.
+
+Offer to persist to `.env`:
+```bash
+MONGO_URL=mongodb+srv://...
+ITENTIAL_MONGO_PASSWORD=...
+```
+
+---
+
+#### Step 2.k8s.3 — Redis Configuration
+
+The Itential Helm charts do NOT include Redis — an external instance is required.
+
+```
+External Redis is required. Select the source:
+
+  1) AWS ElastiCache (Valkey/Redis OSS) — provide primary endpoint
+  2) Existing Redis host               — provide host:port
+  3) Provision AWS ElastiCache         — I'll create a cluster (uses AWS profile from Step 1)
+
+Choice [1-3]:
+```
+
+**Choice 1 / 2 — Existing endpoint:**
+```
+Redis host (e.g. my-cache.abc123.ng.0001.use2.cache.amazonaws.com):
+Redis port [6379]:
+Redis password (press Enter if no AUTH):
+```
+Set:
+```bash
+REDIS_HOST="${host}"
+REDIS_PORT="${port:-6379}"
+REDIS_PASSWORD="${redis_auth_token}"
+ITENTIAL_REDIS_PASSWORD="${REDIS_PASSWORD}"
+```
+
+**Choice 3 — Provision ElastiCache:**
+```
+ElastiCache cluster name [itential-redis]:
+Node type [cache.r7g.large] (minimum) or [cache.r7g.xlarge] (production):
+Number of replicas [1]:
+```
+Show the `aws elasticache create-replication-group` command before running. After provisioning, retrieve the primary endpoint URL.
+
+Offer to persist to `.env`:
+```bash
+REDIS_HOST=...
+REDIS_PORT=6379
+ITENTIAL_REDIS_PASSWORD=...
+```
+
+---
+
+#### Step 2.k8s.4 — EKS Prerequisites: Required K8s Components
+
+Check and install the required Kubernetes components for Itential on EKS.
+
+**Check tool availability:**
+```bash
 # kubectl
 kubectl version --client > /dev/null 2>&1 && echo "✅ kubectl available" \
   || echo "❌ kubectl not found — brew install kubectl"
@@ -439,32 +722,126 @@ HELM_VER=$(helm version --short 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+'
 python3 -c "
 ver = '${HELM_VER}'.lstrip('v').split('.')
 req = [3, 15, 0]
-if list(map(int, ver)) >= req:
-    print(f'✅ Helm {\"${HELM_VER}\"} — meets 3.15.0+ requirement')
-else:
-    print(f'❌ Helm {\"${HELM_VER}\"} — need 3.15.0+; brew upgrade helm')
+ok = list(map(int, ver)) >= req
+print(f'{'✅' if ok else '❌'} Helm {\"${HELM_VER}\"} — {'meets' if ok else 'need'} 3.15.0+')
 "
+```
 
-# Cluster connectivity
-kubectl cluster-info > /dev/null 2>&1 && echo "✅ Cluster reachable" \
-  || echo "❌ kubectl cannot reach cluster — check KUBECONFIG / VPN"
+**Check EKS prerequisites:**
+
+```bash
+echo "=== EKS Kubernetes preflight ==="
+
+# Node resources
+echo "--- Nodes ---"
+kubectl get nodes -o custom-columns=\
+"NAME:.metadata.name,STATUS:.status.conditions[-1].type,CPU:.status.capacity.cpu,MEM:.status.capacity.memory,VERSION:.status.nodeInfo.kubeletVersion"
+
+# cert-manager
+if kubectl get pods -n cert-manager --no-headers 2>/dev/null | grep -q Running; then
+    echo "✅ cert-manager running"
+else
+    echo "⚠️  cert-manager not found — offer to install below"
+    INSTALL_CERTMANAGER=true
+fi
+
+# AWS Load Balancer Controller
+if kubectl get deployment aws-load-balancer-controller -n kube-system > /dev/null 2>&1; then
+    echo "✅ AWS Load Balancer Controller installed"
+else
+    echo "⚠️  AWS Load Balancer Controller not found — offer to install below"
+    INSTALL_AWSLBC=true
+fi
+
+# EBS CSI driver
+if kubectl get daemonset ebs-csi-node -n kube-system > /dev/null 2>&1; then
+    echo "✅ EBS CSI driver running"
+else
+    echo "⚠️  EBS CSI driver not found — required for StorageClass; offer to install"
+    INSTALL_EBSCSI=true
+fi
 
 # StorageClass
 kubectl get storageclass iap-ebs-gp3 > /dev/null 2>&1 \
   && echo "✅ StorageClass iap-ebs-gp3 exists" \
   || echo "⚠️  StorageClass iap-ebs-gp3 not found — Step 5c will create it"
-
-# cert-manager
-kubectl get pods -n cert-manager --no-headers 2>/dev/null | grep -q Running \
-  && echo "✅ cert-manager running" \
-  || echo "⚠️  cert-manager not detected — K8s TLS features may not work"
-
-# Node resources
-kubectl get nodes -o custom-columns=\
-"NAME:.metadata.name,CPU:.status.capacity.cpu,MEM:.status.capacity.memory" 2>/dev/null
 ```
 
-**Abort if any FAIL.** Warn on WARN. Ask engineer to confirm before continuing if warnings exist.
+**Install missing components (if warranted):**
+
+For each missing component, show the install command and ask "Install? [yes / skip]":
+
+```bash
+# cert-manager
+if [ "${INSTALL_CERTMANAGER}" = "true" ]; then
+    echo "Install cert-manager?"
+    # On yes:
+    kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+    kubectl wait --for=condition=Available deployment --all -n cert-manager --timeout=120s
+    echo "✅ cert-manager installed"
+fi
+
+# AWS Load Balancer Controller (requires service account + IRSA)
+if [ "${INSTALL_AWSLBC}" = "true" ]; then
+    echo "Install AWS Load Balancer Controller?"
+    # On yes:
+    helm repo add eks https://aws.github.io/eks-charts 2>/dev/null || true
+    helm repo update eks
+    # Note: IRSA (IAM role for service account) must exist. Show the IAM policy requirement.
+    echo "⚠️  AWS LBC requires an IAM role with the AWSLoadBalancerControllerIAMPolicy attached."
+    echo "    Follow: https://docs.aws.amazon.com/eks/latest/userguide/aws-load-balancer-controller.html"
+    echo "    IAM role ARN (set in .env as EKS_LBC_ROLE_ARN or enter now):"
+    # read EKS_LBC_ROLE_ARN
+    helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
+        --namespace kube-system \
+        --set clusterName="${EKS_CLUSTER_NAME}" \
+        --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="${EKS_LBC_ROLE_ARN}"
+    echo "✅ AWS Load Balancer Controller installed"
+fi
+
+# EBS CSI driver via EKS add-on (if eksctl available)
+if [ "${INSTALL_EBSCSI}" = "true" ]; then
+    echo "Install EBS CSI driver add-on?"
+    # On yes:
+    aws eks create-addon \
+        ${CRED_FLAGS} \
+        --cluster-name "${EKS_CLUSTER_NAME}" \
+        --region "${EKS_CLUSTER_REGION}" \
+        --addon-name aws-ebs-csi-driver
+    echo "✅ EBS CSI driver add-on installation initiated"
+fi
+```
+
+**ExternalDNS (optional — automates DNS record creation):**
+```
+Install ExternalDNS? (optional — automates DNS entry creation for the IAP ingress hostname)
+  Requires: Route53 hosted zone + IAM policy for ExternalDNS
+  [yes / skip]:
+```
+
+If yes, show the Helm install command (requires `K8S_HOSTNAME` and Route53 zone ID from `.env` or prompt). Do not install without engineer approval.
+
+**Print preflight summary table:**
+```
+╔══════════════════════════════════════════════════════════════╗
+║  Kubernetes Preflight Summary                                ║
+╠═══════════════════════════╦══════════════════════════════════╣
+║  Cluster grade            ║ {minimum | production}           ║
+║  Node type                ║ {EKS_NODE_TYPE}                  ║
+║  Kubernetes version       ║ {K8S_VERSION}                    ║
+║  Nodes                    ║ {node count} ready               ║
+║  cert-manager             ║ ✅ / ⚠️  not installed           ║
+║  AWS LBC                  ║ ✅ / ⚠️  not installed           ║
+║  EBS CSI driver           ║ ✅ / ⚠️  not installed           ║
+║  StorageClass iap-ebs-gp3 ║ ✅ / ⚠️  will create in Step 5c ║
+║  MongoDB                  ║ {MONGO_URL masked to host only}  ║
+║  Redis                    ║ {REDIS_HOST}:{REDIS_PORT}        ║
+╚═══════════════════════════╩══════════════════════════════════╝
+```
+
+**Abort if kubectl or Helm are missing.** Warn on missing cert-manager / AWS LBC / EBS CSI but allow engineer to continue if they confirm the warnings.
+
+Proceed to Step 5 for the Helm deployment.
 
 ---
 
@@ -738,30 +1115,39 @@ echo "✅ ECR pull secret created"
 
 **Show each secret manifest to engineer before applying. Require explicit "yes".**
 
-Collect values from engineer (never echo passwords):
+Pre-populate from variables set in Steps 2.k8s.2 and 2.k8s.3. For any value not yet set, prompt the engineer (never echo passwords):
 
 ```
-To create the required K8s secrets I need the following values.
-Credentials you enter will go directly into a K8s Secret — they will not appear in logs.
+Required K8s secret values — pre-populated from .env where available:
+  (leave a field blank to be prompted; credentials are not echoed to terminal)
 
-  Admin user password  (will be ITENTIAL_DEFAULT_USER_PASSWORD): 
-  MongoDB password     (ITENTIAL_MONGO_PASSWORD): 
-  MongoDB URL          (e.g. mongodb://mongo.example.com:27017/itential): 
-  Redis password       (ITENTIAL_REDIS_PASSWORD, or press Enter if none): 
+  Admin user password  [ITENTIAL_DEFAULT_USER_PASSWORD]: {blank — prompt}
+  MongoDB URL          [{MONGO_URL masked to show host only}]: {use .env value / prompt to override}
+  MongoDB password     [{ITENTIAL_MONGO_PASSWORD from .env or prompt}]:
+  Redis host           [{REDIS_HOST}:{REDIS_PORT}]: {use .env value / prompt to override}
+  Redis password       [{ITENTIAL_REDIS_PASSWORD from .env or blank}]:
+  CA cert path         [{TLS_CA_CERT_PATH from .env or 'skip'}]:
 ```
 
-Generate encryption key automatically:
+Generate encryption key automatically (or use existing if set in `.env`):
 ```bash
-ENCRYPTION_KEY=$(openssl rand -hex 32)
-echo "Generated ITENTIAL_ENCRYPTION_KEY — stored only in the K8s secret"
+ENCRYPTION_KEY="${ITENTIAL_ENCRYPTION_KEY:-$(openssl rand -hex 32)}"
+echo "ITENTIAL_ENCRYPTION_KEY — $([ -n "${ITENTIAL_ENCRYPTION_KEY}" ] && echo 'from .env' || echo 'generated')"
 ```
 
-Build the secret manifest (for review):
+Build `ITENTIAL_MONGO_URL` from components if only host/port/password were provided:
+```bash
+# If MONGO_URL not already a full connection string, build it
+if [ -z "${MONGO_URL}" ] && [ -n "${MONGO_HOST}" ]; then
+    MONGO_URL="mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_HOST}:${MONGO_PORT:-27017}/itential"
+fi
+```
+
+Show the manifest (password values masked) and require approval:
 
 ```bash
-# Show manifest (password values masked)
 cat <<EOF
---- PROPOSED K8s SECRET MANIFEST ---
+--- PROPOSED K8s SECRET MANIFEST (itential-platform-secrets) ---
 apiVersion: v1
 kind: Secret
 metadata:
@@ -772,7 +1158,7 @@ stringData:
   ITENTIAL_DEFAULT_USER_PASSWORD: "**hidden**"
   ITENTIAL_ENCRYPTION_KEY:        "${ENCRYPTION_KEY:0:8}...[64 chars]"
   ITENTIAL_MONGO_PASSWORD:        "**hidden**"
-  ITENTIAL_MONGO_URL:             "${MONGO_URL}"
+  ITENTIAL_MONGO_URL:             "${MONGO_URL//:\/\/*@/:\/\/**hidden**@}"
   ITENTIAL_REDIS_PASSWORD:        "**hidden**"
 ---
 Apply this secret? [yes / abort]:
@@ -789,6 +1175,8 @@ kubectl create secret generic itential-platform-secrets \
     --from-literal=ITENTIAL_MONGO_URL="${MONGO_URL}" \
     --from-literal=ITENTIAL_REDIS_PASSWORD="${REDIS_PASSWORD}" \
     --dry-run=client -o yaml | kubectl apply -f -
+
+echo "✅ itential-platform-secrets applied"
 ```
 
 **For IAG5** — also create `itential-gateway-secrets`:
@@ -810,6 +1198,11 @@ kubectl create secret generic itential-ca \
 
 ### Step 5c — StorageClass
 
+Notes from Itential docs:
+- Provisioner must be `ebs.csi.aws.com` (EBS only; **do NOT use EFS, NFS, or efs.csi.aws.com**)
+- Start with **10 GB** per adapter PersistentVolume; resize upward as needed
+- `volumeBindingMode: WaitForFirstConsumer` is required — pod must be scheduled first
+
 ```bash
 # Check if iap-ebs-gp3 exists
 if kubectl get storageclass iap-ebs-gp3 > /dev/null 2>&1; then
@@ -821,11 +1214,14 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: iap-ebs-gp3
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
 provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete
+allowVolumeExpansion: true
 EOF
     echo "✅ StorageClass iap-ebs-gp3 created"
 fi
@@ -833,26 +1229,125 @@ fi
 
 ### Step 5d — Helm Install: IAP Platform
 
+Determine replica count from cluster grade:
+- Minimum (dev/test): `replicaCount=1`
+- Production: `replicaCount=2` (one pod per node, separate AZs — StatefulSet distributes automatically)
+
 ```bash
 # Add Helm repo
 helm repo add iap https://itential.github.io/iap-helm 2>/dev/null || true
 helm repo update iap
 echo "Latest iap chart: $(helm search repo iap/iap --output json | python3 -c 'import sys,json; print(json.load(sys.stdin)[0][\"app_version\"])')"
 
-# Show dry-run first
+# Determine replicas from grade
+REPLICA_COUNT=1
+[ "${K8S_CLUSTER_GRADE}" = "production" ] && REPLICA_COUNT=2
+
+# Determine ingress type
+INGRESS_TYPE="${K8S_INGRESS_TYPE:-alb}"   # alb | nginx
+
+# Build Helm values file (avoids long --set chains, easier to review)
+cat > /tmp/iap-values.yaml <<EOF
+image:
+  repository: 497639811223.dkr.ecr.us-east-2.amazonaws.com/automation-platform-config-lcm
+  tag: "${IAP_VERSION}"
+
+imagePullSecrets:
+  - name: ecr-pull-secret
+
+replicaCount: ${REPLICA_COUNT}
+
+# Platform pod resource requests (from Itential docs)
+resources:
+  requests:
+    cpu: "$([ "${K8S_CLUSTER_GRADE}" = "production" ] && echo '4' || echo '2')"
+    memory: "$([ "${K8S_CLUSTER_GRADE}" = "production" ] && echo '8Gi' || echo '4Gi')"
+  limits:
+    cpu: "$([ "${K8S_CLUSTER_GRADE}" = "production" ] && echo '16' || echo '4')"
+    memory: "$([ "${K8S_CLUSTER_GRADE}" = "production" ] && echo '32Gi' || echo '16Gi')"
+
+# StorageClass for platform data volumes
+persistence:
+  storageClassName: iap-ebs-gp3
+
+# External MongoDB (required — charts do not install MongoDB)
+mongodb:
+  external: true
+  url: "${MONGO_URL}"
+
+# External Redis (required — charts do not install Redis)
+redis:
+  external: true
+  host: "${REDIS_HOST}"
+  port: ${REDIS_PORT:-6379}
+
+# Ingress
+ingress:
+  enabled: ${K8S_HOSTNAME:+true}${K8S_HOSTNAME:-false}
+  className: "$([ "${INGRESS_TYPE}" = "alb" ] && echo 'alb' || echo 'nginx')"
+  annotations:
+$(if [ "${INGRESS_TYPE}" = "alb" ]; then
+cat <<'ANNOTATIONS'
+    # AWS Load Balancer Controller annotations (Itential-documented)
+    alb.ingress.kubernetes.io/scheme: "${K8S_INGRESS_SCHEME:-internet-facing}"
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: "/health/status?exclude-service=true"
+    alb.ingress.kubernetes.io/healthcheck-port: "3443"
+    alb.ingress.kubernetes.io/healthcheck-protocol: HTTPS
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS": 443},{"HTTPS": 8080}]'
+    alb.ingress.kubernetes.io/websocket-paths: "/ws"
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    alb.ingress.kubernetes.io/target-group-attributes: >-
+      stickiness.enabled=true,stickiness.lb_cookie.duration_seconds=3600
+    alb.ingress.kubernetes.io/certificate-arn: "${ACM_CERT_ARN:-}"
+ANNOTATIONS
+else
+cat <<'ANNOTATIONS'
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header Upgrade \$http_upgrade;
+      proxy_set_header Connection "upgrade";
+ANNOTATIONS
+fi)
+  hosts:
+    - host: "${K8S_HOSTNAME:-}"
+      paths:
+        - path: /
+          pathType: Prefix
+EOF
+
+echo "=== Helm values written to /tmp/iap-values.yaml — review before applying ==="
+cat /tmp/iap-values.yaml
+
+# Show dry-run
+echo ""
 echo "=== Helm dry-run (review before applying) ==="
 helm upgrade --install iap iap/iap \
     --namespace="${NAMESPACE}" \
-    --set "image.repository=497639811223.dkr.ecr.us-east-2.amazonaws.com/automation-platform-config-lcm" \
-    --set "image.tag=${IAP_VERSION}" \
-    --set "imagePullSecrets[0].name=ecr-pull-secret" \
-    --set "replicaCount=2" \
-    --dry-run 2>&1 | head -80
+    --values /tmp/iap-values.yaml \
+    --dry-run 2>&1 | head -100
 echo ""
 echo "Apply this Helm release? [yes / abort]:"
 ```
 
-On approval, run without `--dry-run`.
+On approval, run without `--dry-run`:
+```bash
+helm upgrade --install iap iap/iap \
+    --namespace="${NAMESPACE}" \
+    --values /tmp/iap-values.yaml
+echo "✅ IAP Helm release deployed"
+```
+
+**ACM certificate (if ALB ingress):** If `ACM_CERT_ARN` is not set and `K8S_HOSTNAME` is provided, ask the engineer for the ARN:
+```
+An ACM TLS certificate is required for the ALB.
+ACM Certificate ARN (e.g. arn:aws:acm:us-east-2:123456789:certificate/...):
+```
+Set `ACM_CERT_ARN` and re-run the Helm upgrade.
 
 ### Step 5e — Helm Install: IAG (if needed)
 
@@ -897,7 +1392,7 @@ echo "Apply IAG4 Helm release? [yes / skip]:"
 
 ```bash
 echo "=== Pod status ==="
-kubectl get pods -n "${NAMESPACE}"
+kubectl get pods -n "${NAMESPACE}" -o wide
 
 echo ""
 echo "=== Services ==="
@@ -907,15 +1402,137 @@ echo ""
 echo "Waiting for IAP StatefulSet to reach ready state..."
 kubectl rollout status statefulset/iap -n "${NAMESPACE}" --timeout=300s \
   && echo "✅ IAP StatefulSet ready" \
-  || echo "❌ Rollout timeout — check: kubectl logs -n ${NAMESPACE} -l app.kubernetes.io/name=iap"
+  || echo "❌ Rollout timeout — check: kubectl logs -n ${NAMESPACE} -l app.kubernetes.io/name=iap --tail=50"
 
-# Port-forward for access (runs in background)
 echo ""
-echo "To access the platform, run in a separate terminal:"
-echo "  kubectl port-forward svc/iap 3443:3443 -n ${NAMESPACE}"
-echo "  Then open: https://localhost:3443"
-echo "  Credentials: admin@itential.com / admin"
+echo "=== Platform health check ==="
+# Port-forward to verify health (docs health path: /health/status?exclude-service=true)
+kubectl port-forward svc/iap 3443:3443 -n "${NAMESPACE}" &
+PF_PID=$!
+sleep 5
+
+HTTP_CODE=$(curl -sk -o /dev/null -w "%{http_code}" \
+    "https://localhost:3443/health/status?exclude-service=true" 2>/dev/null)
+
+if [ "${HTTP_CODE}" = "200" ]; then
+    echo "✅ IAP health endpoint returned 200"
+    curl -sk "https://localhost:3443/health/status?exclude-service=true" | python3 -m json.tool 2>/dev/null | head -30
+else
+    echo "⚠️  Health endpoint returned ${HTTP_CODE} — checking logs:"
+    kubectl logs -n "${NAMESPACE}" -l app.kubernetes.io/name=iap --tail=30
+fi
+
+kill $PF_PID 2>/dev/null
 ```
+
+**Access options:**
+1. **Port-forward (no ingress needed — for reproduction):**
+   ```bash
+   kubectl port-forward svc/iap 3443:3443 -n "${NAMESPACE}"
+   # Open: https://localhost:3443
+   # Credentials: admin@itential.com / [ITENTIAL_DEFAULT_USER_PASSWORD]
+   ```
+
+2. **Ingress (if K8S_HOSTNAME was set and Step 5g ingress was deployed):**
+   ```
+   https://{K8S_HOSTNAME}
+   ```
+
+### Step 5g — Ingress (optional — if K8S_HOSTNAME is set)
+
+*Skip if reproducing without an external hostname. Port-forward is sufficient for most repro work.*
+
+If `K8S_HOSTNAME` is set and `K8S_INGRESS_TYPE=alb`, check that the ALB was provisioned:
+
+```bash
+# Check ingress status
+kubectl get ingress -n "${NAMESPACE}" -o wide
+# The ADDRESS column shows the ALB DNS name — this may take 3-5 minutes to populate
+```
+
+If the ALB DNS address is empty after 5 minutes:
+```bash
+# Inspect the ingress controller events
+kubectl describe ingress iap -n "${NAMESPACE}"
+kubectl logs -n kube-system deployment/aws-load-balancer-controller --tail=30
+```
+
+Common ALB provisioning failures:
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `error creating load balancer: not authorized` | LBC IAM role missing permissions | Verify IRSA attachment; check `AWSLoadBalancerControllerIAMPolicy` |
+| `certificate ARN invalid` | ACM_CERT_ARN wrong or in wrong region | Re-check ARN matches cluster region |
+| `no targets available` | Pods not yet ready | Wait for Step 5f health to pass first |
+| `InvalidSubnet` | LBC subnet tags missing | Tag subnets with `kubernetes.io/role/elb: 1` |
+
+If using NGINX ingress:
+```bash
+kubectl get svc ingress-nginx-controller -n ingress-nginx -o wide
+# Use the EXTERNAL-IP or load balancer DNS for DNS mapping
+```
+
+### Step 5h — Adapter Delivery Method (if adapter troubleshooting)
+
+*Only needed when the reproduction involves adapter issues — otherwise skip.*
+
+The Itential docs describe two adapter delivery methods on Kubernetes:
+
+```
+Adapter Delivery Method:
+
+  1) Persistent Volumes (PV)  — Recommended for troubleshooting
+     Adapters are installed into a shared volume mounted into platform pods.
+     Install or update adapters without rebuilding the container image.
+     Start with 10 GB per adapter PV. Volume is NOT shared between pods
+     (each platform pod gets its own PVC in the StatefulSet).
+
+  2) Layered Containers        — Recommended for production stability
+     Adapters are baked into a custom Docker image layer on top of the
+     platform image. Portable and self-contained. Requires a rebuild
+     pipeline to add/update adapters.
+
+Choose [1/2]:
+```
+
+**Option 1 — Persistent Volumes (for repro/troubleshooting):**
+
+The `iap-helm` chart supports adapter PVCs via values. Add to `/tmp/iap-values.yaml` and re-run Helm upgrade:
+
+```yaml
+# Adapter PV configuration (add to /tmp/iap-values.yaml)
+adapters:
+  persistentVolume:
+    enabled: true
+    storageClassName: iap-ebs-gp3
+    size: "${K8S_ADAPTER_PV_SIZE:-10Gi}"    # start with 10 GB per Itential docs
+```
+
+After re-deploying, install adapters directly into the PV:
+```bash
+# Exec into the platform pod to install adapter
+IAP_POD=$(kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/name=iap -o name | head -1)
+kubectl exec -n "${NAMESPACE}" "${IAP_POD}" -- \
+    npm install --prefix /adapters @itentialopensource/adapter-{name}@{version}
+echo "✅ Adapter installed into PV — available to all pods sharing this StatefulSet PVC"
+```
+
+**Option 2 — Layered Containers:**
+
+Build a custom image with the adapter baked in (requires Docker build environment):
+```bash
+cat > /tmp/Dockerfile.adapter <<EOF
+FROM 497639811223.dkr.ecr.us-east-2.amazonaws.com/automation-platform-config-lcm:${IAP_VERSION}
+RUN npm install @itentialopensource/adapter-{name}@{version}
+EOF
+
+# Build and push to ECR
+docker build -t "${ECR_REGISTRY}/automation-platform-config-lcm:${IAP_VERSION}-with-{adapter}" \
+    -f /tmp/Dockerfile.adapter .
+
+docker push "${ECR_REGISTRY}/automation-platform-config-lcm:${IAP_VERSION}-with-{adapter}"
+```
+
+Then update the Helm release to use the custom image tag and re-apply. Show the command, require engineer approval before pushing to ECR.
 
 ---
 
@@ -1011,8 +1628,19 @@ fi
 |---|---|---|
 | Docker local | 0 → 1 → 2 → 3 → 4 | ~5 min |
 | Docker on existing VM | 0 → 1 → 2 (existing) → 3 → 4 | ~10 min |
-| Docker on new EC2 | 0 → 1 → 2 (2.vm.1–2.vm.4, new EC2) → 3 (Docker install) → 3 → 4 | ~15-20 min |
-| Kubernetes | 0 → 1 → 2 → 5a → 5b → 5c → 5d → 5e → 5f | ~15-20 min |
+| Docker on new EC2 | 0 → 1 → 2 (2.vm.1–2.vm.4, new EC2) → 3 (Docker install) → 3 → 4 | ~15–20 min |
+| K8s — existing cluster | 0 → 1 → 2.k8s.0 → 2.k8s.2 → 2.k8s.3 → 2.k8s.4 → 5a → 5b → 5c → 5d → 5e → 5f | ~20–30 min |
+| K8s — new EKS cluster (min) | 0 → 1 → 2.k8s.0 → 2.k8s.1 (provision) → 2.k8s.2 → 2.k8s.3 → 2.k8s.4 → 5a–5f | ~35–45 min (15-20 for EKS) |
+| K8s — new EKS cluster (prod) | same as above | ~40–50 min |
+| K8s + ingress | …5f → 5g | +5–10 min (ALB provisioning) |
+| K8s + adapter PV | …5f → 5h (option 1) | +5 min |
+
+**EKS node sizing (from docs.itential.com):**
+
+| Grade | AWS instance | vCPU | RAM | Use case |
+|-------|-------------|------|-----|----------|
+| Minimum | `m5a.xlarge` | 4 | 16 GB | Dev / test / reproduction |
+| Production | `c6a.4xlarge` | 16 | 32 GB | Customer-similar load testing |
 
 | Image | ECR path |
 |---|---|

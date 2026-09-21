@@ -95,8 +95,43 @@ DEPLOY_GATEWAY_TFVARS=    # true = apply *-with-gateway.tfvars overrides (legacy
 # ── /deploy-containers (Docker / Kubernetes reproduction) ──────────────────
 ECR_REGISTRY=497639811223.dkr.ecr.us-east-2.amazonaws.com   # Itential ECR account (us-east-2)
 DEVSTACK_DIR=              # override default ~/itential-dev-stack clone location
+
+# Kubernetes (EKS) cluster settings
 K8S_NAMESPACE=itential     # target namespace for Helm deployments
 K8S_CONTEXT=               # kubectl context (blank = current-context)
+K8S_CLUSTER_GRADE=         # minimum | production (drives node type + replica count)
+EKS_CLUSTER_NAME=          # EKS cluster name (existing or to be provisioned)
+EKS_CLUSTER_REGION=us-east-2
+EKS_NODE_TYPE=             # m5a.xlarge (minimum) | c6a.4xlarge (production)
+EKS_NODE_COUNT=            # desired node count (2 minimum, 3 production)
+EKS_K8S_VERSION=1.31       # Kubernetes version (1.31+)
+EKS_LBC_ROLE_ARN=          # IAM role ARN for AWS Load Balancer Controller (IRSA)
+
+# External MongoDB (required — Helm charts do NOT include MongoDB)
+MONGO_URL=                 # full connection string (mongodb+srv://... or mongodb://host:port/db)
+ITENTIAL_MONGO_PASSWORD=   # MongoDB auth password
+
+# External Redis (required — Helm charts do NOT include Redis)
+REDIS_HOST=                # Redis endpoint (ElastiCache or custom)
+REDIS_PORT=6379
+ITENTIAL_REDIS_PASSWORD=   # Redis AUTH token (blank if Redis has no auth)
+
+# IAP application secrets (K8s)
+ITENTIAL_ENCRYPTION_KEY=   # 64-char hex; auto-generated if blank (openssl rand -hex 32)
+ITENTIAL_DEFAULT_USER_PASSWORD=   # IAP admin password (set in K8s secret)
+
+# TLS
+TLS_CA_CERT_PATH=          # path to CA cert file for itential-ca K8s secret
+
+# Ingress (optional — skip for port-forward-only repro)
+K8S_INGRESS_TYPE=alb       # alb (AWS LBC) | nginx
+K8S_HOSTNAME=              # FQDN for IAP ingress (e.g. iap.example.com)
+K8S_INGRESS_SCHEME=internet-facing   # internet-facing | internal
+ACM_CERT_ARN=              # ACM certificate ARN for ALB TLS termination
+
+# Adapter delivery (K8s)
+K8S_ADAPTER_METHOD=pv      # pv (persistent volumes) | layered (baked-in image)
+K8S_ADAPTER_PV_SIZE=10Gi   # PV size per adapter (start 10 GB per Itential docs)
 ```
 
 Auth tokens are cached in `.auth.json` (gitignored). The orchestrator reuses a token if it is less than 50 minutes old and `platform_url` matches; otherwise it re-authenticates silently.
