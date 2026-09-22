@@ -517,3 +517,76 @@ No service restart required — the account table is checked on next login attem
 **Verification:**
 1. Customer logs into the IAG GUI with the temporary password
 2. Customer is prompted/able to set a new permanent password after login
+
+---
+
+### [ISD-9608] Ansible playbook failure — "Failed to retrieve secret from Vault" during expandInventoryNodes
+
+| Field | Value |
+|-------|-------|
+| **Ticket** | ISD-9608 | **ENG** | N/A — misconfiguration, not a platform bug |
+| **Date resolved** | 2026-09-22 |
+| **IAP Versions affected** | Platform 6.5.1 (not version-specific — config issue) |
+| **Fix version** | N/A — customer-side `platform.properties` correction |
+
+**Symptom:**
+Ansible playbook execution via IAG failed before Ansible was invoked, during `expandInventoryNodes`
+in `app-inventory_manager`, with a 500 error: "Failed to retrieve secret from Vault at path
+itential/service-accounts." Separately, `/health/status` showed `"vault": "failed"` even though
+the Vault-backed adapter was demonstrably retrieving secrets successfully.
+
+**Root cause:**
+Two distinct, unrelated issues were conflated by the single "Vault" symptom:
+1. **`vault_secrets_endpoint` misconfiguration in `/etc/itential/platform.properties`.** The
+   parameter name is misleading — despite "endpoint" in the name, it must be set to the Vault
+   **secrets engine mount path** (e.g. `kv-v2` or `secret`), not to a specific secret's path
+   (customer had it set to something resembling `secret/data/srv-****`, i.e. a secret path, not
+   the engine mount).
+2. **The secret reference itself was missing a required path prefix.** The working reference
+   needed the `srv-002988` segment: `$SECRET_srv-002988/itential/service-accounts
+   $KEY_sa--its-itentialro` — the customer's original reference omitted this prefix, so the path
+   didn't resolve even once the engine mount was corrected.
+3. **`/health/status` "vault: failed" is a known cosmetic false-positive**, unrelated to the
+   above. Vault can return a "standby" response code (e.g., in an HA Vault cluster where the
+   node IAP polls isn't the active leader) that IAP's healthcheck logic treats as a failure, even
+   though secret retrieval through the adapter continues to work normally against that same
+   Vault. **Do not treat `vault: failed` on `/health/status` as proof of a broken Vault
+   connection — cross-check by testing actual secret retrieval (e.g., via a working
+   adapter/task) before assuming the connection itself is down.**
+
+**Resolution:**
+Corrected `vault_secrets_endpoint` in `platform.properties` to the actual secrets engine mount
+name (confirmed against the Vault UI / `iagctl describe`), and corrected the secret reference
+path to include the `srv-002988` prefix. Confirmed via a live call with the customer (Atush)
+walking through the Vault configuration end-to-end. No platform restart-only fix — required
+correcting the customer's own Vault config and secret reference syntax.
+
+**Workaround:**
+N/A — this was the fix itself, not a temporary workaround.
+
+**Detection hints:**
+- `"Failed to retrieve secret from Vault at path {X}"` + `expandInventoryNodes` in
+  `app-inventory_manager` → check `vault_secrets_endpoint` in `platform.properties` FIRST. It
+  should hold the Vault **secrets engine mount name**, not a secret path — a very easy
+  mix-up given the "endpoint" naming.
+- `iagctl describe` values for secret/role can differ from what's shown in the IAP GUI — use
+  `iagctl describe` and the Vault UI as the source of truth when reconciling `platform.properties`.
+- `/health/status` showing `"vault": "failed"` does NOT necessarily mean Vault is unreachable or
+  broken — verify with an actual secret-retrieval test (adapter task, `curl` to Vault directly)
+  before escalating on this signal alone. This is a recurring false-positive worth flagging
+  broadly, not just for this ticket.
+- To pass a Vault AppRole `secret_id`/`role_id` without exposing it in a git repo: encrypt with
+  `node encrypt.js` (in `/opt/itential/platform/server/utils`) using the `encryption_key` from
+  `platform.properties`, producing a `$ENC...` value — this is the supported alternative to the
+  `$SECRET_` adapter-style syntax for values that live in `platform.properties` itself rather
+  than in an adapter/workflow field.
+
+**Verification:**
+Customer confirmed resolution on a live call (2026-09-21/22); ticket closed 2026-09-22.
+
+**Note vs. original triage hypothesis:** Initial triage (pre-investigation-summary.md,
+2026-09-17) flagged ENG-24156 (a released `itential-inventory-manager` regression fixed in
+Platform-6.5.1 for the CyberArk provider path) as the top hypothesis, speculating an unfixed
+sibling defect in the Vault code path. **That hypothesis was not confirmed** — root cause was
+customer-side Vault configuration, not a platform regression. No ENG ticket needed.
+
