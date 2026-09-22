@@ -590,3 +590,88 @@ Platform-6.5.1 for the CyberArk provider path) as the top hypothesis, speculatin
 sibling defect in the Vault code path. **That hypothesis was not confirmed** — root cause was
 customer-side Vault configuration, not a platform regression. No ENG ticket needed.
 
+
+---
+
+### [ISD-9522] Two-part outage: IAG adapters offline (network policy) + MS_SQL adapter offline (VPN traffic selector + SSL cert)
+
+| Field | Value |
+|-------|-------|
+| **Ticket** | ISD-9522 |
+| **ENG Bug** | N/A — infra/config issues, not a platform bug (related internal ops ticket: PCOP-6117, cert sideload) |
+| **Component** | IAG connectivity (cloud-to-on-prem network policy) + `adapter-db_mssql` (SSL/TLS config) |
+| **Platform** | itential-saas (cloud IAP + on-prem IAG) |
+| **Severity** | S1 (initial) — production outage; downgraded to S3 once IAG connectivity was restored, remaining MS_SQL adapter issue tracked to resolution over ~3 weeks |
+
+**Symptom (Part 1 — outage):**
+Root workflow task "Run Command Template" failed. Customer's on-prem IAG adapters showed OFFLINE
+in the platform. Traffic from IAG to the cloud platform stopped at a specific time, observed via
+customer-side logs.
+
+**Root Cause (Part 1):**
+An Itential-side network policy change broke the cloud-to-on-prem IAG connection path. Confirmed
+and fixed by Itential's cloud engineering team on their end — not a customer misconfiguration.
+Once fixed, IAG adapters came back online and a test workflow successfully pushed a device
+change, confirming full recovery.
+
+**Resolution (Part 1):** Fixed by Itential cloud engineering (internal network policy correction).
+Ticket was reclassified from outage to a standard problem ticket once this was confirmed resolved,
+and kept open to track the second, unrelated MS_SQL adapter issue below.
+
+---
+
+**Symptom (Part 2 — MS_SQL/SolarWinds adapter offline):**
+A separate adapter (`@itentialopensource/adapter-db_mssql`, targeting a SolarWinds-backed SQL
+host) remained OFFLINE even after the IAG outage above was resolved. This adapter had been
+working previously; the customer had recently rebuilt the target SQL server on new
+infrastructure with a new IP as part of a platform migration.
+
+**Root Cause (Part 2) — two independent, sequential problems:**
+1. **Policy-based site-to-site VPN traffic selectors were incomplete.** The customer's
+   policy-based VPN only had traffic-selector pairs configured for the two IAG hosts — the newly
+   rebuilt SQL host's pair (matching it against Itential's cloud NAT source address) was never
+   added on the customer side. Because policy-based VPNs require an explicit selector pair per
+   individual connection (not just per subnet), traffic for the new host was silently dropped
+   even though the tunnel itself was healthy and the other two hosts worked fine. Confirmed by
+   comparing negotiated traffic selectors on both sides of the tunnel — only 2 of 3 expected
+   host pairs were present.
+2. **Once VPN connectivity was fixed, the adapter still failed** — `ssl.enabled: true` on the
+   adapter config, but `ca_file` was an empty string, so the adapter could never validate the
+   target's TLS certificate and kept restarting continuously. Confirmed by: toggling
+   `ssl.enabled: false` immediately brought the adapter online and a dependent workflow ran
+   successfully — isolating the fault to the SSL/cert configuration, not connectivity.
+   Additionally, the adapter config had a **redundant duplicate parameter** — both `ca_file` and
+   `cafile` were present; only `ca_file` is the correct/effective parameter name.
+
+**Resolution (Part 2):**
+1. Customer's network/VPN team added the missing traffic-selector pair for the new SQL host to
+   their VPN policy.
+2. Customer generated a CA cert for the rebuilt SQL server and uploaded it to the ticket.
+3. Itential support sideloaded the cert file into the platform's keys directory (path convention:
+   `/opt/itential/automation-platform/keys/{customer-ca-cert}.pem`) — this required a production
+   environment restart, scheduled with the customer in advance.
+4. Adapter config updated: `ca_file` set to the sideloaded cert path; the redundant `cafile` line
+   removed. `ssl.enabled` re-toggled to `true`.
+5. Adapter came back online and stayed online with SSL enabled.
+
+**Detection Hints:**
+- IAG adapters OFFLINE simultaneously, all from one on-prem site, with no adapter-config changes
+  on the customer side → suspect Itential-side network/policy change first; escalate internally
+  to cloud engineering rather than assuming a customer misconfiguration.
+- A specific adapter goes OFFLINE right after the customer migrates/rebuilds its target
+  infrastructure (new IP, new host) even though nothing changed in the adapter config itself →
+  check whether the customer is on a **policy-based** VPN (not route-based) — these require a
+  distinct traffic-selector pair per connection/host, not just per subnet, and migrations
+  routinely miss adding the new host's pair.
+- Adapter continuously restarting/flapping with `ssl.enabled: true` and an empty `ca_file` →
+  toggle `ssl.enabled: false` as a fast diagnostic (not a permanent fix) to confirm whether SSL
+  cert validation is the blocker before troubleshooting connectivity further.
+- Watch for duplicate/near-duplicate SSL parameters in adapter configs (e.g. `ca_file` vs
+  `cafile`) — only one may be the actual effective parameter; the other is dead weight that can
+  mislead troubleshooting.
+
+**Verification:**
+1. Confirm IAG/adapter shows ONLINE in platform health.
+2. Run a workflow/task that exercises the adapter end-to-end (not just a health ping).
+3. For SSL cert fixes specifically: confirm the adapter stays online over time rather than
+   flapping (a bad cert path can look briefly healthy before the next reconnect attempt fails).
