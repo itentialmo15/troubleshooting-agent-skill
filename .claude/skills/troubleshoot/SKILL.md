@@ -1076,11 +1076,14 @@ EOF
 
 # Start the stack
 docker compose up -d
-echo "Waiting for platform to be ready..."
-until curl -sk http://localhost:3000/health 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if d.get('status')=='healthy' or d.get('running') else 1)" 2>/dev/null; do
-  sleep 5; echo -n "."
+echo "Waiting for platform to be ready (5 attempts × 5s)..."
+for i in $(seq 1 5); do
+  curl -sk http://localhost:3000/health 2>/dev/null \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if d.get('status')=='healthy' or d.get('running') else 1)" 2>/dev/null \
+    && { echo "Platform ready."; break; }
+  echo "[$i/5] not ready yet, retrying in 5s"
+  sleep 5
 done
-echo "Platform ready."
 ```
 
 ### Step 4b.5 — Select and Import Reproduction Assets from builder-skills

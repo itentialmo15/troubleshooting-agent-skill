@@ -124,14 +124,14 @@ workflows.
 ssh -i $SSH_KEY_PATH $IAG_SSH_USER@$IAG_HOST 'sudo systemctl restart itential-gateway'
 ```
 
-Poll until healthy (up to 120 seconds):
+Poll until healthy (5 attempts × 5s = 25s total):
 
 ```bash
-for i in $(seq 1 24); do
+for i in $(seq 1 5); do
   status=$(curl -sk -u "$IAG_ADMIN_USER:$IAG_PASSWORD" \
     https://$IAG_HOST:$IAG_PORT/api/v2.0/profile \
     | jq -r '.status' 2>/dev/null)
-  echo "[$i] status: $status"
+  echo "[$i/5] status: $status"
   [ -n "$status" ] && [ "$status" != "null" ] && break
   sleep 5
 done

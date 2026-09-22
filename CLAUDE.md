@@ -148,6 +148,45 @@ These apply in every troubleshooting session:
 - **Adapter debug mode** — always disable `auth_logging` and reset `console_level` to `error` before ending a session; debug mode exposes credentials in logs
 - **Adapter PUT** — does not support partial updates; always GET the current settings, modify in-place, then PUT the full body
 
+## Connectivity Retry Policy (Non-Negotiable)
+
+Applies to **every** resource fetch across all skills — platform API calls, Jira API, GitLab API, GitHub API, SSH connectivity checks, Docker/Kubernetes health polls, and any other network request:
+
+- **Maximum 5 attempts** — never more, regardless of error type
+- **5-second gap** between each attempt (`sleep 5`)
+- **Fail fast after 5 failures** — surface the error and stop; do not loop indefinitely
+
+Standard shell retry wrapper (use this pattern for every curl / connectivity loop):
+
+```bash
+MAX_RETRIES=5; DELAY=5
+for i in $(seq 1 $MAX_RETRIES); do
+  # ... your fetch command here ...
+  [ <success-condition> ] && break
+  echo "[$i/$MAX_RETRIES] not ready, retrying in ${DELAY}s"
+  sleep $DELAY
+done
+# check result / report failure after loop
+```
+
+Standard Python retry wrapper:
+
+```python
+import time
+MAX_RETRIES, DELAY = 5, 5
+for attempt in range(1, MAX_RETRIES + 1):
+    # ... your fetch/check here ...
+    if <success_condition>:
+        break
+    print(f"[{attempt}/{MAX_RETRIES}] not ready, retrying in {DELAY}s")
+    time.sleep(DELAY)
+else:
+    print("❌ Failed after 5 attempts")
+    raise SystemExit(1)
+```
+
+> This policy does **not** apply to one-time startup sleeps (`sleep 5` after `docker compose up`) or to job-status polling intervals where a longer wait is expected by design. It applies strictly to connectivity retries — situations where the code is retrying a request because the previous attempt failed.
+
 ## Vendor Sync
 
 Two external skill libraries are vendored into this repo. Neither is a live dependency —

@@ -1013,24 +1013,23 @@ ssh -i "${SSH_KEY}" "${SSH_USER}@${SSH_HOST}" "cd ~/itential-dev-stack && make s
 Poll until all services are healthy (timeout 3 minutes):
 
 ```python
-import subprocess, time, sys
+import subprocess, time, sys, json
 
-deadline = time.time() + 180
-while time.time() < deadline:
+MAX_RETRIES, DELAY = 5, 5
+for attempt in range(1, MAX_RETRIES + 1):
     result = subprocess.run(
         ["docker", "compose", "ps", "--format", "json"],
         capture_output=True, text=True
     )
-    import json
     services = [json.loads(l) for l in result.stdout.strip().split('\n') if l]
     unhealthy = [s for s in services if s.get('Health') not in ('healthy', '')]
     if not unhealthy:
         print("✅ All services healthy")
         break
-    print(f"Waiting... unhealthy: {[s['Service'] for s in unhealthy]}")
-    time.sleep(10)
+    print(f"[{attempt}/{MAX_RETRIES}] Waiting... unhealthy: {[s['Service'] for s in unhealthy]}")
+    time.sleep(DELAY)
 else:
-    print("❌ Timeout — checking logs:")
+    print("❌ Failed after 5 attempts — checking logs:")
     subprocess.run(["docker", "compose", "logs", "--tail=50"])
     sys.exit(1)
 ```

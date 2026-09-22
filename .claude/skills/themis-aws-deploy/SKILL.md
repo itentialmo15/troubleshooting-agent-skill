@@ -263,7 +263,7 @@ cd <themis_root>/vms/aws
 
 PUBLIC_IPS=$(tofu output -json public_ips | <SKILL_DIR>/.venv/bin/python3 -c "import json,sys; print(','.join(json.load(sys.stdin).values()))")
 
-for i in $(seq 1 10); do
+for i in $(seq 1 5); do
   ANSIBLE_HOST_KEY_CHECKING=False ansible all \
     -i "${PUBLIC_IPS}," \
     -u rocky \
@@ -271,8 +271,8 @@ for i in $(seq 1 10); do
     -m wait_for \
     -a "path=/var/lib/cloud/instance/boot-finished timeout=900" \
     && break
-  echo "[$i] not all hosts reachable yet, retrying in 15s"
-  sleep 15
+  echo "[$i/5] not all hosts reachable yet, retrying in 5s"
+  sleep 5
 done
 ```
 

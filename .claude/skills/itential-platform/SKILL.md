@@ -477,14 +477,14 @@ Verify by running Check Worker Status.
 ssh -i $SSH_KEY_PATH $IAP_SSH_USER@<node> 'sudo systemctl restart itential'
 ```
 
-Poll health after restart (up to 120 seconds):
+Poll health after restart (5 attempts × 5s = 25s total):
 
 ```bash
-for i in $(seq 1 24); do
+for i in $(seq 1 5); do
   status=$(curl -sk -H "$IAP_AUTH_HEADER" \
     "https://$IAP_HOST:$IAP_PORT/health/status?exclude-services=true" \
     | jq -r '.apps' 2>/dev/null)
-  echo "[$i] apps: $status"
+  echo "[$i/5] apps: $status"
   [ "$status" = "running" ] && break
   sleep 5
 done

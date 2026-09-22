@@ -314,11 +314,11 @@ print('Adapter status after PUT:', status)
 curl -sk -X PUT "{PLATFORM_URL}/adapter-manager/adapters/{ADAPTER_NAME}/restart?token={TOKEN}" \
   | python3 -c "import sys,json; d=json.load(sys.stdin); print('Restart:', d.get('message','?'))"
 
-# Verify ONLINE after restart (poll up to 30s)
-for i in $(seq 1 6); do
+# Verify ONLINE after restart (poll up to 25s — 5 attempts × 5s)
+for i in $(seq 1 5); do
   STATUS=$(curl -sk "{PLATFORM_URL}/adapter-manager/adapters/{ADAPTER_NAME}?token={TOKEN}" \
     | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','?'))")
-  echo "[$i] Adapter status: $STATUS"
+  echo "[$i/5] Adapter status: $STATUS"
   [ "$STATUS" = "ONLINE" ] && break || sleep 5
 done
 ```
@@ -1404,19 +1404,19 @@ RESTART_APPROVED=yes docker restart iap-app
 RESTART_APPROVED=yes kubectl rollout restart deployment/iap -n {KUBE_NAMESPACE}
 ```
 
-**Wait for platform to come back up** — poll `/health` until it responds or 3 minutes elapse:
+**Wait for platform to come back up** — poll `/health` up to 5 times (25s total):
 ```bash
-for i in $(seq 1 18); do
+for i in $(seq 1 5); do
   STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${PLATFORM_URL}/health" 2>/dev/null)
   if [ "${STATUS}" = "200" ]; then
-    echo "Platform is up (attempt ${i})"
+    echo "Platform is up (attempt ${i}/5)"
     break
   fi
-  echo "Waiting... (attempt ${i}/18, status=${STATUS})"
-  sleep 10
+  echo "Waiting... (attempt ${i}/5, status=${STATUS})"
+  sleep 5
 done
 if [ "${STATUS}" != "200" ]; then
-  echo "WARN: platform did not respond within 3 minutes — check server logs before proceeding"
+  echo "WARN: platform did not respond after 5 attempts — check server logs before proceeding"
 fi
 ```
 
