@@ -52,6 +52,33 @@ The `/troubleshoot-triage` sub-skill checks for an existing folder before creati
 
 ## Credentials and Auth
 
+### Env File Discovery (applies to every skill)
+
+Before sourcing any `.env`, skills scan the **entire project tree** for env files — not just the project root. The scan covers:
+- Project root (`.env`, `.env.*`)
+- `environments/` folder (any naming convention)
+- `repro/{TICKET_KEY}/` folders
+- Every other subdirectory at any depth
+
+Excluded: `.git/`, `node_modules/`, `__pycache__/`, `.venv/`, `vendor/`, `.terraform/`
+
+If `.auth.json` already holds a valid cached token (< 50 min old, matching `platform_url`) from a prior Step 3a selection in the same session → reuse it, no re-discovery needed.
+
+If no cached token exists:
+1. Run the discovery scan and show a **numbered list** of every found `.env` file, with `PLATFORM_URL` and a summary of which variable groups (MongoDB, Redis, SSH, Jira, GitLab, JFrog, Prometheus, AWS, K8s) each file contains
+2. If exactly one file is found → use it automatically
+3. If multiple files → engineer picks a number, or `M` to mix individual variables from different files, or `N` to create a new file from scratch
+4. Engineer selection is confirmed before any authentication or platform access occurs
+
+The `environments/` folder is the recommended place for named environment files (one file per customer / environment):
+
+```
+environments/
+├── acme-prod.env
+├── acme-staging.env
+└── globalcorp-prod.env
+```
+
 Each investigation uses a `.env` file (gitignored) in the repo root or working directory:
 
 ```

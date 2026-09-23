@@ -38,7 +38,11 @@ For cloud customers, skip all Phase 7 (SSH) steps that target IAP nodes. Limit S
 
 ## Auth Reuse
 
-Check `{project_path}/.auth.json` — reuse if `platform_url` matches `.env` and `timestamp` < 50 minutes old. Otherwise re-authenticate and save.
+**Env file selection:** If the orchestrator already ran Step 3a and `.auth.json` holds a token less than 50 minutes old whose `platform_url` matches, reuse it directly.
+
+If no valid cached token exists, run env discovery across the entire project tree (current folder, `environments/`, `repro/`, all subdirectories) and present the engineer with a numbered list of found `.env` files showing `PLATFORM_URL` and which variable groups (MongoDB, Redis, SSH, Prometheus, AWS, K8s) each file contains. See `/troubleshoot` Step 3a for the full interactive selection flow (including mix-and-match from different files).
+
+Check `{project_path}/.auth.json` — reuse if `platform_url` matches the selected env and `timestamp` < 50 minutes old. Otherwise re-authenticate from the selected env file and save.
 
 ```bash
 # Password auth

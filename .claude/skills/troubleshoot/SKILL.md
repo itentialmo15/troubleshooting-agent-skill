@@ -325,34 +325,120 @@ Reproduce the confirmed root cause and find workarounds in an engineer-selected 
 
 ### Step 3a — Environment Selection & Authentication
 
-Discover all available `.env` files in the project, show the target platform for each, and let the engineer choose before any authentication or platform access occurs.
+Scan the **entire project tree** — current folder, `environments/`, `repro/`, and every other subfolder — for `.env` files. Present a summary of each file so the engineer can choose which environment (or which individual tokens) to use. Do this before any authentication or platform access occurs.
+
+#### Step 3a-1 — Discover all env files
 
 ```bash
-# Discover all .env files (project root + repro subdirectories, up to 3 levels deep)
-find {project_path} -maxdepth 3 \( -name ".env" -o -name ".env.*" \) 2>/dev/null \
-  | grep -v "\.git" | sort
+# Search entire project tree — all depths, all subdirectories
+python3 - <<'PYEOF'
+import os, subprocess
 
-# Show PLATFORM_URL for each file so the engineer knows what they're choosing
-for f in $(find {project_path} -maxdepth 3 \( -name ".env" -o -name ".env.*" \) \
-  | grep -v "\.git" | sort); do
-  url=$(grep "^PLATFORM_URL=" "$f" 2>/dev/null | cut -d= -f2-)
-  echo "  $f  →  ${url:-[PLATFORM_URL not set]}"
-done
+project = "{project_path}"
+skip_dirs = {".git", "node_modules", "__pycache__", ".venv", "vendor", ".terraform"}
+
+# Key variable groups to summarise per file
+KEY_VARS = [
+    ("PLATFORM_URL",          "IAP URL"),
+    ("AUTH_METHOD",           "auth"),
+    ("MONGO_URL",             "MongoDB"),
+    ("REDIS_HOST",            "Redis"),
+    ("SSH_HOST_1",            "SSH"),
+    ("JIRA_API_TOKEN",        "Jira"),
+    ("GITLAB_TOKEN",          "GitLab"),
+    ("JFROG_TOKEN",           "JFrog"),
+    ("PROMETHEUS_URL",        "Prometheus"),
+    ("ECR_REGISTRY",          "ECR"),
+    ("AWS_REGION",            "AWS"),
+    ("K8S_NAMESPACE",         "K8s"),
+]
+
+found = []
+for root, dirs, files in os.walk(project):
+    dirs[:] = [d for d in dirs if d not in skip_dirs]
+    for fname in files:
+        if fname == ".env" or fname.startswith(".env."):
+            found.append(os.path.join(root, fname))
+
+found.sort()
+
+if not found:
+    print("No .env files found anywhere in the project tree.")
+    print("Create one at the project root using the template in CLAUDE.md and try again.")
+else:
+    print(f"Found {len(found)} environment file(s):\n")
+    for idx, path in enumerate(found, 1):
+        rel = os.path.relpath(path, project)
+        vars_present = {}
+        try:
+            with open(path) as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, _, v = line.partition("=")
+                        vars_present[k.strip()] = v.strip()
+        except Exception:
+            pass
+
+        platform_url = vars_present.get("PLATFORM_URL", "[not set]")
+        print(f"  [{idx}] {rel}")
+        print(f"       Platform : {platform_url}")
+
+        present   = [label for k, label in KEY_VARS if vars_present.get(k, "")]
+        missing   = [label for k, label in KEY_VARS if not vars_present.get(k, "")]
+        print(f"       Has      : {', '.join(present) if present else 'none'}")
+        print(f"       Missing  : {', '.join(missing) if missing else 'none'}")
+        print()
+
+    print(f"  [M] Mix — pick individual variables from different files")
+    print(f"  [N] None — create a new .env from scratch")
+PYEOF
 ```
 
-If exactly one `.env` file is found → use it automatically (no prompt needed).
+#### Step 3a-2 — Present options to engineer
 
-If multiple `.env` files are found → present a numbered list:
+After showing the list above, ask:
+
 ```
-Available environments:
-  [1] {project_path}/.env            → https://customer.itential.io
-  [2] {project_path}/.env.staging    → https://staging.itential.io
-  [3] {project_path}/repro/{ISD}/.env → http://localhost:3000
-
-Which environment do you want to use for reproduction and workaround? [1/2/3]
+Which environment file do you want to use? [1 / 2 / … / M for mix / N for new]
 ```
 
-After the engineer selects, authenticate:
+**If one file:**  use it automatically and show its summary — no prompt needed.
+
+**If multiple files:**  wait for the engineer to select a number before proceeding.
+
+**If `M` (mix):**  for each variable group below, ask which file should supply it:
+
+```
+Variable group          Options (file numbers that contain it)
+─────────────────────────────────────────────────────────────
+Platform credentials    [1] .env  [2] environments/prod.env
+(PLATFORM_URL, auth)
+
+MongoDB (MONGO_URL)     [1] .env  [3] environments/staging.env
+
+Redis (REDIS_HOST)      [1] .env  [2] environments/prod.env
+
+SSH targets (SSH_HOST_N)[1] .env
+
+Jira (JIRA_API_TOKEN)   [1] .env  [2] environments/prod.env
+
+GitLab (GITLAB_TOKEN)   [2] environments/prod.env
+
+JFrog (JFROG_TOKEN)     [2] environments/prod.env
+
+Prometheus              [none available]
+AWS / ECR               [1] .env
+Kubernetes              [none available]
+
+Select source file number for each group, or Enter to skip that group:
+```
+
+Merge the selected variables into a single in-memory environment before authenticating. Do **not** write a merged file to disk.
+
+**If `N` (new):**  scaffold a blank `.env` from the CLAUDE.md template, open it for the engineer to fill in, then re-run Step 3a-1 after they confirm it is ready.
+
+#### Step 3a-3 — Authenticate with selected environment
 
 ```bash
 set -a; source {SELECTED_ENV_FILE}; set +a
@@ -370,17 +456,19 @@ curl -sk -X POST "${PLATFORM_URL}/oauth/token" \
 
 Save token to `.auth.json`:
 ```json
-{"platform_url": "...", "auth_method": "...", "token": "...", "timestamp": "..."}
+{"platform_url": "...", "auth_method": "...", "token": "...", "timestamp": "...", "env_file": "..."}
 ```
 
 Reuse token if `.auth.json` exists, `platform_url` matches, and `timestamp` < 50 min old.
 
-**`.env` naming convention:**
-- `.env` — default customer environment (project root)
-- `.env.{label}` — named environments (e.g., `.env.staging`, `.env.acme-prod`)
-- `repro/{ISD_TICKET_KEY}/.env` — local reproduction environment (see Step 3b)
+**`.env` naming convention (any of these are discovered automatically):**
+- `.env` — project root (default)
+- `.env.{label}` — named environment at project root (e.g., `.env.staging`)
+- `environments/{name}.env` or `environments/.env.{name}` — environments folder
+- `repro/{ISD_TICKET_KEY}/.env` — local reproduction environment (Step 3b)
+- Any subdirectory at any depth — the scan finds them all
 
-If the engineer wants a fresh local reproduction environment (no existing `.env` matches), proceed to Step 3b to create `repro/{ISD_TICKET_KEY}/.env`.
+If the engineer wants a fresh local reproduction environment (no existing file matches), proceed to Step 3b to create `repro/{ISD_TICKET_KEY}/.env`.
 
 ### Step 3b — Reproduce the Issue in Selected Environment
 

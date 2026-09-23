@@ -24,6 +24,10 @@ argument-hint: "[mongodb|redis|both]"
 
 ## Auth Reuse (IAP API)
 
+**Env file selection:** If the orchestrator already ran Step 3a and `.auth.json` holds a token less than 50 minutes old whose `platform_url` matches, reuse it directly.
+
+If no valid cached token exists, run env discovery across the entire project tree (current folder, `environments/`, `repro/`, all subdirectories) and present the engineer with a numbered list of found `.env` files showing `PLATFORM_URL`, `MONGO_URL`, `REDIS_HOST`, and other variable groups present in each. See `/troubleshoot` Step 3a for the full interactive selection flow (including mix-and-match from different files — for example, sourcing `MONGO_URL` from one file and `PLATFORM_URL` from another).
+
 Some steps use the IAP API for application-layer context:
 
 ```bash

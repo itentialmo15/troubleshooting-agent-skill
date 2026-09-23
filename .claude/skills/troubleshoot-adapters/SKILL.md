@@ -24,9 +24,41 @@ argument-hint: "[adapter name]"
 
 ## Auth Reuse
 
+**Env file selection:** If the orchestrator already ran Step 3a and `.auth.json` exists with a token less than 50 minutes old and `platform_url` matches, reuse that token directly — skip env discovery.
+
+If no valid cached token exists, run env discovery before authenticating:
+
+```bash
+# Discover all .env files across the entire project tree
+python3 - <<'PYEOF'
+import os
+project = "{project_path}"
+skip = {".git", "node_modules", "__pycache__", ".venv", "vendor", ".terraform"}
+found = []
+for root, dirs, files in os.walk(project):
+    dirs[:] = [d for d in dirs if d not in skip]
+    for f in files:
+        if f == ".env" or f.startswith(".env."):
+            found.append(os.path.relpath(os.path.join(root, f), project))
+found.sort()
+for i, p in enumerate(found, 1):
+    url = ""
+    try:
+        for line in open(os.path.join(project, p)):
+            if line.startswith("PLATFORM_URL="):
+                url = line.split("=", 1)[1].strip(); break
+    except Exception: pass
+    print(f"  [{i}] {p}  →  {url or '[PLATFORM_URL not set]'}")
+if not found:
+    print("No .env files found. Create one at the project root.")
+PYEOF
+```
+
+If multiple files found → present the list and ask the engineer to choose before authenticating. See `/troubleshoot` Step 3a for the full interactive selection flow (including mix-and-match variables from different files).
+
 Check `{project_path}/.auth.json`:
-- If `platform_url` matches `PLATFORM_URL` in `.env` and `timestamp` < 50 minutes old → reuse token
-- Otherwise authenticate from `.env` and save `.auth.json`
+- If `platform_url` matches the selected env and `timestamp` < 50 minutes old → reuse token
+- Otherwise authenticate from the selected env file and save `.auth.json`
 
 **Password auth:**
 ```bash

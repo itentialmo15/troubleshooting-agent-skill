@@ -35,15 +35,19 @@ if not IS_GIT_CMD:
     if _is_curl_put:
         # Adapter or application settings write
         if re.search(r"/adapters/[^/\s]+(?!/restart)|/applications/[^/\s]+", cmd):
-            print(
-                "BLOCKED — PUT to adapter or application properties detected.\n"
-                "Safety rule: Modifying adapter or application settings requires\n"
-                "explicit engineer approval before execution.\n"
-                "Present the exact settings diff to the engineer, get a clear 'yes',\n"
-                "then re-run this command with consent documented."
-            )
-            print(f"\nCommand that triggered this guard:\n  {cmd[:300]}")
-            sys.exit(2)
+            if re.search(r"\bADAPTER_PUT_APPROVED=yes\b", cmd):
+                pass  # explicit engineer approval given — allow
+            else:
+                print(
+                    "BLOCKED — PUT to adapter or application properties detected.\n"
+                    "Safety rule: Modifying adapter or application settings requires\n"
+                    "explicit engineer approval before execution.\n"
+                    "Present the exact settings diff to the engineer, get a clear 'yes',\n"
+                    "then re-run this command prefixed with ADAPTER_PUT_APPROVED=yes\n"
+                    "to confirm consent was given."
+                )
+                print(f"\nCommand that triggered this guard:\n  {cmd[:300]}")
+                sys.exit(2)
         # API-level adapter restart via platform endpoint
         if re.search(r"/adapters/[^/\s]+/restart", cmd):
             print(
