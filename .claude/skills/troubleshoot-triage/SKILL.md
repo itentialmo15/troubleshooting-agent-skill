@@ -10,6 +10,36 @@ argument-hint: "[TICKET-KEY | --list] [--auto]"
 
 ---
 
+## Phase Progress Display (Required)
+
+At the start of each step and whenever waiting for engineer input, output a visible status line. Engineers must be able to follow triage progress at a glance.
+
+**Step indicator** — output before each named step:
+
+```
+  ── Step 1a: <Step Name> ──────────────────────────────
+```
+
+**Sub-skill / Jira call notice** — output before any Jira or Confluence API call:
+
+```
+  >> Fetching: <what is being fetched>
+```
+
+**Waiting for engineer input**:
+
+```
+  [ACTION REQUIRED]  <what is needed and what happens next>
+```
+
+**Triage complete**:
+
+```
+  [PHASE 1 complete]  Pre-investigation summary written → data/{TIMESTAMP}/{TICKET_KEY}/
+```
+
+---
+
 ## CRITICAL SAFETY RULES
 
 - **All Jira comments must be internal** — ISD (and IPSO) are Jira Service Management (JSM) projects. The classic `visibility: {"type": "role", "value": "Service Desk Team"}` field on `/rest/api/3/issue/{key}/comment` is a **silent no-op on JSM** — it returns HTTP 201 with no error but posts the comment fully public (`jsdPublic: true`). Always post via `POST {JIRA_URL}/rest/servicedeskapi/request/{TICKET_KEY}/comment` with `{"body": "...", "public": false}` instead, and verify by re-fetching the comment and checking `jsdPublic == false`

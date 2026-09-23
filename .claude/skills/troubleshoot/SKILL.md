@@ -36,6 +36,55 @@ Platform skills require `GITLAB_TOKEN` in `.env` to sync. Run `scripts/sync-plat
 
 ---
 
+## Phase Progress Display (Required)
+
+At every phase transition and key sub-step, **output a visible progress banner** before beginning work. Engineers must be able to see exactly where the investigation stands at a glance. This is mandatory — never transition silently between phases.
+
+**Phase entry banner** — output at the start of each phase:
+
+```
+═══════════════════════════════════════════════════════════
+  PHASE X / 7  |  <PHASE NAME>
+  Ticket: {TICKET_KEY}  |  <one-line description of what this phase does>
+═══════════════════════════════════════════════════════════
+```
+
+**Sub-step indicator** — output before each named step within a phase:
+
+```
+  ── Step Xa: <Step Name> ──────────────────────────────
+```
+
+**Sub-skill delegation notice** — output whenever handing off to a specialist sub-skill:
+
+```
+  >> Delegating to /<sub-skill-name>  |  Reason: <why>
+```
+
+**Phase completion line** — output when a phase finishes, before the next begins:
+
+```
+  [PHASE X complete] ──────────────────────────────────────
+```
+
+**Waiting for engineer input** — output whenever the skill pauses for approval or selection (Jira comment, ENG ticket, environment file, etc.):
+
+```
+  [ACTION REQUIRED]  <what is needed and what happens next>
+```
+
+**Investigation complete** — output at end of the final phase:
+
+```
+═══════════════════════════════════════════════════════════
+  INVESTIGATION COMPLETE  |  {TICKET_KEY}  |  All phases done
+═══════════════════════════════════════════════════════════
+```
+
+Apply the same banner pattern when running as a sub-skill (e.g. `/troubleshoot-triage` announces Phase 1, sub-step by sub-step). Sub-skills use the same format with their own step labels.
+
+---
+
 ## CRITICAL SAFETY RULES
 
 - **GET and read-only queries only** — no PUT, DELETE, PATCH, POST without explicit user consent
