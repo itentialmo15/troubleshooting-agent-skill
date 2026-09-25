@@ -798,6 +798,112 @@ for a in results:
 
 ---
 
+## Device Simulation Options (when no real device is available)
+
+Use this section when an ISD ticket involves device commands (IOS-XR, Cisco IOS, NX-OS, Juniper, etc.) via IAG4 or IAG5, and the engineer has no real device to test against.
+
+**IAG4 vs IAG5 — which gateway is the customer using?**
+
+| Signal in ticket | Gateway | Connection model |
+|---|---|---|
+| "AGManager", "automation_gateway adapter", "iag4", `/api/v2.0/` | **IAG4** | Platform polls IAG via REST; adapter type = `automation_gateway` |
+| "GatewayManager", "cluster", "mTLS", "iag5", "cluster_id", "iag5-service" | **IAG5** | IAG initiates outbound mTLS WebSocket to Platform; registered as a Gateway Manager cluster |
+
+For IAG4: `IAG_VERSION=4` in `.env`; IAG4 uses `/api/v2.0/services`, `/api/v2.0/jobs`  
+For IAG5: `IAG_URL` points to Gateway Manager; cluster registered at `GET {PLATFORM_URL}/api/v2/gateway-manager/clusters`
+
+**Options for simulating a device (ranked by setup speed):**
+
+### Option 1 — Mock IAG service (fastest, no device OS needed)
+
+Create a Python service in IAG that returns static mock output for the command being tested. This reproduces adapter/workflow logic without an actual device.
+
+```python
+# save as mock_iosxr_service.py on the IAG host
+def handler(params):
+    command = params.get("command", "")
+    if "show version" in command:
+        return {"output": "Cisco IOS XR Software, Version 7.5.2\n..."}
+    if "show ip interface" in command:
+        return {"output": "GigabitEthernet0/0/0/0 is up, line protocol is up\n..."}
+    return {"output": f"% Unknown command: {command}"}
+```
+
+For IAG4: register the file as a Python service in IAG (`/api/v2.0/scripts`).  
+For IAG5: deploy as a Gateway service; it will appear in the service catalogue automatically.
+
+**Limitation:** No real IOS-XR OS — device-specific error codes and timing behaviour will not match. Use only to reproduce adapter parsing logic bugs.
+
+### Option 2 — Containerlab + Cisco XRd (IOS-XR only, near-real OS)
+
+Cisco XRd containers run a real IOS-XR control plane in Docker. Requires a Cisco XRd license (request via Cisco DevNet).
+
+```yaml
+# topology.yaml for containerlab
+name: xrd-lab
+topology:
+  nodes:
+    xrd-1:
+      kind: cisco_xrd
+      image: ios-xr/xrd-control-plane:7.9.2
+      env:
+        XR_INTERFACES: MgmtEth0/RP0/CPU0/0:linux:mgmt
+```
+
+```bash
+# Deploy
+containerlab deploy -t topology.yaml
+# Connect IAG to the XRd management interface IP
+```
+
+Connect IAG4 or IAG5 to the XRd management IP on port 22 using SSH credentials configured at XRd boot. Node attributes for Inventory Manager:
+```json
+{ "itential_host": "172.20.20.2", "itential_platform": "iosxr", "cluster_id": "local-cluster" }
+```
+
+**Limitation:** Requires XRd license; data-plane forwarding not available in XRd control-plane image.
+
+### Option 3 — CML (Cisco Modeling Labs)
+
+Full Cisco simulation platform supporting IOS-XR, IOS, NX-OS, ASA, and more. Requires a corporate CML license (contact Cisco account team or check if PE team has shared CML).
+
+- Devices run full Cisco OS images (not containers)
+- Best for feature-specific parity (MPLS, segment routing, etc.)
+- Once a device is booted in CML, connect IAG4/IAG5 to its management IP
+
+**Limitation:** License required; boot times ~5–10 min per device; not available on every engineer's laptop.
+
+### Option 4 — GNS3 / EVE-NG (multi-vendor, open source)
+
+Open-source network emulators that support many vendor images via KVM/QEMU.
+
+- **GNS3** — easier to set up on macOS/Linux; good for Cisco IOS images
+- **EVE-NG** — better multi-vendor support; runs as a VM
+- Requires importing legal device disk images (IOS, NX-OS, JunOS) — obtain from your network team
+
+Once devices are booted, connect IAG4/IAG5 to their management IPs as you would for real devices.
+
+**Limitation:** Requires vendor disk images; performance is lower than real hardware; some features not supported in emulation.
+
+### Option 5 — netmiko test double (adapter logic only)
+
+For testing adapter SSH command parsing without any device or IAG:
+
+```python
+# pip install netmiko
+from unittest.mock import patch, MagicMock
+
+with patch('netmiko.ConnectHandler') as mock_ssh:
+    mock_conn = MagicMock()
+    mock_conn.send_command.return_value = "Cisco IOS XR Software, Version 7.5.2"
+    mock_ssh.return_value.__enter__ = lambda s: mock_conn
+    # run your adapter test logic here
+```
+
+**Limitation:** Tests Python logic only — does not exercise IAG, adapter settings, or platform integration.
+
+---
+
 ## Phase 5: GitLab Source Inspection
 
 **When to run:**

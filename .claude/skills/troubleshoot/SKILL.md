@@ -268,6 +268,17 @@ Based on ticket context, platform version, symptom description, and Investigatio
 | Kafka adapter OFFLINE / consumer lag growing | `/troubleshoot-adapters {KAFKA_ADAPTER_NAME}` | Routes to Phase 4 (Kafka) in the sub-skill |
 | OSS tool issue (deployer, Helm chart, job-archiver, IPCTL, MCP, dev-stack) | `/troubleshoot-oss {OSS_TOOL}` | Uses GitHub public API — no auth needed; detects tool from ticket signals if no argument given |
 | UI slow / API timeouts | Inline diagnostics in Step 2b (see below) + `/troubleshoot-logs` | — |
+| **FlowAI / agent issue** — agent session failed/stuck, tool call error, agent not visible, runAgent task failing, Model Registry misconfigured | Inline FlowAI diagnostics → **Phase 3e** below | Requires Platform 6.5+, Gateway 5.5+, Gateway Manager 1.1.1+ |
+| **Device command fails** — IOS-XR / Cisco / Juniper / NX-OS command not executing via IAG | Phase 3d IAG Deep-Dive (existing) — **determine IAG4 vs IAG5 first** (see gateway routing below) | Route to `/troubleshoot-adapters` first if the adapter itself is OFFLINE |
+| **Inventory Manager** — nodes missing, populate fails, action not found, cluster_id mismatch, 403 on inventory | Inline Inventory Manager diagnostics → **Phase 3f** below | Requires Platform 6.3+, Gateway Manager 1.0.5+, Gateway 5.3+ |
+
+**IAG4 vs IAG5 determination** (required before device command and GatewayManager investigations):
+
+| Signal in ticket | Gateway version | Notes |
+|---|---|---|
+| "GatewayManager", "gateway-manager", "cluster", "mTLS", "iag5", "FlowMCP", "cluster_id" | **IAG5** | mTLS WebSocket, outbound from IAG to Platform |
+| "AGManager", "automation_gateway adapter", "iag4", "api/v2.0", "AGM" | **IAG4** | REST API, Platform polls IAG |
+| Ambiguous | Check `GET {PLATFORM_URL}/health/adapters` → `package_id` field | `adapter-automation_gateway` = IAG4; Gateway Manager service adapter = IAG5 |
 
 **Platform Skills Staleness Gate**
 
@@ -1015,6 +1026,272 @@ for j in jobs[:10]:
 | `401` from IAG | Wrong credentials or token expired | Verify `username`/`password` in adapter settings |
 | Service not found | Service name case mismatch | Verify name exactly matches `GET /api/v2.0/services` output |
 | GatewayManager error | `service` field uses wrong name | Service name must match IAG exactly — case-sensitive |
+
+---
+
+### Phase 3e — FlowAI / Agent Deep-Dive (inline)
+
+Run when triage component is `FlowAI` or ticket signals include: "agent session", "agent builder", "agent project", "agent prompt", "runAgent task", "Model Registry", "LLM profile", "FlowMCP".
+
+**Requires Platform 6.5+, Gateway 5.5+, Gateway Manager 1.1.1+.** Confirm versions from `ticket_context.md` before proceeding — FlowAI is not present in earlier releases.
+
+#### Step 3e-1 — FlowAI application health
+
+```bash
+# Check FlowAI app status (look for "flowai" in application list)
+curl -sk "{PLATFORM_URL}/api/v2/applications?token={TOKEN}" \
+  | python3 -c "
+import sys, json
+apps = json.load(sys.stdin)
+results = apps.get('results', apps) if isinstance(apps, dict) else apps
+for a in results:
+    name = a.get('name', '')
+    if 'flow' in name.lower() or 'agent' in name.lower():
+        state = a.get('state', '?')
+        version = a.get('version', '?')
+        flag = 'UP' if state == 'running' else 'DOWN'
+        print(f'[{flag}] {name}  v{version}  state={state}')
+"
+```
+
+Expected: `[UP] flowai  v{version}  state=running`. If DOWN or missing → FlowAI not installed or application crashed.
+
+#### Step 3e-2 — Recent agent sessions
+
+```bash
+# List last 10 agent sessions with status and trigger source
+curl -sk "{PLATFORM_URL}/api/v2/agents/sessions?limit=10&sort=-createdAt&token={TOKEN}" \
+  | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+sessions = data.get('results', data) if isinstance(data, dict) else data
+print(f'Recent agent sessions ({len(sessions)}):')
+for s in sessions:
+    status  = s.get('status', '?')
+    trigger = s.get('triggerType', '?')
+    agent   = s.get('agentName', s.get('name', '?'))
+    sid     = s.get('_id', s.get('id', '?'))[:12]
+    flag    = 'FAIL' if status in ('failed','error') else ('STUCK' if status == 'pausing' else 'OK  ')
+    print(f'[{flag}] {sid}  agent={agent}  status={status}  trigger={trigger}')
+"
+```
+
+For a failed session, fetch its trace:
+```bash
+SESSION_ID="{session_id from above}"
+curl -sk "{PLATFORM_URL}/api/v2/agents/sessions/${SESSION_ID}/trace?token={TOKEN}" \
+  | python3 -c "
+import sys, json
+trace = json.load(sys.stdin)
+steps = trace.get('steps', trace) if isinstance(trace, dict) else trace
+print(f'Session trace ({len(steps)} steps):')
+for step in steps[-10:]:   # last 10 steps
+    stype  = step.get('type', '?')
+    name   = step.get('name', step.get('toolName', ''))
+    result = str(step.get('result', step.get('error', '')))[:120]
+    print(f'  {stype}  {name}  → {result}')
+"
+```
+
+#### Step 3e-3 — Model Registry (LLM provider profiles)
+
+```bash
+# List registered LLM provider profiles
+curl -sk "{PLATFORM_URL}/api/v2/agents/models?token={TOKEN}" \
+  | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+profiles = data.get('results', data) if isinstance(data, dict) else data
+print(f'LLM profiles ({len(profiles)}):')
+for p in profiles:
+    name    = p.get('name', '?')
+    enabled = p.get('enabled', '?')
+    provider = p.get('provider', p.get('type', '?'))
+    models  = [m.get('name', m) for m in p.get('models', [])]
+    print(f'  {name}  provider={provider}  enabled={enabled}  models={models}')
+"
+```
+
+Common issues:
+- Profile `enabled: false` → agents using it cannot run (enable in Model Registry admin UI)
+- No models listed → model not enabled in the profile
+- Group access not granted → builder/operator group can't see the profile
+
+#### Step 3e-4 — Gateway 5 connectivity (required for tool execution)
+
+All FlowAI tool calls execute through Gateway Manager → Gateway 5. If the FlowAI app is healthy but tool calls fail in the session trace, the problem is downstream at the IAG5 cluster.
+
+```bash
+# Check Gateway Manager cluster health (via IAP admin API)
+curl -sk "{PLATFORM_URL}/api/v2/gateway-manager/clusters?token={TOKEN}" \
+  | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+clusters = data.get('results', data) if isinstance(data, dict) else data
+for c in clusters:
+    name    = c.get('name', c.get('clusterId', '?'))
+    status  = c.get('status', c.get('state', '?'))
+    svcs    = c.get('serviceCount', '?')
+    flag    = 'UP' if 'connect' in str(status).lower() or status == 'healthy' else 'DOWN'
+    print(f'[{flag}] {name}  status={status}  services={svcs}')
+"
+```
+
+If a cluster shows DOWN or disconnected → run **Phase 3d — IAG Deep-Dive** against that IAG5 cluster.
+
+For **FlowMCP Gateway** issues (external MCP tools not available in FlowAI):
+- FlowMCP is an extension of IAG5 that registers external MCP servers
+- Check that the FlowMCP service is present in the IAG5 cluster service list (Phase 3d Step: IAG service list)
+- Verify the external MCP server is reachable from the IAG5 host
+
+**Common FlowAI failure patterns:**
+
+| Symptom | Most Likely Cause | Next Step |
+|---|---|---|
+| Agent session fails immediately | Model Registry profile disabled or no model enabled | Check Step 3e-3 |
+| Tool call errors in session trace | IAG5 cluster unreachable or service missing | Phase 3d on the IAG5 cluster |
+| Agent stuck in `pausing` status | In-flight tool call hung on IAG5 | Check IAG5 job status via Phase 3d |
+| Agent session not visible in UI | `session:read` permission not granted to user group | Admin Essentials → FlowAI roles |
+| `runAgent` task fails in workflow | Agent project RBAC — workflow service account lacks project access | Check project Owner/Editor/Viewer roles |
+| FlowMCP tool not available | External MCP server not registered, or IAG5 cluster unreachable | Check FlowMCP extension and cluster |
+| Agent project not visible | User group not assigned Owner/Editor/Viewer role in the project | Agent Projects → access control |
+
+**Docs:** `docs.itential.com/itential-platform/6/flowai/overview` → Agent Sessions, Model Registry, FlowMCP Gateway sub-pages.
+
+---
+
+### Phase 3f — Inventory Manager Deep-Dive (inline)
+
+Run when triage component is `InventoryManager` or ticket signals include: "inventory manager", "nodes missing", "inventory not populated", "populate inventory", "iag5-service action", "cluster_id mismatch".
+
+**Requires Platform 6.3+, Gateway Manager 1.0.5+, Gateway 5.3+.** Inventory Manager uses a **full-replacement model** — `populateInventory` deletes all existing nodes before inserting new ones. This is the most common source of "nodes disappeared" reports.
+
+#### Step 3f-1 — List inventories
+
+```bash
+# List all inventories (name, node count, groups)
+curl -sk "{PLATFORM_URL}/inventory_manager/v1/inventories?token={TOKEN}" \
+  | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+invs = data.get('result', data.get('results', data)) if isinstance(data, dict) else data
+print(f'Inventories ({len(invs)}):')
+for inv in invs:
+    name   = inv.get('name', '?')
+    groups = inv.get('groups', [])
+    tags   = inv.get('tags', [])
+    print(f'  {name}  groups={groups}  tags={tags}')
+"
+```
+
+#### Step 3f-2 — Check node count for target inventory
+
+```bash
+INV_NAME="{inventory_name_from_ticket}"
+
+# Node count
+curl -sk "{PLATFORM_URL}/inventory_manager/v1/inventories/${INV_NAME}/nodes?limit=5&token={TOKEN}" \
+  | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+nodes = data.get('result', data.get('results', data)) if isinstance(data, dict) else data
+total = data.get('total', len(nodes)) if isinstance(data, dict) else len(nodes)
+print(f'Node count: {total}')
+print('Sample nodes (first 5):')
+for n in nodes[:5]:
+    name  = n.get('name', '?')
+    attrs = n.get('attributes', {})
+    host  = attrs.get('itential_host', '?')
+    plat  = attrs.get('itential_platform', '?')
+    cid   = attrs.get('cluster_id', '?')
+    print(f'  {name}  host={host}  platform={plat}  cluster_id={cid}')
+"
+```
+
+**If node count = 0:** the `populateInventory` task most likely ran with an empty nodes array (full-replacement clears all nodes). Ask customer to check the workflow that populates this inventory and verify the source system returned data before calling `populateInventory`.
+
+#### Step 3f-3 — Check actions for the inventory
+
+```bash
+curl -sk "{PLATFORM_URL}/inventory_manager/v1/inventories/${INV_NAME}/actions?token={TOKEN}" \
+  | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+actions = data.get('result', data.get('results', data)) if isinstance(data, dict) else data
+print(f'Actions ({len(actions)}):')
+for a in actions:
+    name    = a.get('name', '?')
+    atype   = a.get('action_type', '?')
+    svc     = a.get('action_config', {}).get('service_name', '?')
+    cluster = a.get('action_config', {}).get('cluster_id', '?')
+    print(f'  {name}  type={atype}  service={svc}  cluster={cluster}')
+"
+```
+
+**Verify:** `action_type` must be `iag5-service`. `cluster_id` in the action must match a registered Gateway Manager cluster name. `service_name` must match a service on that cluster exactly (case-sensitive).
+
+#### Step 3f-4 — Populate inventory (engineer-approved test only)
+
+> **Requires explicit engineer approval before execution — populate is destructive (full replacement).**
+
+```bash
+# Test populate — replaces ALL nodes in the inventory
+curl -sk -X POST "{PLATFORM_URL}/inventory_manager/v1/nodes/bulk" \
+  -H "Content-Type: application/json" \
+  -H "Cookie: TOKEN={TOKEN}" \
+  -d '{
+    "inventory_identifier": "{INV_NAME}",
+    "nodes": [
+      {
+        "name": "{DEVICE_HOSTNAME}",
+        "attributes": {
+          "itential_host":     "{DEVICE_IP}",
+          "itential_platform": "iosxr",
+          "cluster_id":        "{GATEWAY5_CLUSTER_NAME}",
+          "itential_user":     "admin",
+          "itential_password": "$SECRET.{vault_path}.{key_name}"
+        },
+        "tags": ["test"]
+      }
+    ]
+  }'
+```
+
+**Node attribute reference by device platform:**
+
+| Platform | `itential_platform` value | Driver | Notes |
+|---|---|---|---|
+| Cisco IOS-XR | `iosxr` | netmiko | SSH-based; set `itential_driver_options.netmiko.timeout` for slow devices |
+| Cisco IOS | `cisco_ios` | netmiko | |
+| Cisco NX-OS | `cisco_nxos` | netmiko | |
+| Juniper JunOS | `junos` | netmiko | |
+| Palo Alto PAN-OS | `panos` | netmiko | |
+| Linux / generic SSH | `linux` | netmiko | |
+
+For slow devices, add driver options to the node attributes:
+```json
+"itential_driver_options": {
+  "netmiko": {
+    "timeout": 180,
+    "global_delay_factor": 3
+  }
+}
+```
+
+Passwords must use Vault secret references (`$SECRET.{path}.{key}`) — never plaintext in attributes.
+
+**Common Inventory Manager failure patterns:**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Nodes missing after populate | `populateInventory` ran with empty nodes array (full-replacement cleared all) | Check workflow that calls `populateInventory` — verify source returned data |
+| `cluster_id` mismatch | Node attribute `cluster_id` doesn't match any registered Gateway Manager cluster name | List clusters via `GET /api/v2/gateway-manager/clusters` and correct the `cluster_id` |
+| Action execution fails | `service_name` case mismatch vs actual IAG5 service name | List services on the cluster via Phase 3d and correct case |
+| 403 on inventory access | User group not listed in the inventory's `groups` array | Add user group to inventory RBAC or contact admin |
+| Inventory not found | Name is case-sensitive and globally unique across all inventories | Verify exact name with `GET /inventory_manager/v1/inventories` |
+| Clear without delete | Engineer wants to empty inventory without deleting it | `DELETE /inventory_manager/v1/nodes/clear/{INV_NAME}` — safe, inventory remains |
+
+**Docs:** `docs.itential.com/itential-platform/6/inventory-manager/overview`
 
 ---
 
