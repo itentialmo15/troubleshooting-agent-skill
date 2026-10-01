@@ -8,7 +8,7 @@ A Claude Code skill family for Itential Platform support engineering. There is n
 
 ## Skill Architecture
 
-One orchestrator skill delegates to a triage sub-skill (Phase 1) and six specialist diagnostic sub-skills (Phase 2). The orchestrator drives a **3-phase investigation lifecycle** (Phase 1: Ticket Understanding & Triage → Phase 2: Symptom Analysis & Routing → Phase 3: Reproduce & Workaround) followed by four closing phases (Phase 4: Diagnostic Report, Phase 5: Engineering Escalation, Phase 6: Resolution Learning, Phase 7: Manager Escalation). Sub-skills authenticate themselves from `.env` when invoked.
+One orchestrator skill delegates to a triage sub-skill (Phase 1) and eight specialist diagnostic sub-skills (Phase 2). The orchestrator drives a **3-phase investigation lifecycle** (Phase 1: Ticket Understanding & Triage → Phase 2: Symptom Analysis & Routing → Phase 3: Reproduce & Workaround) followed by four closing phases (Phase 4: Diagnostic Report, Phase 5: Engineering Escalation, Phase 6: Resolution Learning, Phase 7: Manager Escalation). Sub-skills authenticate themselves from `.env` when invoked.
 
 | Skill | Invoke | Covers |
 |-------|--------|--------|
@@ -20,6 +20,7 @@ One orchestrator skill delegates to a triage sub-skill (Phase 1) and six special
 | Databases | `/troubleshoot-databases` | MongoDB (slow queries, COLLSCAN, replica set), Redis (eviction, Bull queues), ElastiCache |
 | Infrastructure | `/troubleshoot-infra` | CPU/memory/disk, containers (OOMKilled), EKS, SSH multi-host, network |
 | Logs | `/troubleshoot-logs` | IAP/IAG/MongoDB/Redis/LB log collection and cross-component timestamp correlation |
+| UI | `/troubleshoot-ui [page or component]` | Frontend interaction bugs (search, filter, button, dropdown, canvas not working) that no API/log/DB signal confirms. Drives a real browser — isolated pane or the engineer's own Chrome, engineer's choice — to reproduce and diff network requests between a working and a broken case |
 | **Contribute** | `/contribute [ISD-XXXX \| scan \| version-note \| skill-fix \| known-bug ENG-XXXX]` | Reads closed investigation artifacts, generates formatted resolution entries / version notes / skill fixes, presents for engineer approval, and opens a GitHub PR — full git branch → write → diff → commit → push → PR flow. `skill-fix` is vendor-aware: it checks `vendor/*/SYNC_MANIFEST.json` before writing and targets `LOCAL-EXTENSIONS.md` instead of `SKILL.md` for any vendor-synced skill — it never commits a fix to a vendor file |
 | **Deploy Containers** | `/deploy-containers [docker-local \| docker-vm \| k8s]` | Provisions a containerized Itential Platform reproduction environment. Handles ECR auth (CRED_MODE pattern), Docker Compose dev stack setup, or Kubernetes Helm chart deployment. Wired into `/troubleshoot` Phase 3 via Step 3b.0 deployment type selection |
 | **Sync Vendor Skills** | `/sync-vendor-skills [<skill-name> \| --all \| --report-only]` | Post-sync review and repair of LOCAL-EXTENSIONS.md files. Reads the validation report from `validate-extensions.py`, diffs old vs new vendor step content, drafts label fixes and content merges, and applies changes with engineer approval |
@@ -40,6 +41,7 @@ data/
 │       ├── known_issues.md         — Matched past cases and ENG bugs
 │       ├── confluence_references.md — KB articles and runbooks found
 │       ├── docs_references.md      — Live docs.itential.com excerpts (Step 1e-docs, triage)
+│       ├── ui_report.md           — UI reproduction/diagnosis evidence from /troubleshoot-ui (per-case pass/fail table, network/console diff, root-cause hypothesis; screenshots are session-only, never saved to disk)
 │       ├── diagnostic_report.md   — Findings, evidence, recommended actions (Phase 4)
 │       ├── outage_summary_report.md — Customer/management-facing outage report (Phase 4, outage tickets only)
 │       └── eng_ticket_draft.md    — ENG ticket draft saved if engineer declines immediate filing (IPSO only)
@@ -175,6 +177,7 @@ These apply in every troubleshooting session:
 - **Adapter debug mode** — always disable `auth_logging` and reset `console_level` to `error` before ending a session; debug mode exposes credentials in logs
 - **Adapter PUT** — does not support partial updates; always GET the current settings, modify in-place, then PUT the full body
 - **Environment provisioning confirmation** — before creating any billable/compute resource for a reproduction environment (EC2 instances via Themis or `/deploy-containers`, EKS clusters, DocumentDB, ElastiCache, or Docker containers), show the engineer which deployment method is being used and the exact CPU/memory each component (Platform, MongoDB, Redis, Gateway, adapters) will get, and require an explicit "yes" before proceeding. See `/deploy-containers` Step 3d (Docker paths) and Step 5c.5 (Kubernetes, consolidated across all components), and `/themis-aws-deploy`'s `LOCAL-EXTENSIONS.md` "CPU / Memory Allocation Breakdown" (part of the Step 2a Pre-Build Confirmation Gate)
+- **Read-only UI interaction** — `/troubleshoot-ui` may navigate, search, and click to reproduce a browser bug freely, but any UI action that would create/modify/save/delete a platform asset requires the same explicit engineer approval as a direct API POST/PUT/DELETE. Browser backend selection (isolated pane vs. the engineer's own Chrome) is always an explicit engineer choice. Automated login only ever runs against a local/sandboxed target host — never against a live customer environment, and never waived by engineer authorization — see `/troubleshoot-ui`'s `CRITICAL SAFETY RULES`
 
 ## Connectivity Retry Policy (Non-Negotiable)
 

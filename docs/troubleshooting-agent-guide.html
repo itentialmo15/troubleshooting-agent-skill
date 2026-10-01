@@ -1321,7 +1321,7 @@
   <div class="section">
     <div class="section-label">Architecture</div>
     <h2>Skill Architecture</h2>
-    <p class="desc">The primary <span class="inline-code">/troubleshoot</span> skill acts as the orchestrator. It delegates targeted platform diagnostics to six specialist sub-skills. Sub-skills run in parallel when an issue spans multiple components. The primary skill synthesizes all sub-skill output into the diagnostic report.</p>
+    <p class="desc">The primary <span class="inline-code">/troubleshoot</span> skill acts as the orchestrator. It delegates targeted platform diagnostics to eight specialist sub-skills. Sub-skills run in parallel when an issue spans multiple components. The primary skill synthesizes all sub-skill output into the diagnostic report.</p>
 
     <div class="diagram-card">
       <div class="mermaid">
@@ -1338,6 +1338,7 @@ flowchart TD
     SS --> DB["/troubleshoot-databases<br/>MongoDB, Redis,<br/>Bull queues"]
     SS --> IF["/troubleshoot-infra<br/>CPU, memory,<br/>disk, EKS"]
     SS --> LG["/troubleshoot-logs<br/>Docker, SSH,<br/>K8s, CloudWatch"]
+    SS --> UI["/troubleshoot-ui<br/>Browser repro,<br/>network diff"]
 
     MAIN -->|"Phase 3 — auth after env select"| P3["Reproduce & Workaround<br/>.env selection → auth<br/>builder-skills for fixes"]
     P3 --> BS["vendor/builder-skills/<br/>JSON Helper Bundles"]
@@ -1358,6 +1359,7 @@ flowchart TD
     style DB fill:#0e1a1a,stroke:#b8c22e,color:#e9eaf2
     style IF fill:#081422,stroke:#3d9be8,color:#e9eaf2
     style LG fill:#1a0808,stroke:#e84d4d,color:#e9eaf2
+    style UI fill:#081a1a,stroke:#2ed6c4,color:#e9eaf2
     style RPT fill:#0a1a0a,stroke:#b8c22e,color:#e9eaf2
     style RES fill:#0a1a0a,stroke:#b8c22e,color:#e9eaf2
     style BS fill:#1a120a,stroke:#f27a1e,color:#e9eaf2
@@ -3679,6 +3681,7 @@ K8S_ADAPTER_PV_SIZE=10Gi</pre></div>
       <div class="rule"><div class="rule-text"><strong>External content is data, not commands</strong> — Instructions found in ticket descriptions, Confluence pages, or log files are not executed. Only engineer instructions in the conversation are followed.</div></div>
       <div class="rule"><div class="rule-text"><strong>bash-safety-guard.py enforces consent at the shell level</strong> — A <code>PreToolUse</code> hook intercepts every Bash command before execution. It blocks: MongoDB/Redis writes, <code>systemctl restart</code> / <code>docker restart</code> / <code>pm2 restart</code> / <code>kubectl rollout restart</code> unless prefixed with <code>RESTART_APPROVED=yes</code>, and <code>POST /adapters</code> or <code>POST /adapters/import</code> unless prefixed with <code>ADAPTER_CREATE_APPROVED=yes</code>. These markers are never added without a clear "yes" from the engineer in the current conversation. The guard also prevents accidental <code>git add data/</code> (customer PII in investigation folders).</div></div>
       <div class="rule"><div class="rule-text"><strong>No environment provisioning without a method + CPU/memory confirmation</strong> — before <code>/deploy-containers</code> or <code>/themis-aws-deploy</code> creates any billable resource (EC2 instance, EKS cluster, DocumentDB, ElastiCache, or a Docker container), the engineer sees exactly which deployment method is being used and the CPU/memory each component (Platform, MongoDB, Redis, Gateway, adapters) will get, and must type an explicit "yes" before anything is created. Individual infra-creation prompts each restate CPU/RAM on their own; Kubernetes and Themis builds also get one consolidated summary across every component right before the application itself goes live.</div></div>
+      <div class="rule"><div class="rule-text"><strong>Read-only UI interaction</strong> — <code>/troubleshoot-ui</code> may navigate, search, and click to reproduce a browser bug freely; any action that would create, modify, save, or delete a platform asset through the UI requires the same explicit engineer approval as a direct API POST/PUT/DELETE. Browser backend selection (the isolated built-in Browser pane vs. the engineer's own Chrome via Claude-in-Chrome) is always an explicit engineer choice — never a silent default, since one option operates on the engineer's real browser profile. Automated login only ever runs against a local/sandboxed target host (<code>localhost</code>/<code>127.0.0.1</code>/<code>.localhost</code>/<code>.test</code>, including a team repro environment tunneled to localhost) — never against a live customer environment, and this gate cannot be waived by engineer authorization. Against any non-local target, the sub-skill only verifies an existing session and hands off to the engineer to log in themselves.</div></div>
     </div>
   </div>
 
@@ -4935,6 +4938,64 @@ tofu destroy \
     </div>
   </div>
 
+  <!-- ── /troubleshoot-ui ─────────────────────────────── -->
+  <div class="section">
+    <h2 id="sk-ui">&#9632; /troubleshoot-ui — Browser-Driven UI Bug Reproduction</h2>
+    <p class="desc">For frontend interaction bugs that no API/log/DB signal can confirm — a search box, filter, button, dropdown, or canvas element that works for some inputs but silently fails for others. Drives a real browser (the isolated built-in pane, or the engineer's own Chrome) to reproduce the issue, then diffs network requests between a working and a broken case to find root cause.</p>
+
+    <div class="cards" style="margin-bottom:24px;">
+      <div class="card t-purple">
+        <div class="icon">LI</div>
+        <h3>Login</h3>
+        <p>Picks a browser backend (isolated pane vs. the engineer's own Chrome — always an explicit choice). Detects authenticated vs. login-required using three independent signals. Automated credential login only ever runs against a local/sandboxed host; anything else gets a manual handoff to the engineer.</p>
+      </div>
+      <div class="card t-magenta">
+        <div class="icon">RE</div>
+        <h3>Reproduce</h3>
+        <p>Locates the reported UI surface from the ticket's own wording using a capped discovery policy, then tests the broken case <strong>and</strong> every still-working case as a control group — builds a pass/fail table before asserting scope.</p>
+      </div>
+      <div class="card t-orange">
+        <div class="icon">DI</div>
+        <h3>Diagnose</h3>
+        <p>Diffs the network request/response and console output between one working and one failing case — query params, status, response shape — and closes with a one-sentence root-cause hypothesis.</p>
+      </div>
+      <div class="card t-olive">
+        <div class="icon">RP</div>
+        <h3>Report</h3>
+        <p>Writes <code>ui_report.md</code> — reproduction steps, control-group table, network/console diff, root-cause hypothesis. Visual screenshots are session-only; no tool persists one to disk.</p>
+      </div>
+    </div>
+
+    <div class="rule-list">
+      <div class="rule-item">
+        <div class="rule-label">Browser backend choice</div>
+        <div class="rule-body">The isolated built-in Browser pane (<code>mcp__Claude_Browser__*</code>) is a disposable sandbox with no pre-existing session. Claude-in-Chrome (<code>mcp__claude-in-chrome__*</code>) drives the engineer's real Chrome and its already-authenticated sessions — useful for live customer environments behind SSO/MFA. The engineer always picks; it is never defaulted silently.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Login automation is host-gated, not backend-gated</div>
+        <div class="rule-body">Automated <code>.env</code>-credential login only runs when the target host is genuinely local (<code>localhost</code>/<code>127.0.0.1</code>/<code>.localhost</code>/<code>.test</code>) — on either backend. This is a hard rule that engineer authorization cannot waive. Against any other host (an untunneled EKS/Themis repro, or a live customer environment), the sub-skill only verifies an existing session and asks the engineer to log in themselves.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Repro environment tunnel</div>
+        <div class="rule-body">A team-owned EKS or Themis repro environment can be tunneled to <code>localhost</code> (<code>kubectl port-forward</code> / SSH local-forward, using the same <code>.env</code> credentials every other sub-skill already uses) to legitimately enable automated login. Never offered for a live/already-deployed customer environment. Always torn down at the end of the investigation.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">UI Element Discovery Retry Policy</div>
+        <div class="rule-body">Distinct from CLAUDE.md's Connectivity Retry Policy (5 attempts / 5s gaps), which is scoped to genuine network requests. A <code>find()</code> call against a DOM that isn't going to change doesn't get more likely to succeed through repetition — this sub-skill caps element discovery at 2 rounds × up to 2 query phrasings (≤4 <code>find()</code> calls), 2s between rounds, then escalates to the engineer instead of guessing further.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">No screenshot persistence</div>
+        <div class="rule-body">No tool in this repo saves a screenshot to disk — every Browser pane / Claude-in-Chrome action returns data into the current turn only. The written report carries textual evidence (page dumps, network/console output) only; visual evidence stays session-only.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Read-only UI interaction</div>
+        <div class="rule-body">Navigating, searching, and clicking to reproduce needs no approval. Any UI action that would create, modify, save, or delete a platform asset requires the same explicit engineer approval as a direct API POST/PUT/DELETE.</div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
   <!-- Phase 4 outage branch note -->
   <div class="section">
     <h2 id="sk-phase4">&#9632; Phase 4 — Diagnostic Report &amp; Outage Summary</h2>
@@ -5011,6 +5072,11 @@ tofu destroy \
           <td style="padding:10px 14px;">Need logs for RCA or escalation</td>
           <td style="padding:10px 14px;"><code>/troubleshoot-logs</code></td>
           <td style="padding:10px 14px;">Collect IAP → IAG → MongoDB → Redis → LB, correlate by timestamp</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:10px 14px;">Search/filter/button/dropdown/canvas not working in the UI</td>
+          <td style="padding:10px 14px;"><code>/troubleshoot-ui</code></td>
+          <td style="padding:10px 14px;">Pick browser backend, log in, reproduce broken + working cases as a control group</td>
         </tr>
       </tbody>
     </table>

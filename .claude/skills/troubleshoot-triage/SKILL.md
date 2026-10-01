@@ -363,7 +363,7 @@ Parse and save to `{project_path}/data/{TIMESTAMP}/{TICKET_KEY}/ticket_context.m
 
   PROBLEM
   ───────
-  Component:     IAP | IAG | Adapter | MongoDB | Redis | OS | Kafka | OSS-Tool | FlowAI | InventoryManager | GatewayManager | unknown
+  Component:     IAP | IAG | Adapter | MongoDB | Redis | OS | Kafka | OSS-Tool | FlowAI | InventoryManager | GatewayManager | UI | unknown
   OSS Tool:      ← set only when Component = OSS-Tool
                     itential.deployer | iap-helm | iag5-helm | iag4-helm |
                     job-archiver | ipctl | itential-mcp | itential-dev-stack | unknown
@@ -513,6 +513,7 @@ Save titles, URLs, and key excerpts to `{project_path}/data/{TIMESTAMP}/{TICKET_
 | **Inventory Manager** — "inventory manager", "populate inventory", "nodes missing", "node not found", "inventory not populated", "InventoryManager", "iag5-service action" | Inventory Manager | `site:docs.itential.com/itential-platform/6/inventory-manager` |
 | **Gateway Manager** — "gateway manager", "cluster", "mTLS", "GatewayManager", "virtual cluster", "cluster_id", "FlowMCP Gateway" | Gateway Manager | `site:docs.itential.com/itential-gateway/5/gateway-manager` |
 | Device commands on IOS-XR / Cisco / Juniper / NX-OS — "iosxr", "cisco_ios", "netmiko", "command template", "run command", "MOP" | Platform + IAG | `site:docs.itential.com/itential-gateway/5` |
+| **UI** — a specific UI surface (Automation Studio, task palette, Assets tab, JSON Form builder, Operations Manager, canvas, dropdown, search box) combined with an interaction failure ("not working," "not populating," "blank," "doesn't respond") — distinct from a pure performance/latency complaint, which stays `Component: IAP` and routes to the existing inline latency check | Platform (UI) | `site:docs.itential.com/itential-platform` |
 
 **For each applicable section, run 2–3 targeted searches:**
 
