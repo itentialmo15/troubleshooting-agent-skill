@@ -675,3 +675,43 @@ infrastructure with a new IP as part of a platform migration.
 2. Run a workflow/task that exercises the adapter end-to-end (not just a health ping).
 3. For SSL cert fixes specifically: confirm the adapter stays online over time rather than
    flapping (a bad cert path can look briefly healthy before the next reconnect attempt fails).
+
+---
+
+### [ISD-9507] NSO trace-ID mismatch on JSON-RPC calls (sync-from) with NSO 6.4 — PRELIMINARY (fix in review)
+
+| Field | Value |
+|-------|-------|
+| **Ticket** | ISD-9507 |
+| **ENG Bug** | ENG-27014 (fix MR in review as of 2026-09-30; no fix version set yet) |
+| **Component** | NSO adapter / itential-service_management (NSO Gateway) — trace context propagation |
+| **Platform Version** | Platform 6.5.1, NSO adapter 7.10.0, NSO 6.4.x + itential-tools-64 (confirmed) |
+| **Severity** | Major (ISD Problem); ENG priority Critical — no outage, but the trace-ID feature is unusable on NSO < 6.7 |
+
+**Symptom:**
+The trace-ID shown on a workflow task for a JSON-RPC-based NSO call (e.g. the `sync-from` task)
+does not exist in NSO's `devel.log`. The same feature works for RESTCONF-based tasks (e.g. a
+device ping) — that ID matches the `trace-id=` value on NSO's `ncs progress` log lines. The same
+workflow matches on NSO 6.7 + itential-tools-67.
+
+**Root Cause:**
+Confirmed by Engineering (reproduced, per ENG-27014). The adapter enables W3C Trace Context
+(`traceparent`) only for NSO >= 6.7; for NSO < 6.7 it sends the legacy trace-id instead. NSO
+supports the legacy trace-id flag only on certain JSON-RPC methods (`validate_commit`, `commit`).
+`sync-from` runs through the JSON-RPC `run_action` method, which does not support the legacy flag
+but does support `traceparent`/`tracestate`. On NSO 6.4 no trace context is sent for `run_action`,
+so the workflow's trace ID never reaches NSO and the IDs differ.
+
+**Detection Hints:**
+- Grep the workflow task's trace-ID in NSO `devel.log`: no hits for JSON-RPC `run_action` tasks such as `sync-from`, hits for RESTCONF tasks.
+- NSO version < 6.7 (with itential-tools-64) fails; NSO 6.7 + itential-tools-67 passes.
+- Committing operations (`validate_commit` / `commit`) use the legacy flag NSO does support, so non-committing `run_action` calls are the ones to test first.
+
+**Workaround (immediate):**
+None documented for NSO 6.4. NSO 6.7 + itential-tools-67 propagates trace IDs correctly. Otherwise
+wait for the ENG-27014 fix, which extends W3C trace context to NSO 6.3+ and is targeted by
+Engineering for the October 2026 maintenance release (release not confirmed yet).
+
+**Verification (after the fix ships):**
+1. Run `sync-from` against an NSO 6.4 device and record the trace-ID from the task output.
+2. Grep that trace-ID in NSO `devel.log` — it should now match.
