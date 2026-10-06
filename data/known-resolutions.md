@@ -12,7 +12,7 @@ This file captures confirmed resolution patterns from ISD ticket investigations.
 
 | Field | Value |
 |-------|-------|
-| **Ticket** | ISD-9600 (Lumen Technologies, Critical) |
+| **Ticket** | ISD-9600 (Critical) |
 | **Type** | Escalated to Engineering — root cause confirmed, fix not yet implemented (ENG ticket drafted, pending filing approval) |
 | **Component** | IAP Platform — `core/startup/Redis.js` (write-path Redis client, via `RedisWrapper.js`) |
 | **Platform** | IAP 6.5.2, on-prem, 3-node Redis Sentinel HA, TLS enabled |
@@ -45,7 +45,7 @@ is architectural: nothing calls disconnect-and-re-resolve-via-Sentinel on a dete
 **Real-world equivalents of the lab's `kill -STOP` trigger** (i.e., what actually causes a
 "silent death" connection in production, since SIGSTOP itself is not expected in the wild):
 network partition / packet blackhole (firewall or routing silently dropping packets — this is the
-scenario in ENG-20713's own original report, and the likely cause of Lumen's "unplanned reboot"
+scenario in ENG-20713's own original report, and the likely cause of the customer's "unplanned reboot"
 incident too), full hypervisor-level VM freeze (live migration, CPU steal/starvation, hung kernel
 panic), cgroup/container freeze (`docker pause`, k8s freezer, freeze-snapshot-thaw backup tooling),
 ptrace/debugger attach to `redis-server`, and severe storage stalls that wedge the kernel itself.
@@ -715,3 +715,280 @@ Engineering for the October 2026 maintenance release (release not confirmed yet)
 **Verification (after the fix ships):**
 1. Run `sync-from` against an NSO 6.4 device and record the trace-ID from the task output.
 2. Grep that trace-ID in NSO `devel.log` — it should now match.
+
+---
+
+### [ISD-9616] IAG5 "worktree contains unstaged changes": stale .gitmodules declaration with no matching gitlink
+
+| Field | Value |
+|-------|-------|
+| **Ticket** | ISD-9616 |
+| **ENG Bug** | N/A (no ENG key found in investigation artifacts; ENG search for this failure mode returned no match) |
+| **Component** | IAG5 (iagctl / torero engine), Git-native repository management and RunService execution |
+| **Platform Version** | IAG5 5.5.2 (lab) and 5.3.2 (production), both reported by customer, identical symptom. IAP version unverified (ticket field says 6.5.1 but customer never stated it; not implicated) |
+| **Severity** | S2 - Production network-automation services in one repository could not run; no workaround until repo state was fixed. Scope limited to a single repository (4 services) |
+
+**Symptom:**
+IAG5 fails every `iagctl db import --repository ... --reference <branch>` and every live `RunService` execution for services in one git repository with `worktree contains unstaged changes` (via RPC: `Failed to run RunService on a runner: rpc error: code = Unknown desc = worktree contains unstaged changes`). `iagctl describe repository` shows the correct branch reference and a manual `git status` on separate checkouts is clean, so it looks like IAG5 is pulling the wrong branch. Other repositories on the same gateway work. Occurs after a feature branch was merged into the default branch and the repo's import file was repointed. Deleting and re-importing the repository and services, renaming, and changing references did not help. No job record is created (fails at clone/checkout stage).
+
+**Root Cause:**
+A `.gitmodules` file in the repository declared a submodule for a path that no longer had a submodule (gitlink, mode 160000) entry in the tree. The path had been a real submodule on the default branch and became an ordinary folder when the feature branch was merged, but `.gitmodules` was never cleaned up. `ls-tree` on both branches showed no 160000 entries while `.gitmodules` still listed the path. Standard `git status` tolerates this mismatch, but IAG5's git layer (the go-git library, not a system git) treats the checkout as modified when it switches the fresh clone to the configured reference and raises `worktree contains unstaged changes`. The same stale file existed on every branch, which is why the failure was 100% reproducible and identical on both the lab and production gateways despite different IAG5 versions.
+
+Confirmed experimentally by the customer: removing `.gitmodules` made the import and all four services work in the lab, and the same fix restored production, where the services then ran normally. The go-git internal behavior is inferred from the error origin and was not checked against library source. A correctly configured submodule (`.gitmodules` matching a real gitlink) was not tested exhaustively and is not claimed to be unsupported.
+
+**Detection Hints:**
+- Error text `worktree contains unstaged changes` from `iagctl db import` or `RunService` while native `git status` on a fresh clone is clean
+- Failure limited to one repository; other repositories on the same gateway run fine
+- Reproduces on multiple IAG5 point versions, so it is not a version-specific regression
+- Repository history includes a submodule that was converted to a normal folder or removed without cleaning `.gitmodules`
+- Raising the gateway log level does not help: the customer's TRACE-level attempt showed nothing useful and the error text is generic, so check the repository content instead
+- In the failing gateway log, the sequence stops after `ssh-keyscan` / known_hosts lines with no `clone repository completed successfully` line
+- Check the repo for the mismatch: `git config -f .gitmodules --get-regexp path` compared with `git ls-tree -r HEAD | grep ^160000`; any `.gitmodules` path with no matching 160000 entry is the stale declaration
+- `git submodule status` on a fresh clone may print `fatal: no submodule mapping found in .gitmodules` or show unexpected entries
+- Note: IAG5 has no "reset repo data" control (that is IAG4 UI only) and no documented reset/re-clone subcommand, so delete/recreate of the repository object may not change the outcome if the repository content itself is the cause
+
+**Workaround (immediate):**
+Fix the source repository (customer side): if the path is no longer a submodule, remove `.gitmodules` (or the stale entry, via `git submodule deinit` and `git rm` where appropriate). This is the permanent fix, not just a workaround. If the submodule is still needed, restore the matching gitlink instead. Commit and push, then re-run `iagctl db import` / the affected service. Apply the same change to every environment that imports the repository.
+
+**Verification:**
+1. Clone the repository fresh and confirm `.gitmodules` paths and gitlink (160000) entries match, or that `.gitmodules` is absent when no submodule is used.
+2. Push the corrected branch/default branch.
+3. Re-run `iagctl db import --repository <repo> --reference <ref> import.yml --force --verbose` and confirm it no longer returns `worktree contains unstaged changes`.
+4. Run one of the previously failing services with `iagctl run service <name>` and confirm it completes.
+5. Confirm the previously unaffected repositories still run normally.
+
+---
+
+### [ISD-9604] childJob output masking cannot target a single variable: converted to Feature Request
+
+| Field | Value |
+|-------|-------|
+| **Ticket** | ISD-9604 |
+| **ENG Bug** | ENG-28482 (change request, Awaiting approval: childJob task toggle to mask output based on the child End task Output Schema; not a bug). Related: ENG-23447 (cancelled as expected behavior, same symptom) |
+| **Component** | Automation Studio / Workflow Engine, childJob task masking |
+| **Platform Version** | 6.5.2 per environment blueprint; ticket "Affects Version" says 6.5.1 (running version not independently verified). Behavior applies to the P6.1+ line per prior engineering triage |
+| **Severity** | S3 - Production, no job failure; data-exposure/capability gap. Ticket priority was Critical, no outage |
+
+**Symptom:**
+A parent workflow passes a masked value to a child workflow, and the child workflow marks the corresponding output variable as masked on its End task. In the parent workflow, the childJob task's outgoing variables still display the value unmasked. Enabling the childJob task's "Mask Outgoing" toggle masks the entire output, not just the one sensitive variable. The customer wants selective, per-variable masking of childJob output as seen by the parent. No error, no failed job, deterministic on every run.
+
+**Root Cause:**
+Not a defect. ChildJob output masking is all-or-nothing by design: per-variable masking exists for input sent into the childJob and for the child job's own variables, but masking set per-variable on the child End task does not propagate through the childJob boundary into the parent task output. The only supported output control is the "Mask Outgoing" toggle on the childJob task. Confirmed from internal records, not by live reproduction: a prior engineering ticket investigating the identical symptom was cancelled as expected behavior (P6.1+ masks all childJob output end-to-end, pre-P6 masking was cosmetic only), original P6 masking scope explicitly excluded cross-workflow propagation, and Product Management confirmed the all-or-nothing design on a related open enhancement request. A related point customers trip over: a child workflow's input variables are job variables, and job variables are scoped to the whole job, so they are always returned in the child's output. The End task Output Schema lets you mask a job variable but not remove it from the output. The ticket was converted to a Feature Request (per-variable masking of childJob output in the parent), and Product Management logged ENG-28482: an off-by-default toggle on the childJob task that masks `job_details` values according to how each variable is masked in the child End task Output Schema. A per-variable Mask option on the childJob outgoing variables was deliberately not pursued. The customer confirmed this approach meets their need. Status at time of writing: change request awaiting approval, no timeline.
+
+**Detection Hints:**
+- Customer says a variable masked on the child flow End task shows in clear text in the parent childJob task output
+- "Mask Outgoing" on the childJob task hides everything, and the customer wants only one variable hidden
+- No error message, no failed job, no regression claimed (first attempt at this pattern)
+- Request phrased as "unable to mask output in workflow" with a security/compliance driver
+- Screenshots show parent childJob outgoing variables unmasked while child job output variables show masked
+- Masking state lives in a `decorators` array in the workflow JSON, useful if the export needs inspecting
+- Search past tickets for: childJob, Mask Outgoing, End task masking, per-variable output masking
+
+**Workaround (immediate):**
+Options given to the customer, in order:
+1. Enable "Mask Outgoing" on the childJob task (masks everything the child returns). If other returned values must stay readable downstream, split the workflow so the sensitive value is returned by its own childJob task with Mask Outgoing enabled.
+2. Consume the sensitive value inside the child workflow (for example retrieve it from Vault there) and return only non-sensitive results, so it never becomes a job variable.
+3. Use a transformation or query on the childJob task output to pull out only the keys the parent needs.
+
+Option 2 does not work for reusable child workflows that receive different sensitive inputs on every call, which is what drove the customer to request the feature. Link the ticket to ENG-28482 and the earlier masking requests so Product Management sees the repeat demand (at least three enterprise customers have hit this gap).
+
+**Verification:**
+1. Confirm running platform version (blueprint versus ticket field) and that it is P6.1 or later.
+2. In the parent workflow, enable "Mask Outgoing" on the childJob task and rerun.
+3. Confirm the childJob task output is masked in the parent job view and that the value stays masked when piped into a downstream task.
+4. If per-variable masking is still required, confirm the ticket is classified as a Feature Request and linked to ENG-28482.
+
+---
+
+### [ISD-9623] Gateway-routed OAuth2 Integration reuses a rejected stored token after export/import: clear the stored token
+
+| Field | Value |
+|-------|-------|
+| **Ticket** | ISD-9623 |
+| **ENG Bug** | ENG-28529 (Major, Open: no re-authentication when a stored token is rejected; stored tokens carried across export/import) |
+| **Component** | Platform Integrations (gateway-routed OAuth2 model-driven Integration, IAG5 execution path) |
+| **Platform Version** | 6.5.2 per the ticket blueprint (source environment unknown; per-environment versions never confirmed). Gateway-routed Integrations require Platform 6.4+ with IAG5 5.4+; customer IAG5 version was never confirmed. Lab reproduction used Platform 6.5.2 and IAG5 5.5.2 |
+| **Severity** | S2 - Critical-priority ticket; Integration calls failed in the non-dev environments until the token was cleared. Moved to Pending after the fix |
+
+**Symptom:**
+A model-driven Integration routed through a gateway works in the source (dev) environment but fails in the other environments (stg/prod) with "Authentication Error: Authentication failed". The failure persists across restarts. The Integration had been created in the other environments by exporting it from the working environment and importing it. Vault-backed credentials also showed unrelated DENIED audit entries, which were a distraction and not the cause.
+
+**Root Cause:**
+The export carried the source environment's stored OAuth2 token along with the Integration configuration. The importing environments kept reusing that stored token, which the target API rejected, instead of performing a fresh login. A restart does not clear a stored token. Platform trusts a cached OAuth2 token while its expiry is in the future and does not re-authenticate on a 401. Confirmed in the customer environment: clearing the stored token on the imported Integrations forced a fresh login and calls succeeded. The mechanism (cached token reused without validation, no fresh login while unexpired) was independently reproduced in a lab, including a "copied instance inherits stale token" case with zero logins. Note the lab reproduced the token-trust behavior, but the exact export/import trigger was established from the customer-side fix and outcome, not from a controlled lab export/import. Several other mechanisms also produce the same message text (per-source-IP rejection, model without a security requirement, token returned under a non-standard field name, header-stripping proxy), so the message alone is not diagnostic.
+
+**Detection Hints:**
+- Same "Authentication Error: Authentication failed" message, but only in environments where the Integration was created by import from another environment
+- Restarting Platform or the gateway does not help; the failure is stable and repeatable
+- Target API access logs show a valid-looking Bearer token being rejected, and no new login requests from the failing environment
+- Gateway logs show the request reaching the target (not a dispatch-level crash); a pre-5.4 gateway produces a different, unmistakable error
+- Rule out first: source-IP allowlist on the target, model operation missing a security requirement, login response field name, TLS-inspecting proxy stripping the Authorization header
+
+**Workaround (immediate):**
+Clear the `token` value on the affected Integration in each importing environment, or re-save the Integration, so the next call performs a fresh login. Verify the source and target environments have separate credentials or client settings as intended. Avoid carrying tokens across environments when exporting Integrations until ENG-28529 is fixed.
+
+**Verification:**
+1. Trigger a job or task that calls the gateway-routed Integration in the previously failing environment
+2. Confirm the task completes without "Authentication Error: Authentication failed"
+3. Confirm the target API logs show a fresh login request from that environment, followed by a call with the newly issued token
+4. Restart Platform and repeat the call to confirm the fix persists
+
+---
+
+### [ISD-9593] Aruba AirWave adapter 403 on login: missing API-access role, blank auth_request_datatype, wrong login field names
+
+| Field | Value |
+|-------|-------|
+| **Ticket** | ISD-9593 |
+| **ENG Bug** | ENG-27979 (Backlog: FULL BODY debug log line drops the `&` separators, a logging-only defect in adapter-utils; NOT the cause of the 403) |
+| **Component** | Adapter (Aruba AirWave, open-source) - request_token (two-step token) auth flow, adapter connection properties |
+| **Platform Version** | 6.5.1 (from customer blueprint; adapter v1.0.9 and v1.0.11 both affected). Resolution applied and confirmed by the customer, not reproduced in a lab |
+| **Severity** | S2 - New integration never worked, 100% failure on every login, blocked customer development workflow |
+
+**Symptom:**
+Workflow task calling the AirWave adapter fails on every attempt with `AD.500` / "Error 403 received on request" from the login endpoint. The raw response is the AirWave HTML login page, not a JSON error. The same credentials work when the login is sent directly from an API client. Debug logging shows the outbound token request body with the form fields concatenated and no `&` separators (`credential_0=...credential_1=...destination=%2Fapi`); this is a red herring (see Root Cause). The failing request itself showed `Content-Length: 0`, meaning no login body was actually sent. Reproducible on the current and previous adapter versions; the integration never worked (not a regression).
+
+**Root Cause:**
+Four configuration problems, not an adapter code defect. The customer applied all fixes together and confirmed the adapter came online, so the single decisive change was not isolated:
+1. The AirWave account used by the adapter was not in a role that allows API access (a UI login working does not mean API access works). AirWave has no separate "API access" checkbox; the customer created a dedicated role of type AMP Administrator and a new dedicated account.
+2. The adapter's `auth_request_datatype` was blank. It did not reliably fall back to the action-level `requestDatatype: URLENCODE`, and the failing request had `Content-Length: 0` (empty body).
+3. `token_user_field` and `token_password_field` did not match AirWave's login form field names (`credential_0` and `credential_1`).
+4. `request.number_redirects` was 1. AirWave returns the session cookie on the initial 302 login response, so following the redirect was unnecessary.
+
+The missing `&` in the FULL BODY debug log was traced in source to a separate logging-only defect in adapter-utils (`scrubSensitiveInfo()`, ENG-27979). It does not affect the outbound request and was not the cause of the 403.
+
+Confirmed by: the customer tested the new account outside the adapter (curl from a workstation returned 302 plus a session cookie; a REST Call task from the platform host also worked), then the adapter came online and a live data pull returned valid XML. No lab reproduction was done.
+
+**Detection Hints:**
+- HTTP 403 with an HTML login page in `raw_response` from a login endpoint usually means the endpoint could not parse the body or the account is not allowed to use the API, not a bad-password error
+- Adapter debug log (`auth_logging`) shows the token request body without `&` between fields: ignore this, it is the logging-only defect (ENG-27979), not the wire format
+- The failing token request shows `Content-Length: 0`, which does point at the empty `auth_request_datatype`
+- Credentials work from an API client but not from the adapter
+- Adapter `auth_request_datatype` empty in adapter properties
+- Token request schema field names differ from the vendor's documented login form fields
+- Integration is new (never worked), and schema-only edits (placement, encrypt) had no effect
+- Check the vendor account's role or group for an API access permission
+
+**Workaround (immediate):**
+1. In AirWave, create a dedicated role (type AMP Administrator, enabled) and a dedicated account in that role for the adapter, and set the adapter `authentication.username` and `password` to it.
+2. Set `authentication.auth_request_datatype` to `URLENCODE`.
+3. Set `authentication.token_user_field` to `credential_0` and `authentication.token_password_field` to `credential_1`.
+4. Set `request.number_redirects` to `0`.
+5. Restart or re-save the adapter so the new properties take effect.
+6. Disable `auth_logging` and reset `console_level` to `error` after debugging.
+
+Usage note found in the same ticket: with `genericAdapterRequest`, `uriPath` must contain only the path (for example `/ap_search.xml`), not the full URL, otherwise the adapter builds a doubled URL and returns 404. Query parameters go in `queryData` as an object.
+
+**Verification:**
+1. Confirm the integration account has the API-access role on the target system.
+2. GET adapter properties and confirm `auth_request_datatype` is `URLENCODE`.
+3. Confirm `token_user_field` and `token_password_field` are `credential_0` and `credential_1`, and `number_redirects` is `0`.
+4. Run the failing workflow and confirm no 403, the adapter shows online, and a data call returns valid XML.
+5. Run a second call to confirm the session is reused or refreshed correctly.
+6. Disable `auth_logging` and reset `console_level` to `error`.
+
+---
+
+### [ISD-9590] Compliance Plan node IDs are scoped per config-tree revision: use configId as nodeId together with version
+
+| Field | Value |
+|-------|-------|
+| **Ticket** | ISD-9590 |
+| **ENG Bug** | N/A (not a platform defect; ENG keys in the artifacts are unrelated historical references) |
+| **Component** | Configuration Manager - Golden Config Trees / Compliance Plans (`updateCompliancePlan`, `getGoldenConfigTreeVersion`) |
+| **Platform Version** | Unverified (not stated on the ticket; SaaS deployment). Behavior observed by the customer on their instance; Compliance Plan APIs were added in `app-configuration_manager` 3.105.0 per docs |
+| **Severity** | S4 - Service request / how-to question; no outage, customer workflow blocked only while building automation |
+
+**Symptom:**
+A workflow that publishes a new Golden Config Tree revision works, but existing Compliance Plans keep pointing at the original revision. Calling `updateCompliancePlan` with only the node `version` changed fails with: "A node with the id '<node-id>' could not be found in the following Golden Config tree: <tree-name> (revision_N)". `nodeId` is mandatory on the call so it cannot be omitted, and the Tree tasks the customer tried did not appear to return node IDs for the new revision.
+
+**Root Cause:**
+Each Compliance Plan node entry pins `treeId`, `version` and `nodeId` together. The `nodeId` is scoped to a specific tree revision and is regenerated for every revision, so changing `version` while keeping the old `nodeId` fails because that ID does not exist in the new revision. The needed value is returned by `getGoldenConfigTreeVersion` for the new revision, but under the field name `configId` (per node, under `attributes`), not `nodeId`. The field-name mismatch between the Golden Config Tree and Compliance Plan APIs is what hid it.
+Confirmation: the tree-version output was inspected offline and the customer reported `updateCompliancePlan` succeeded with the corrected pair. The customer's confirmation is customer-reported, and no platform-side reproduction was performed. The naming difference is undocumented in the public Compliance Plans docs.
+
+**Detection Hints:**
+- Error text "A node with the id ... could not be found in the following Golden Config tree: ... (revision_N)" from `updateCompliancePlan`
+- The `nodeId` in the failing request equals the value stored from the previous revision, while `version` was bumped
+- Customer says Tree lookup tasks "do not return node IDs" (they return `configId` instead)
+- New revision was created but Compliance Plan runs still evaluate against the old revision
+
+**Workaround (immediate):**
+1. Run `getGoldenConfigTreeVersion` for the tree and the NEW revision.
+2. Match each Compliance Plan node to the corresponding node in the new revision using a stable attribute (for example the `deviceGroups` id, or the node name/path).
+3. Call `updateCompliancePlan` with that node's `configId` as `nodeId`, and the new `version`, updated together in the same call (also keep the existing `treeId`, `variables`, `devices`, `deviceGroups` for the node).
+
+**Verification:**
+1. `updateCompliancePlan` returns success instead of the "node ... could not be found" error.
+2. Fetch the Compliance Plan again and confirm each node shows the new `version` and the new `nodeId` (equal to the new revision's `configId`).
+3. Rerun the Compliance Plan and confirm results reflect the new revision's configuration.
+
+---
+
+### [ISD-9548] Vault getSecret 403 (service_configs path) in a node log is a non-blocking red herring; real fix was the IAG5 default execution mode (customer-asserted)
+
+| Field | Value |
+|-------|-------|
+| **Ticket** | ISD-9548 |
+| **ENG Bug** | N/A (ENG-24156 and ENG-25488 reviewed during triage, both different bugs, not matches) |
+| **Component** | IAG5 default execution mode (gateway configuration) surfaced through an integration workflow task; HashiCorp Vault secrets provider log noise |
+| **Platform Version** | 6.5.0 (per ticket Affects Version field; not verified on the nodes). IAG5 version not captured |
+| **Severity** | S3 - QA environment, two-node IAP; no production impact |
+
+**Symptom:**
+In a two-node IAP deployment using a self-hosted HashiCorp Vault (recently moved from kv1/token to kv2/AppRole with a namespace, `vault_read_only=true`), a workflow task that calls an integration stopped working. One node logged `Failed to retrieve secret from Vault at path service_configs_<name>: permission denied` (ItentialError, statusCode 403, code `getSecret Error`, from `VaultSecretsProvider.getSecret` during `Integrations.updateService` / `Encryption.decryptUpdatedValue`) along with a "schema validation may run against empty values" warning. The other node appeared to succeed, but the customer later found that success was false: the task completed and returned no data, while the same API call from curl returned the expected results. IAG servers had been modified shortly before.
+
+**Root Cause:**
+Customer-reported, not independently confirmed by support. The customer closed the ticket saying it was a setting issue in the IAG5 configuration: the gateway default execution mode should have been Direct, and it had been set to "default, no proxy". Support did not reproduce it and noted it would have expected different errors for that misconfiguration. The Vault 403 is consistent with a non-fatal lookup: Platform attempts a `service_configs_<service>` read when an integration is saved or updated, logs the denial as a warning, and carries on (this behavior was separately shown in a lab in a related gateway-routed integration case, ISD-9623). Earlier working theories (kv1 to kv2 migration, AppRole policy not covering `service_configs_*`, `readOnly` value) were never confirmed or ruled out because the customer did not supply the Vault audit log or `vaultProps` comparison.
+
+**Detection Hints:**
+- Vault 403 on a `service_configs_*` path is logged, yet the task failure does not correlate with any Vault-side policy or credential change
+- A task on the "healthy" node completes but returns empty data: check the output, not just the task status
+- Failures start right after IAG5 servers were changed or reinstalled
+- The failing task calls out through IAG5 rather than reading a Vault secret directly
+- Check the IAG5 default execution mode (Direct versus "default cluster, no proxy" versus "with proxy") before chasing Vault policy
+
+**Workaround (immediate):**
+Set the IAG5 default execution mode to Direct (customer-reported fix, applied in the gateway configuration) and rerun the workflow. Treat the `service_configs_*` 403 as background noise unless other secrets also fail to resolve.
+
+**Verification:**
+1. Note the current IAG5 default execution mode and change it to Direct.
+2. Rerun the failing task and confirm it returns real data (compare with the same API call made by curl), not just a completed status.
+3. Confirm the Vault 403 either stops appearing or appears without any task failure.
+4. If unresolved, compare `vaultProps` (redacted) across nodes and check the Vault audit log for the policy attached to the presented token.
+
+---
+
+### [ISD-9244] NetBox DELETE takes 20+ seconds: shorter reverse-proxy timeout produces 502/504 though the delete succeeds
+
+| Field | Value |
+|-------|-------|
+| **Ticket** | ISD-9244 |
+| **ENG Bug** | N/A (customer-infrastructure timeout, not a platform or adapter defect) |
+| **Component** | NetBox adapter (delete methods) / reverse proxy or application gateway in front of NetBox |
+| **Platform Version** | Not stated on the ticket; NetBox adapter version not captured |
+| **Severity** | S3 - Staging environment; delete completes in NetBox but the workflow task reports an error |
+
+**Symptom:**
+A workflow task calling a NetBox adapter delete method (for example delete device) fails with `Error 502 received on request`, later `504 Gateway Time-out`, and the adapter also logs a JSON parse warning because the error body is an HTML page (`Unexpected token '<'`). The device is actually removed from NetBox: a retry of the same DELETE returns 404. GET calls against the same NetBox succeed. Raising the adapter `attempt_timeout` to its maximum made no difference, and the same DELETE from Postman worked.
+
+**Root Cause:**
+Confirmed by the customer. NetBox DELETE on a device takes about 20 seconds because it removes dependent objects (interfaces, IP assignments, cables and similar) in one transaction, while GET calls finish in 1 to 2 seconds. A cloud application gateway in front of NetBox had a backend request timeout of about 20 seconds, so it cut the connection and returned 504 before NetBox could send its 204. The customer raised the gateway backend request timeout to 60 seconds and the delete workflow then succeeded.
+
+The investigation had an earlier, separate layer: a first 502 came from the customer's own reverse proxy in front of NetBox (reproduced with a direct curl from the platform host, and the customer later confirmed a fault in their NetBox gateway and fixed it). After that fix the 20-second gateway timeout was what remained.
+
+**Detection Hints:**
+- Adapter log line `handleEndResponse: Request call to DELETE ...: Call took: 20xxxms` followed by `Error 502` or `Error 504` received on request
+- Error body is an HTML page from the proxy or gateway product, not NetBox JSON, so the adapter also logs `Unexpected token '<' ... is not valid JSON`
+- The object is gone afterward: a repeated DELETE returns 404 (and a DELETE on an object with dependents can return 409 in about 1.5 seconds)
+- GET requests to the same NetBox are fast and succeed, so the connection itself is fine
+- Same DELETE straight from the platform host with curl also returns 502/504, which places the fault outside the adapter
+- Raising the adapter `attempt_timeout` has no effect because the cut happens at the proxy, not in the adapter
+
+**Workaround (immediate):**
+Raise the timeout on the proxy or application gateway in front of NetBox above the DELETE duration (for a cloud application gateway this is the backend HTTP settings request timeout; 60 to 120 seconds is a safe buffer). Also make the workflow tolerant of repeats: add an error-handling branch that treats a 404 on delete as success, since a timed-out DELETE has usually already completed. NetBox's own gunicorn timeout (120 seconds in this case) is not the limiting factor.
+
+**Verification:**
+1. Time the DELETE from the platform host against NetBox and note the duration in the adapter log (`Call took`).
+2. Compare it with the proxy or gateway backend request timeout.
+3. Raise the timeout, rerun the delete workflow, and confirm the task returns success with no 502/504.
+4. Confirm a repeated DELETE now returns 404 only when the object is genuinely gone.
+5. If adapter debug logging was enabled, disable `auth_logging` and reset `console_level` to `error`.
