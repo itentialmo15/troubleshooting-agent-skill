@@ -282,6 +282,7 @@ Released: **2026-05-13** (on-prem) / **2026-05-21** (cloud)
 |--------|-----------|-------------|--------|
 | **ENG-16911** | Automation Studio UI | Child job / transformation opens in new browser window instead of Studio tab | Backlog, no fix version |
 | **ISD-9261** | Automation Studio UI — childJob task panel | "Enable query" throws `TypeError: Cannot set properties of undefined (setting 'childJobLoopIndex')` on childJob tasks only; all other task types unaffected | No ENG bug filed yet; affects Platform 6.4.0 GA; confirmed repro by Ahmed Al-Zubidy |
+| **ENG-27014** | NSO adapter / itential-service_management — trace-id | Workflow trace-ID doesn't match NSO `devel.log` for JSON-RPC `run_action` calls (e.g. `sync-from`) on NSO < 6.7 (+ itential-tools-64); RESTCONF and NSO 6.7+ match. Adapter sends W3C `traceparent` only for NSO >= 6.7, and `run_action` ignores the legacy trace-id. Seen on Platform 6.5.1 / NSO adapter 7.10.0 | Fix MR in review; targeted for Oct 2026 maintenance release; no fix version set yet (ISD-9507) |
 
 ---
 
