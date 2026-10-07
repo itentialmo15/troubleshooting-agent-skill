@@ -124,6 +124,8 @@ For one working and one failing case from Phase 2's table, fetch both requests' 
 
 The likely root cause lives in the query-param diff. Close with **one explicit root-cause hypothesis sentence** derived directly from the diff (e.g. "the search endpoint's `type` enum doesn't include `command_template`/`json_form`; the backend returns an empty result set instead of an error, and the UI renders that as silent no-results").
 
+If the failure traces to a flaky or unavailable backend dependency rather than frontend logic, offer the engineer `/mock-server` as an option (response-sequencing / request-matching to simulate "fails every Nth call" or "works for X, fails for Y") — see its Decision Guidance — before concluding this is a UI bug. An offer the engineer accepts or declines, not an automatic step.
+
 ---
 
 ## Phase 4: Report
