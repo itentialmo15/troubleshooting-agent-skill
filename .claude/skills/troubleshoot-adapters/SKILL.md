@@ -19,6 +19,8 @@ argument-hint: "[adapter name]"
 - **Read `.env` for credentials** — never ask the user for credentials already in `.env`
 - **builder-skill invocations also use `.env`** — when invoking builder-skills for fixes or workarounds (after Phase 1 or Phase 2 confirms root cause), source `.env` before invoking so the skill targets the correct platform with the correct credentials
 - **Install (Phase 6): file staging is unattended, activation is not** — deploying a new adapter package's files to disk (`npm pack`/tar extract/`npm install` under `services/adapter-<name>/`) requires no consent and may proceed automatically. Everything that makes the new adapter *live* — the platform restart that loads the model, and creating the adapter/sample instance — requires explicit engineer consent first, enforced by `.claude/hooks/bash-safety-guard.py` (`RESTART_APPROVED=yes` / `ADAPTER_CREATE_APPROVED=yes`). Never add either marker without a clear "yes" from the engineer in the current conversation.
+- **`/mock-server` (Device Simulation Option 6, auth-failure reuse, Step 5i) is always offered, never auto-invoked** — present its Decision Guidance and wait for explicit engineer opt-in before invoking anything in that skill.
+- **Proxy+record (Step 5i) requires explicit per-capture engineer permission** before pointing mock_server's proxy mode at any real/customer system. Any recording or generated config it produces is masked by `/mock-server`'s write-time masking gate before it touches disk — see that skill's `CRITICAL SAFETY RULES` for the authoritative detail; this file does not restate it.
 
 ---
 
@@ -902,6 +904,24 @@ with patch('netmiko.ConnectHandler') as mock_ssh:
 
 **Limitation:** Tests Python logic only — does not exercise IAG, adapter settings, or platform integration.
 
+### Option 6 — mock_server (fastest, scriptable, multi-protocol, simulates auth failures)
+
+Mocks the target's *real* REST API — e.g. IAG v2.0 (`/login`, `/api/v2.0/accounts`, `/api/v2.0/collections/{name}/modules/{name}/execute`) or NetBox — rather than returning ad-hoc static output, and can simulate failure scenarios (timeout, rate-limited, auth-expired) the real target rarely produces on demand. **Before suggesting this option, point the engineer at `/mock-server`'s Decision Guidance** — it's one of six options here with its own fit criteria, never the default pick.
+
+```bash
+/mock-server start
+/mock-server configure automation-gateway-https
+# Point the IAG4/5 adapter's settings at ${MOCK_SERVER_URL} instead of the real host
+```
+
+**Limitation:** REST-API-backed integrations only — not useful for SSH/CLI device command parsing; no real device OS.
+
+---
+
+### Reproducing Auth-Failure Tickets Without the Real Target
+
+When a ticket looks like a 401/403/423/429-shaped auth failure and the real target isn't available or isn't safe to hit repeatedly, *offer* `/mock-server` as an option — point the engineer at its Decision Guidance — rather than switching to it automatically. If the engineer opts in, it provides pre-built scenario patterns (token-expired 401, forbidden 403, account-locked 423, rate-limited 429) and dynamic token-expiry simulation; re-enter the normal Phase 1-3 gather/debug flow against `${MOCK_SERVER_URL}` instead of the real host.
+
 ---
 
 ## Phase 5: GitLab Source Inspection
@@ -1270,6 +1290,16 @@ print('catch blocks without logging:', silent_catches)
 ```
 
 Same rule applies: **no file content is saved or included in any report**. Only the derived findings (patterns detected, required props, flags) are recorded.
+
+---
+
+### Step 5i — Proxy + Record Live Repro (mock_server)
+
+When the engineer has explicit permission to capture traffic from the real vendor system during a live repro, and wants a repeatable, replayable reproduction without re-hitting that system every time: offer `/mock-server` (point to its Decision Guidance first — this is an opt-in, not a default step).
+
+If the engineer opts in: `/mock-server record {REAL_TARGET_URL}` points mock_server in proxy mode at the real system, captures the traffic while the engineer exercises the failing workflow, and auto-generates a replayable mock config from the capture. That skill's write-time masking gate runs automatically before the config is saved — no raw credentials reach disk. Once generated, replay against the masked config for repeatable testing without touching the real/customer system again.
+
+**Safety:** proxy mode requires the engineer's explicit per-capture permission for the specific target system (see `/mock-server`'s `CRITICAL SAFETY RULES`) — never point it at a live customer production system without that approval.
 
 ---
 
