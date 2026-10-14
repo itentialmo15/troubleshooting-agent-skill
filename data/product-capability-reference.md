@@ -298,6 +298,7 @@ Released: **2026-05-13** (on-prem) / **2026-05-21** (cloud)
 | Task dialog won't open (22.x → P6 migration) | Missing `location` field on hand-authored tasks | Add `"location": "Application"` to affected tasks; platform fix: v8 migration (ENG-22105) |
 | childJob parent stuck waiting forever | WFE memory spike (ENG-22494) | Fixed in Platform 6.4.0 |
 | Enable query crashes on childJob | `childJobLoopIndex` TypeError (ISD-9261) | Workaround: use `makeData`/`merge`/JST upstream instead |
+| Dynamic dropdown with a JSON Transformation mapping is empty / shows `undefined` for a lower-privilege group (adapter-only dropdowns still work) (ISD-9675) | Group's roles allow the adapter methods but not Jst `runTransformation` / `getTransformation` → `POST /transformations/:id` returns 403 | Add a role with those two Jst methods to the group (custom run/read-only role preferred); confirm project membership (non-member gets 401 "Insufficient project permissions to run transformation"); user must re-login |
 
 ---
 
