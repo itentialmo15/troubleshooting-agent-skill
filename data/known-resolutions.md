@@ -992,3 +992,40 @@ Raise the timeout on the proxy or application gateway in front of NetBox above t
 3. Raise the timeout, rerun the delete workflow, and confirm the task returns success with no 502/504.
 4. Confirm a repeated DELETE now returns 404 only when the object is genuinely gone.
 5. If adapter debug logging was enabled, disable `auth_logging` and reset `console_level` to `error`.
+
+---
+
+### [ISD-9669] JSON form dropdowns empty: GET dropdown carrying a request body never fires; dependent dropdown can't be configured
+
+| Field | Value |
+|-------|-------|
+| **Ticket** | ISD-9669 |
+| **ENG Bug** | ENG-30868 (open, Backlog) |
+| **Component** | JSON Forms renderer / Automation Studio JSON Forms editor, REST-bound dropdowns |
+| **Platform Version** | 6.5.1 (customer-reported); ENG-30868 reproduced on a 6.6.1 test instance |
+| **Severity** | S3 — production remediation form blocked until fixed |
+
+**Symptom:**
+A JSON form with two REST-bound dropdowns (a list of golden config trees, then the versions of the selected tree) shows both dropdowns empty with no error. The first dropdown's own "Query Data" returns the trees, but the live dropdown and Preview stay empty and the browser Network tab shows no request. On the second dropdown, Data mapping stays blank and the editor shows "Options needed", so the field can't be saved.
+
+**Root Cause:**
+Two separate problems.
+1. First dropdown: the field is a GET that also has a request body saved on it (`body` in the form, `binding:body` in `bindingSchema`). Per the ENG-30868 analysis, the form renderer attaches the body to the GET, the browser's `fetch` throws a TypeError before sending, and the renderer swallows the error. Support did not independently reproduce the mechanism. ENG-30868 reproduces the symptom by importing the customer's production form export into a platform. How the body got onto the field is unknown. Deleting and recreating the field (no body) fixed it for the customer.
+2. Second dropdown: its route has a path variable (`/configuration_manager/configs/:treeId`). The editor builds Data mapping choices from a real response, and with no value for `:treeId` it has nothing to map from. Confirmed by outcome after the workaround below.
+
+**Detection Hints:**
+- A dropdown whose settings look right and whose "Query Data" works, but no request appears in the Network tab when it opens
+- The form export shows `method: "GET"` together with a `body`, and `binding:body` in `bindingSchema`
+- The configure popup shows a "Request Body Variables" section for that dropdown
+- Second dropdown: a `:variable` in the route and empty Data mapping options
+- Importing the form export into a test platform reproduces it (ENG-30868 attaches the customer's production form); recreating the dropdown on the same form fixes it
+- Negative hint: a dropdown on the same form without a body, or on other forms, works normally
+
+**Workaround (immediate):**
+1. First dropdown: delete the field and recreate it with the same data-source settings and no request body.
+2. Second dropdown: enter a real value for the path variable (for example a tree id copied from the first dropdown) in the query parameter, run the query, choose the source property (`/versions`) and property key, then set Field Dependency to the first dropdown's field.
+
+**Verification:**
+1. Opening the first dropdown sends a request in the Network tab and lists the trees.
+2. The second dropdown's Data mapping lists options and the form saves.
+3. Changing the first dropdown changes the second.
