@@ -916,6 +916,8 @@ Present draft to engineer:
 
 **On approval:** file using `createJiraIssue` (Atlassian MCP) and add a comment to the IPSO ticket linking to the new ENG ticket (internal visibility).
 
-**On skip/decline:** save draft to `{project_path}/data/{TIMESTAMP}/{TICKET_KEY}/eng_ticket_draft.md`. Note the path so the engineer can find it.
+**Collect & attach artifacts (after the ENG key exists):** cross-references `troubleshoot/SKILL.md` Step 5c rather than restating its mechanics — same masking-before-attach and explicit-approval-before-upload rules apply unchanged. IPSO investigations are lighter-weight than a full `/troubleshoot` run (offline triage, not a full investigation), so the candidate list is usually just: any attachments already pulled from the original IPSO ticket, plus a freshly-fetched workflow/template export if the IPSO ticket names one. If a `ui_report.md` exists for this ticket, offer the GIF recording from `troubleshoot-ui/SKILL.md` Phase 2 the same way Step 5c does.
 
-**`--auto` mode:** Save draft to `eng_ticket_draft.md` without filing. Do not file automatically — ENG ticket creation always requires engineer approval even in `--auto` mode.
+**On skip/decline:** save draft to `{project_path}/data/{TIMESTAMP}/{TICKET_KEY}/eng_ticket_draft.md`. Note the path so the engineer can find it. No artifact collection runs — there's no ENG ticket to attach to yet.
+
+**`--auto` mode:** Save draft to `eng_ticket_draft.md` without filing. Do not file automatically — ENG ticket creation always requires engineer approval even in `--auto` mode. Artifact collection/attachment never runs in `--auto` mode either, since it requires its own explicit approval gate.
