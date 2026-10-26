@@ -1170,3 +1170,39 @@ Two separate problems.
 1. Opening the first dropdown sends a request in the Network tab and lists the trees.
 2. The second dropdown's Data mapping lists options and the form saves.
 3. Changing the first dropdown changes the second.
+
+---
+
+### [ISD-9697] IAG4 inventory: Ansible-Vault-encrypted device password rejected ("unauthenticated") while the plain-text password works
+
+| Field | Value |
+|-------|-------|
+| **Ticket** | ISD-9697 |
+| **ENG Bug** | N/A (misconfiguration; not a product bug) |
+| **Component** | IAG4 — device inventory, `__ansible_vault` passwords / `ansible-vault encrypt_string` |
+| **Platform Version** | IAG4 (exact build not stated); `ansible-vault` from the IAG venv |
+| **Severity** | S4 — one new device type could not authenticate; other devices unaffected |
+
+**Symptom:**
+A device's `provider.password` set as an Ansible Vault object (`{"__ansible_vault": "$ANSIBLE_VAULT;1.2;AES256;<vault-id>..."}`) fails with "unauthenticated", while the same device works with the password in plain text. Other devices encrypted with the same vault-id label and key work. Both configured vault-id labels produced a valid-looking vault string and neither worked for the new device.
+
+**Root Cause:**
+The password contained a `$`. It was passed to `ansible-vault encrypt_string` as a command-line argument, so the shell treated `$<name>...` as a variable and expanded it to nothing. A shortened password was encrypted. The vault string itself is well-formed and decrypts correctly with the right key; it just decrypts to the wrong password. Confirmed by: re-encrypting the same password over stdin with `printf '%s' '<password>'` (single quotes) produced a string that authenticated (customer confirmed on the ticket).
+Ruled out: vault-id label or multiple keys (the label is only metadata, and the failing string used the same label as working devices), the `--name` flag (not part of the copied ciphertext), the `generic` device type.
+Related variant (verified locally with ansible-vault 2.13): `echo 'pw' | ansible-vault encrypt_string --stdin-name ...` encrypts a trailing newline (decrypts to `pw\n`); `printf '%s'` does not.
+
+**Detection Hints:**
+- Plain-text works, vault string fails, and other devices using the same vault key work. That points to the encrypted value differing from the real password, not to a key problem.
+- The password contains shell-special characters (`$`, `!`, backtick, `\`, `"`) or was supplied as an argument or via `echo`.
+- Check on the IAG host: write the string to a YAML var (`pw: !vault |` ...) and run `ansible localhost -m debug -a var=pw -e @file.yml --vault-id <label>@<password-file>`. If the output differs from the real password, or ends in `\n`, the encryption input was altered.
+- Negative hint: a wrong vault key would be expected to fail at decrypt time rather than at device login (expected, not verified on IAG4).
+
+**Workaround (immediate):**
+Re-encrypt with the password protected from the shell and paste the new string into the device:
+`printf '%s' 'THE_PASSWORD' | ansible-vault encrypt_string --vault-id <label>@<password-file> --stdin-name password`
+If the password itself contains a single quote, enter it at the interactive prompt instead (Ctrl-D twice). Longer term, exclude shell-special characters from generated device passwords.
+
+**Verification:**
+1. Update the device's `provider.password` with the new vault string.
+2. Test the connection (IAG UI, or Configuration Manager) and confirm authentication succeeds.
+3. Optionally decrypt as above and confirm it matches the real password exactly, with no trailing newline.
