@@ -20,7 +20,7 @@ argument-hint: "[page or component]"
 - Never type real customer credentials into the browser on either backend — the only credentials ever auto-entered are `.env`-sourced test/repro values, and only against a local target per the gate above; never a client secret into a password field.
 - **Tunneling (Step 0a) is only ever offered for a team-owned EKS/Themis repro environment from this or a related investigation — never for a live/already-deployed customer environment.** A tunnel exists to make testing the team's own infrastructure genuinely local, not to relabel a customer's real system as "local" to work around the login-automation gate; offering it outside the repro-environment case would defeat its purpose. Always tear the tunnel down in Phase 4 cleanup.
 - **UI Element Discovery Retry Policy is deliberately distinct from CLAUDE.md's Connectivity Retry Policy (5 attempts/5s gaps)** — that policy is scoped to genuine network requests (platform/Jira/GitLab/GitHub API calls, SSH checks, health polls); it does not apply to `find()` failing to locate a DOM element, because repeating an identical query against a DOM that isn't going to change produces the same empty result every time. Use 2 rounds × up to 2 phrasings (≤4 `find()` calls), 2s between rounds, then escalate to the engineer — never silently retry a `find()` call in a 5×5s loop borrowed from the network policy. The genuine network calls this sub-skill does make (`read_network_requests`, the login-verification fetch) still use the standard 5×5s policy unchanged.
-- Visual evidence (screenshots) is session-only — no tool in this repo saves one to disk. Never claim a screenshot was "saved" anywhere; the written report carries only textual evidence (page dumps, network/console output).
+- **Plain screenshots are always session-only on both backends — no tool saves one to disk.** Never claim a screenshot was "saved" anywhere; the written report carries textual evidence (page dumps, network/console output) by default. The one documented exception is an explicit GIF recording via the Engineer's Chrome backend's `gif_creator` tool (see Phase 2's "GIF Recording for ENG Escalation") — it genuinely persists a file, but only by explicit engineer opt-in, only on that backend, and never covering login/credential entry (a pixel recording can't be redacted after the fact the way text/logs can).
 - Prefer testing against an isolated repro environment (`/deploy-containers`) over the customer's live production UI when the bug isn't data-dependent, to avoid risking accidental state changes on a customer's system; read-only navigation against a live customer environment is fine, but the "requires approval" rule above applies with extra weight there.
 - Requires one of the two browser backends (`mcp__Claude_Browser__*` or `mcp__claude-in-chrome__*`, per Step 0) — if the chosen backend's first `navigate`/`tabs_context` call fails or is denied, try the other backend once; if both are unavailable, abort cleanly with a plain-language message and offer a fallback: draft unverified reproduction steps from the ticket text alone for the engineer to run manually, explicitly labeled as unverified.
 
@@ -105,6 +105,20 @@ Set the viewport once (`resize_window(preset="desktop")`, or a fixed size for by
 
 If the bug appears intermittent, repeat the specific failing case up to 3 times and report the per-attempt pattern rather than a single pass/fail verdict.
 
+**Optional: GIF Recording for ENG Escalation.** If this investigation is heading toward an ENG escalation and the engineer wants video evidence beyond the textual pass/fail table, offer a GIF recording of the reproduction sequence — but only on the **Engineer's Chrome backend** (`mcp__claude-in-chrome__*`); `gif_creator` doesn't exist on the Isolated backend. If Isolated was chosen for this investigation and the engineer wants this evidence, say so plainly and offer to redo just the reproduction sequence on Engineer's Chrome rather than silently skipping it.
+
+**Critical scoping rule: never record during login.** `gif_creator` is a pixel-level screen capture — unlike text or logs, a credential visibly typed into a password field cannot be redacted after the fact. Only start recording once Phase 1 (Login) has already completed and the engineer is on the reproduction surface.
+
+Mechanics (stateful, multi-call — not a single call with a duration):
+1. `gif_creator(action: "start_recording", tabId: {TAB_ID})`
+2. `computer(action: "screenshot")` immediately — seeds the first frame (per the tool's own guidance)
+3. Perform the control-group reproduction sequence from above
+4. `computer(action: "screenshot")` immediately before stopping — seeds the last frame
+5. `gif_creator(action: "stop_recording", tabId: {TAB_ID})`
+6. `gif_creator(action: "export", tabId: {TAB_ID}, download: true, filename: "{TICKET_KEY}-repro.gif")`
+
+`export` triggers a real browser download — it does not return a file path. After export, check the engineer's default Downloads folder for the file; if it isn't there (a non-default download location), ask the engineer where it landed rather than guessing. Once located, this file becomes a candidate artifact for the ENG-ticket "Collect & Attach Artifacts" step (`troubleshoot/SKILL.md` Step 5c) — this skill doesn't invent its own attachment mechanism.
+
 ---
 
 ## Phase 3: Diagnose
@@ -157,10 +171,13 @@ Write `{project_path}/data/{TIMESTAMP}/{TICKET_KEY}/ui_report.md`:
 {The one-sentence hypothesis from Phase 3}
 
 ## Evidence Note
-Visual screenshots captured during this investigation exist only in the live session
-transcript — no tool in this repo persists a screenshot to disk. Anyone needing the
-visual evidence must have been present in the session or have it relayed in chat.
-This report's evidence is limited to the textual page/network/console output above.
+Plain screenshots captured during this investigation exist only in the live session
+transcript — no tool persists one to disk. {If a GIF recording was captured in Phase 2:
+"A GIF recording of the reproduction sequence was captured and saved to {GIF_PATH} —
+see the ENG ticket's attachments if this was escalated." Otherwise: "Anyone needing
+visual evidence beyond this report must have been present in the session or have it
+relayed in chat."} This report's evidence is otherwise limited to the textual
+page/network/console output above.
 ```
 
 Reproduction Steps / Confirmed Behavior / Root Cause map directly onto the existing IPSO→ENG promotion template's Steps to Reproduce / Actual Result / Expected Result fields (`troubleshoot-triage/SKILL.md:892-906`) — triage's promotion step should pull from `ui_report.md` when one exists.

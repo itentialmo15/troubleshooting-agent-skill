@@ -2121,6 +2121,63 @@ mcp__claude_ai_Atlassian_MCP__createIssueLink(
 
 ---
 
+### Step 5c — Collect & Attach Artifacts
+
+Runs **after** Step 5b creates/updates the ENG ticket — an issue key must exist before anything can be attached to it. This is the authoritative mechanism for artifact collection and Jira attachment; `/troubleshoot-triage`'s IPSO→ENG promotion cross-references this step rather than restating it.
+
+**1. Assemble candidates:** every file already present under `data/{TIMESTAMP}/{TICKET_KEY}/` referenced in the Artifacts table above (`diagnostic_report.md`, `known_issues.md`, `job_{JOB_ID}.json`, `{adapter_name}_settings.json`) plus any sub-skill outputs that exist for this investigation (`log_report.md`, `ui_report.md`, etc.).
+
+**2. Fetch missing workflow/template artifacts fresh:** if `ticket_context.md` names a specific workflow/template and its full JSON definition isn't already saved as a file, GET it now and save under `data/{TIMESTAMP}/{TICKET_KEY}/artifacts/workflow_{name}.json` — the same GET-and-save idiom already used for scratch edits in `troubleshoot-workflows/SKILL.md`, but kept as a permanent collected artifact:
+
+```bash
+mkdir -p "data/${TIMESTAMP}/${TICKET_KEY}/artifacts"
+curl -sk "{PLATFORM_URL}/workflow_builder/workflows/{WORKFLOW_ID}?token={TOKEN}" \
+  -o "data/${TIMESTAMP}/${TICKET_KEY}/artifacts/workflow_{name}.json"
+```
+
+**3. Offer the GIF recording:** if `ui_report.md` exists for this ticket (meaning `/troubleshoot-ui` ran) and the Engineer's Chrome backend was used, offer the GIF recording described in `troubleshoot-ui/SKILL.md` Phase 2 — ask once, don't assume either way.
+
+**4. Mask every candidate before it's attach-eligible — not log files only.** Workflow/template JSON can carry hardcoded connection strings or embedded credentials in task configs, so this runs unconditionally on every text/JSON candidate, not just ones that look suspicious. Write the transform to a script file rather than an inline `-c` one-liner — the inline-quoted version of this regex (as it exists in `troubleshoot-logs/SKILL.md` Phase 9) breaks under bash's quoting rules when actually run; this is a known, verified-working replacement, not a restyling:
+
+```python
+# save as /tmp/mask_artifact.py, then: python3 /tmp/mask_artifact.py "{ARTIFACT_FILE}"
+import re, sys
+
+artifact_file = sys.argv[1]
+TOKEN_RE = re.compile(r'(token|password|secret|key)([\"\':\s]+)([A-Za-z0-9+/=_-]{10,})', re.IGNORECASE)
+BEARER_RE = re.compile(r'Bearer\s+[A-Za-z0-9+/=_.-]+')
+
+with open(artifact_file) as f:
+    content = f.read()
+
+content = TOKEN_RE.sub(lambda m: f"{m.group(1)}{m.group(2)}[MASKED]", content)
+content = BEARER_RE.sub('Bearer [MASKED]', content)
+
+with open(artifact_file, 'w') as f:
+    f.write(content)
+```
+
+**5. Present the full candidate list for explicit approval before uploading anything.** This is a new, distinct write action from filing the ticket itself — show every filename + size and wait for an explicit "yes" before uploading any of them:
+
+```
+The following masked artifacts are ready to attach to {ENG_TICKET_KEY}:
+  1. diagnostic_report.md (12 KB)
+  2. workflow_{name}.json (4 KB, masked)
+  3. {TICKET_KEY}-repro.gif (850 KB)
+Attach all of these? [yes / pick individually / none]
+```
+
+**6. Upload each approved file** — no MCP tool in this session's Atlassian connector exposes a dedicated attachment-upload action, so this uses the repo's established fallback of a direct curl against Jira's own REST API:
+
+```bash
+curl -sk -X POST "${JIRA_URL}/rest/api/3/issue/${ENG_TICKET_KEY}/attachments" \
+  -H "X-Atlassian-Token: no-check" \
+  -u "${JIRA_USER}:${JIRA_API_TOKEN}" \
+  -F "file=@{LOCAL_FILE_PATH}"
+```
+
+---
+
 ## Phase 6: Resolution Learning
 
 Run this phase when a fix is confirmed — either by Engineering releasing a patch, or by a workaround resolving the customer's issue.
