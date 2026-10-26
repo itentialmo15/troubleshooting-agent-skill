@@ -1004,6 +1004,70 @@
     </div>
   </div>
 
+  <!-- Key Capabilities -->
+  <div class="section">
+    <div class="section-label">Capabilities</div>
+    <h2>Key Capabilities</h2>
+    <div class="exec-problem-grid">
+      <div class="exec-problem-card">
+        <div class="exec-problem-icon">&#129517;</div>
+        <div>
+          <div class="exec-problem-title">Orchestrated Investigation Lifecycle</div>
+          <div class="exec-problem-desc"><span class="inline-code">/troubleshoot</span> drives a 3-phase core investigation (Triage &rarr; Symptom Analysis &amp; Routing &rarr; Reproduce &amp; Workaround) plus 4 closing phases (Diagnostic Report &rarr; Eng Escalation &rarr; Resolution Learning &rarr; Manager Escalation).</div>
+        </div>
+      </div>
+      <div class="exec-problem-card">
+        <div class="exec-problem-icon">&#129513;</div>
+        <div>
+          <div class="exec-problem-title">8 Specialist Diagnostic Sub-Skills</div>
+          <div class="exec-problem-desc">Adapters, Workflows, Jobs, Databases, Infrastructure, Logs, OSS Tools, and UI &mdash; each owns one failure domain and authenticates itself from <span class="inline-code">.env</span>.</div>
+        </div>
+      </div>
+      <div class="exec-problem-card">
+        <div class="exec-problem-icon">&#128229;</div>
+        <div>
+          <div class="exec-problem-title">Offline-First Triage</div>
+          <div class="exec-problem-desc">Reads Jira, Confluence, and live docs and mines past cases before ever touching the platform; produces a targeted question list and pre-investigation summary.</div>
+        </div>
+      </div>
+      <div class="exec-problem-card">
+        <div class="exec-problem-icon">&#127959;&#65039;</div>
+        <div>
+          <div class="exec-problem-title">On-Demand Reproduction Environments</div>
+          <div class="exec-problem-desc">Docker (local/VM), Kubernetes/EKS via Helm, or full VM topologies via Themis/AWS &mdash; each gated by an explicit CPU/memory confirmation before anything billable is created.</div>
+        </div>
+      </div>
+      <div class="exec-problem-card">
+        <div class="exec-problem-icon">&#128260;</div>
+        <div>
+          <div class="exec-problem-title">Self-Improving Knowledge Loop</div>
+          <div class="exec-problem-desc"><span class="inline-code">/contribute</span> turns closed investigations into resolution entries, version notes, or skill fixes, and opens a reviewed GitHub PR back into the skill family itself.</div>
+        </div>
+      </div>
+      <div class="exec-problem-card">
+        <div class="exec-problem-icon">&#129658;</div>
+        <div>
+          <div class="exec-problem-title">Deep Platform Diagnostics</div>
+          <div class="exec-problem-desc">Vendored platform skills (MongoDB, Redis, Prometheus, IAP, IAG) produce scored HEALTHY/DEGRADED/CRITICAL life reports when a sub-skill surfaces a matching signal.</div>
+        </div>
+      </div>
+      <div class="exec-problem-card">
+        <div class="exec-problem-icon">&#128737;&#65039;</div>
+        <div>
+          <div class="exec-problem-title">Safety Guardrails Everywhere</div>
+          <div class="exec-problem-desc">Read-only against the platform, MongoDB, and Redis by default; explicit engineer approval required for every write, restart, Jira post, or billable resource.</div>
+        </div>
+      </div>
+      <div class="exec-problem-card">
+        <div class="exec-problem-icon">&#128421;&#65039;</div>
+        <div>
+          <div class="exec-problem-title">Browser-Driven UI Bug Reproduction</div>
+          <div class="exec-problem-desc">The newest sub-skill reproduces frontend bugs no API/log/DB signal can confirm, diffing network requests between a working and a broken case.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Target Audience -->
   <div class="section">
     <div class="section-label">Personas</div>
@@ -1254,7 +1318,7 @@
     </p>
     <div class="stat-row">
       <div class="stat-card"><div class="num">8</div><div class="lbl">Investigation Phases</div></div>
-      <div class="stat-card"><div class="num">6</div><div class="lbl">Specialist Sub-Skills</div></div>
+      <div class="stat-card"><div class="num">8</div><div class="lbl">Specialist Sub-Skills</div></div>
       <div class="stat-card"><div class="num">150+</div><div class="lbl">Min Saved Per Ticket</div></div>
       <div class="stat-card"><div class="num">12+</div><div class="lbl">Known Resolution Patterns</div></div>
       <div class="stat-card"><div class="num">0</div><div class="lbl">Unauthorized Jira Writes</div></div>
@@ -1385,7 +1449,7 @@ flowchart TD
       <div class="card t-magenta">
         <div class="icon">&#x2733;</div>
         <h3>Orchestrator + Subagent</h3>
-        <p>One primary skill coordinates the investigation. It delegates targeted diagnostics to six specialist sub-skills — each owning a specific domain (adapters, databases, infra, etc.). Sub-skills run independently with their own authentication and report findings back to the orchestrator for synthesis.</p>
+        <p>One primary skill coordinates the investigation. It delegates targeted diagnostics to eight specialist sub-skills — each owning a specific domain (adapters, databases, infra, UI, etc.). Sub-skills run independently with their own authentication and report findings back to the orchestrator for synthesis.</p>
         <span class="tag">Multi-agent</span><span class="tag">Delegation</span>
       </div>
       <div class="card t-purple">
@@ -1483,6 +1547,65 @@ flowchart TD
         <h3>/troubleshoot-logs</h3>
         <p>Log collection from IAP, IAG, MongoDB, Redis, and load balancers across Docker, SSH/VM, Kubernetes/EKS, and AWS CloudWatch. Filters by incident window. Masks sensitive values. Cross-component correlation.</p>
         <span class="tag">Docker</span><span class="tag">SSH</span><span class="tag">CloudWatch</span>
+      </div>
+      <div class="card t-blue">
+        <div class="icon">OS</div>
+        <h3>/troubleshoot-oss</h3>
+        <p>GitHub-sourced diagnostics for open-source Itential tools — Ansible deployer, Helm charts (iap-helm/iag5-helm/iag4-helm), job-archiver, IPCTL, itential-MCP, itential-dev-stack. No auth required — public GitHub API for release correlation, CHANGELOG diffing, and issue matching.</p>
+        <span class="tag">Deployer</span><span class="tag">Helm</span><span class="tag">GitHub API</span>
+      </div>
+      <div class="card t-magenta">
+        <div class="icon">UI</div>
+        <h3>/troubleshoot-ui</h3>
+        <p>Browser-driven reproduction of frontend interaction bugs no API/log/DB signal can confirm. Picks an isolated pane or the engineer's own Chrome, then diffs network requests between a working case and a broken one to find root cause.</p>
+        <span class="tag">Browser repro</span><span class="tag">Network diff</span><span class="tag">Host-gated login</span>
+      </div>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Supporting / Operational Skills -->
+  <div class="section">
+    <div class="section-label">Supporting Skills</div>
+    <h2>Supporting &amp; Operational Skills</h2>
+    <p class="desc">Beyond ticket diagnosis, these skills close the loop — feeding fixes and learnings back into the skill family, provisioning reproduction infrastructure, and keeping vendored skills current.</p>
+    <div class="cards">
+      <div class="card t-olive">
+        <div class="icon">&#x1F501;</div>
+        <h3>/contribute</h3>
+        <p>Turns a closed investigation into a formatted resolution entry, version note, or skill fix, then opens a GitHub PR — full branch → write → diff → approve → commit → push → PR flow. Vendor-aware: redirects a vendor-skill fix to <span class="inline-code">LOCAL-EXTENSIONS.md</span> instead of the synced <span class="inline-code">SKILL.md</span>.</p>
+        <span class="tag">Resolution entries</span><span class="tag">Version notes</span><span class="tag">GitHub PR</span>
+      </div>
+      <div class="card t-blue">
+        <div class="icon">&#x1F6E0;</div>
+        <h3>/deploy-containers</h3>
+        <p>Provisions a containerized reproduction environment for Phase 3 — Docker Compose (local or on a VM) or Kubernetes/EKS via Helm. Same ECR <span class="inline-code">CRED_MODE</span> auth pattern as <span class="inline-code">/themis-aws-deploy</span>.</p>
+        <span class="tag">Docker</span><span class="tag">Kubernetes</span><span class="tag">EKS</span>
+      </div>
+      <div class="card t-purple">
+        <div class="icon">&#x1F527;</div>
+        <h3>/sync-vendor-skills</h3>
+        <p>Post-sync review and repair of <span class="inline-code">LOCAL-EXTENSIONS.md</span> files. Reads the validation report, diffs old vs. new vendor step content, and drafts label fixes or content merges with engineer approval.</p>
+        <span class="tag">Post-sync repair</span><span class="tag">LOCAL-EXTENSIONS.md</span>
+      </div>
+      <div class="card t-red">
+        <div class="icon">&#x1FA7A;</div>
+        <h3>Platform Skills Family</h3>
+        <p><span class="inline-code">/mongodb</span>, <span class="inline-code">/redis</span>, <span class="inline-code">/prometheus</span>, <span class="inline-code">/itential-platform</span>, <span class="inline-code">/itential-gateway</span> — deep scored HEALTHY/DEGRADED/CRITICAL life-reports, wired in automatically when a diagnostic sub-skill surfaces a matching signal (e.g. replica lag, sustained CPU &gt; 2&times; cores).</p>
+        <span class="tag">Scored life reports</span><span class="tag">Auto-wired</span>
+      </div>
+      <div class="card t-magenta">
+        <div class="icon">&#x1F9EA;</div>
+        <h3>/mock-server</h3>
+        <p>Clones and runs an external multi-protocol dependency simulator — fixture configs, failure-scenario switching, response sequencing, proxy+record capture. Always presented with explicit fit criteria; never auto-invoked.</p>
+        <span class="tag">Dependency simulation</span><span class="tag">Opt-in only</span>
+      </div>
+      <div class="card t-orange">
+        <div class="icon">&#x1F4E1;</div>
+        <h3>/nso-server</h3>
+        <p>Installs a real Cisco NSO instance and connects <span class="inline-code">adapter-nso</span> to it. Install package location, NED packages, and the adapter's connection protocol (NETCONF/RESTCONF/JSON-RPC) are always gathered interactively, never assumed.</p>
+        <span class="tag">Cisco NSO</span><span class="tag">adapter-nso</span>
       </div>
     </div>
   </div>
@@ -1592,6 +1715,32 @@ flowchart TD
         <p>Sends escalation messages to support channel and manager escalation channel. Used in Phase 7 for SLA breach notification and manager escalation messaging. Requires Slack MCP.</p>
         <span class="tag">Write w/ approval</span>
       </div>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Cross-Cutting Capabilities -->
+  <div class="section">
+    <div class="section-label">Everywhere</div>
+    <h2>Cross-Cutting Capabilities</h2>
+    <p class="desc">These five apply uniformly across every skill in the family, not just one sub-skill — they're enforced at the orchestrator, the hook layer, or the shared conventions every <span class="inline-code">SKILL.md</span> follows.</p>
+    <div class="rules">
+      <div class="rule"><div class="rule-text">
+        <strong>Safety rules</strong> — read-only against the platform API, MongoDB, and Redis by default; explicit engineer approval required for every write, restart, Jira post, or environment-provisioning action. Adapter debug mode cleanup is mandatory, never optional.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Auth reuse</strong> — every skill runs the same <span class="inline-code">.env</span> auto-discovery scan across the whole project tree (root, <span class="inline-code">environments/</span>, <span class="inline-code">repro/{TICKET}/</span>, every subdir), and reuses a cached <span class="inline-code">.auth.json</span> token for 50 minutes before re-authenticating.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Connectivity retry policy</strong> — standardized 5 attempts &times; 5-second gaps, fail fast, for every network call across every skill (platform API, Jira, GitLab, GitHub, SSH, Docker/K8s health polls). No skill is allowed to loop indefinitely on a dead connection.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Per-ticket data layout</strong> — timestamped <span class="inline-code">data/&lt;ts&gt;/&lt;TICKET&gt;/</span> folders (<span class="inline-code">ticket_context.md</span>, <span class="inline-code">diagnostic_report.md</span>, <span class="inline-code">ui_report.md</span>, etc.) hold per-investigation artifacts, while two append-only shared files — <span class="inline-code">known-resolutions.md</span> and <span class="inline-code">product-capability-reference.md</span> — accumulate knowledge across every investigation.
+      </div></div>
+      <div class="rule"><div class="rule-text">
+        <strong>Vendor sync</strong> — two external skill libraries (GitHub <span class="inline-code">builder-skills</span>, GitLab <span class="inline-code">platform-skills</span>) are vendored in on-demand, with automated staleness checks every session and a strict never-edit-vendor-files policy — extensions go in <span class="inline-code">LOCAL-EXTENSIONS.md</span> instead.
+      </div></div>
     </div>
   </div>
 
@@ -3682,6 +3831,8 @@ K8S_ADAPTER_PV_SIZE=10Gi</pre></div>
       <div class="rule"><div class="rule-text"><strong>bash-safety-guard.py enforces consent at the shell level</strong> — A <code>PreToolUse</code> hook intercepts every Bash command before execution. It blocks: MongoDB/Redis writes, <code>systemctl restart</code> / <code>docker restart</code> / <code>pm2 restart</code> / <code>kubectl rollout restart</code> unless prefixed with <code>RESTART_APPROVED=yes</code>, and <code>POST /adapters</code> or <code>POST /adapters/import</code> unless prefixed with <code>ADAPTER_CREATE_APPROVED=yes</code>. These markers are never added without a clear "yes" from the engineer in the current conversation. The guard also prevents accidental <code>git add data/</code> (customer PII in investigation folders).</div></div>
       <div class="rule"><div class="rule-text"><strong>No environment provisioning without a method + CPU/memory confirmation</strong> — before <code>/deploy-containers</code> or <code>/themis-aws-deploy</code> creates any billable resource (EC2 instance, EKS cluster, DocumentDB, ElastiCache, or a Docker container), the engineer sees exactly which deployment method is being used and the CPU/memory each component (Platform, MongoDB, Redis, Gateway, adapters) will get, and must type an explicit "yes" before anything is created. Individual infra-creation prompts each restate CPU/RAM on their own; Kubernetes and Themis builds also get one consolidated summary across every component right before the application itself goes live.</div></div>
       <div class="rule"><div class="rule-text"><strong>Read-only UI interaction</strong> — <code>/troubleshoot-ui</code> may navigate, search, and click to reproduce a browser bug freely; any action that would create, modify, save, or delete a platform asset through the UI requires the same explicit engineer approval as a direct API POST/PUT/DELETE. Browser backend selection (the isolated built-in Browser pane vs. the engineer's own Chrome via Claude-in-Chrome) is always an explicit engineer choice — never a silent default, since one option operates on the engineer's real browser profile. Automated login only ever runs against a local/sandboxed target host (<code>localhost</code>/<code>127.0.0.1</code>/<code>.localhost</code>/<code>.test</code>, including a team repro environment tunneled to localhost) — never against a live customer environment, and this gate cannot be waived by engineer authorization. Against any non-local target, the sub-skill only verifies an existing session and hands off to the engineer to log in themselves.</div></div>
+      <div class="rule"><div class="rule-text"><strong>Mock server is offered, never auto-invoked, and proxy+record masking is mandatory</strong> — <code>/mock-server</code> is always presented as an option with explicit fit criteria (its own Decision Guidance); no skill invokes it based on ticket signals alone. Before any mock_server recording or auto-generated config touches disk, is displayed, or is committed via <code>/contribute</code>, credential-bearing header/body values are masked (first 6 + last 4 chars). This is a write-time gate, not display-time — unlike live log tailing, mock_server persists the capture as a real file.</div></div>
+      <div class="rule"><div class="rule-text"><strong>ENG ticket attachments require their own explicit approval, separate from filing the ticket itself</strong> — every candidate artifact (existing investigation files, freshly-fetched workflow/template JSON, an optional GIF recording) is masked using the same convention as <code>/troubleshoot-logs</code> before it is ever eligible for upload, and the full file list is shown to the engineer for an explicit "yes" before any attachment is uploaded via Jira's <code>/attachments</code> endpoint. A GIF recording (via <code>/troubleshoot-ui</code>, Engineer's Chrome backend only) never covers login/credential entry — only post-login reproduction actions.</div></div>
     </div>
   </div>
 
@@ -4952,7 +5103,7 @@ tofu destroy \
       <div class="card t-magenta">
         <div class="icon">RE</div>
         <h3>Reproduce</h3>
-        <p>Locates the reported UI surface from the ticket's own wording using a capped discovery policy, then tests the broken case <strong>and</strong> every still-working case as a control group — builds a pass/fail table before asserting scope.</p>
+        <p>Locates the reported UI surface from the ticket's own wording using a capped discovery policy, then tests the broken case <strong>and</strong> every still-working case as a control group — builds a pass/fail table before asserting scope. Can optionally record a GIF of the reproduction (Engineer's Chrome backend only) for ENG escalation.</p>
       </div>
       <div class="card t-orange">
         <div class="icon">DI</div>
@@ -4984,8 +5135,12 @@ tofu destroy \
         <div class="rule-body">Distinct from CLAUDE.md's Connectivity Retry Policy (5 attempts / 5s gaps), which is scoped to genuine network requests. A <code>find()</code> call against a DOM that isn't going to change doesn't get more likely to succeed through repetition — this sub-skill caps element discovery at 2 rounds × up to 2 query phrasings (≤4 <code>find()</code> calls), 2s between rounds, then escalates to the engineer instead of guessing further.</div>
       </div>
       <div class="rule-item">
-        <div class="rule-label">No screenshot persistence</div>
-        <div class="rule-body">No tool in this repo saves a screenshot to disk — every Browser pane / Claude-in-Chrome action returns data into the current turn only. The written report carries textual evidence (page dumps, network/console output) only; visual evidence stays session-only.</div>
+        <div class="rule-label">Plain screenshots are session-only — GIF recording is the one documented exception</div>
+        <div class="rule-body">No tool saves a plain screenshot to disk on either backend. The one exception is an explicit GIF recording via Claude-in-Chrome's <code>gif_creator</code> tool (Engineer's Chrome backend only, explicit engineer opt-in) — it genuinely persists a <code>.gif</code> file via browser download. Recording never covers login/credential entry: a pixel capture can't be redacted after the fact the way text/logs can, so it only starts once Phase 1 Login has already completed.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">GIF Recording for ENG Escalation</div>
+        <div class="rule-body">Offered (never assumed) when an investigation is heading toward ENG escalation. Mechanics: <code>start_recording</code> → seed first frame → perform the reproduction → seed last frame → <code>stop_recording</code> → <code>export</code> (triggers a real browser download). The resulting file becomes a candidate artifact for <code>/troubleshoot</code>'s Step 5c — Collect &amp; Attach Artifacts, which masks and attaches it to the ENG ticket only after explicit engineer approval.</div>
       </div>
       <div class="rule-item">
         <div class="rule-label">Read-only UI interaction</div>
@@ -5026,6 +5181,47 @@ tofu destroy \
       <div class="rule-item">
         <div class="rule-label">Approval gates</div>
         <div class="rule-body">Draft is shown for review before saving. Posting to the ISD ticket as an internal comment requires a separate explicit <code>yes</code> — never posted automatically.</div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- Phase 5 escalation note -->
+  <div class="section">
+    <h2 id="sk-phase5">&#9632; Phase 5 — Engineering Escalation Pack</h2>
+    <p class="desc">When a platform bug is confirmed: drafts the ENG bug report, creates/updates the ENG Jira ticket, links it to the ISD ticket, then collects and attaches supporting artifacts — all gated by their own explicit approvals.</p>
+
+    <div class="cards" style="margin-bottom:20px;">
+      <div class="card t-blue">
+        <div class="icon">5a</div>
+        <h3>Write the Bug Report</h3>
+        <p>Saves <code>eng_bug_report.md</code> — summary, affected versions, steps to reproduce, root cause analysis, workaround, artifacts index, customer impact.</p>
+      </div>
+      <div class="card t-orange">
+        <div class="icon">5b</div>
+        <h3>Create or Update ENG Ticket</h3>
+        <p>Files via Jira, links to the ISD ticket. Requires explicit engineer approval before filing — same as every other Jira write in this repo.</p>
+      </div>
+      <div class="card t-olive">
+        <div class="icon">5c</div>
+        <h3>Collect &amp; Attach Artifacts</h3>
+        <p>Runs only after the ENG ticket exists. Assembles existing investigation files, fetches missing workflow/template JSON fresh, offers a <code>/troubleshoot-ui</code> GIF recording if one applies, masks every candidate, then uploads only what the engineer explicitly approves via Jira's attachment API.</p>
+      </div>
+    </div>
+
+    <div class="rule-list">
+      <div class="rule-item">
+        <div class="rule-label">Attachment approval is separate from ticket-filing approval</div>
+        <div class="rule-body">Approving the ENG ticket content (Step 5b) does not also approve attaching files to it. Step 5c shows the full candidate file list and waits for its own explicit "yes" before uploading anything.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Every artifact is masked before it's attach-eligible</div>
+        <div class="rule-body">Not log files only — workflow/template JSON can carry hardcoded connection strings or embedded credentials in task configs, so the masking transform (first 6 + last 4 chars, same convention as <code>/troubleshoot-logs</code>) runs unconditionally on every text/JSON candidate.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Jira attachment upload is net-new in this repo</div>
+        <div class="rule-body">No MCP tool exposes a dedicated attachment action, so this uses a direct curl against Jira's REST API (<code>POST /rest/api/3/issue/{key}/attachments</code>, <code>X-Atlassian-Token: no-check</code>) — the repo's established fallback pattern for anything the available MCP tools don't cover.</div>
       </div>
     </div>
   </div>
@@ -5214,6 +5410,84 @@ tofu destroy \
       </table>
     </div>
   </div>
+
+  <!-- ── /mock-server ─────────────────────────────── -->
+  <div class="section">
+    <h2 id="sk-mock-server">&#9632; /mock-server — Dependency Simulation</h2>
+    <p class="desc">Clones and runs the external <code>mock_server</code> tool (git@gitlab.com:itential/customersuccess/product-support-tools/mock_server.git) — a multi-protocol dependency simulator with built-in IAG/NetBox fixtures, switchable failure scenarios, request matching, response sequencing, and proxy+record live-traffic capture. Always presented as an option with explicit fit criteria — never auto-invoked based on ticket signals alone.</p>
+
+    <div class="cards" style="margin-bottom:24px;">
+      <div class="card t-blue">
+        <div class="icon">DG</div>
+        <h3>Decision Guidance</h3>
+        <p>Fit/poor-fit criteria the engineer reads and judges against before Step 0 ever runs — e.g. good fit when the real target is rate-limited or unsafe to hit repeatedly; poor fit when the bug is device-OS-specific or the root cause is inside IAP/IAG itself.</p>
+      </div>
+      <div class="card t-purple">
+        <div class="icon">CF</div>
+        <h3>Configure</h3>
+        <p>Load a built-in fixture (<code>automation-gateway-https</code>, <code>netbox</code>) and switch failure scenarios (default/errors/slow/rate-limited/timeout/jittery/degrading/spike) via the <code>/__admin/*</code> control API.</p>
+      </div>
+      <div class="card t-olive">
+        <div class="icon">PR</div>
+        <h3>Proxy + Record</h3>
+        <p>Points at a real target, captures live traffic, and auto-generates a replayable mock config from the capture — the one genuinely novel reproduction technique this adds.</p>
+      </div>
+    </div>
+
+    <div class="rule-list">
+      <div class="rule-item">
+        <div class="rule-label">Offered, never auto-invoked</div>
+        <div class="rule-body">Every call site (<code>/troubleshoot-adapters</code> Device Simulation Option 6, auth-failure reproduction, the proxy+record phase) presents the Decision Guidance and waits for explicit engineer opt-in. No skill switches to it based on ticket signals alone.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Write-time masking is mandatory</div>
+        <div class="rule-body">Before any recording or auto-generated config touches disk, is displayed, or is committed, credential-bearing header/body values are masked (first 6 + last 4 chars) — a write-time gate, since unlike live log tailing, mock_server persists the capture as a real file.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Clone-on-demand, not vendor-synced</div>
+        <div class="rule-body">It's a runnable tool, not prompt content, so it follows the <code>itential-dev-stack</code> clone-on-demand pattern (SSH clone to a configurable directory, <code>docker compose up</code>) rather than the vendor-sync-with-staleness-hook pattern used for platform-skills/builder-skills.</div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- ── /nso-server ─────────────────────────────── -->
+  <div class="section">
+    <h2 id="sk-nso-server">&#9632; /nso-server — Install Cisco NSO &amp; Connect the NSO Adapter</h2>
+    <p class="desc">Installs a real Cisco NSO instance (not a simulation) and connects Itential Platform's <code>adapter-nso</code> to it. Complements — does not replace — <code>/troubleshoot-adapters</code>'s Cisco XRd device-simulation option: NSO is the orchestrator; XRd simulates a managed device.</p>
+
+    <div class="cards" style="margin-bottom:24px;">
+      <div class="card t-blue">
+        <div class="icon">T0</div>
+        <h3>Target &amp; Install Inputs</h3>
+        <p>Engineer chooses the install target (existing host, new Themis VM, or local) and supplies the NSO install package location and any NED package directory — always asked interactively, never auto-fetched or defaulted.</p>
+      </div>
+      <div class="card t-orange">
+        <div class="icon">NP</div>
+        <h3>Northbound Protocol</h3>
+        <p>Asks explicitly which protocol the adapter uses — NETCONF, RESTCONF, or JSON-RPC — and gathers that protocol's own connection details. Never assumes JSON-RPC by default, even though this repo's own ISD-9507 history used it.</p>
+      </div>
+      <div class="card t-olive">
+        <div class="icon">CA</div>
+        <h3>Configure Adapter</h3>
+        <p>Reuses <code>/troubleshoot-adapters</code> Phase 6's exact install/approval flow (<code>RESTART_APPROVED=yes</code>, <code>ADAPTER_CREATE_APPROVED=yes</code>) and the standard GET→modify→PUT-full-body rule — no new gates invented.</p>
+      </div>
+    </div>
+
+    <div class="rule-list">
+      <div class="rule-item">
+        <div class="rule-label">Three things are always interactive, never assumed</div>
+        <div class="rule-body">The NSO install package location, the NED package directory, and the adapter's northbound protocol are all gathered via explicit prompt every time this skill runs.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Complementary to Cisco XRd, not a replacement</div>
+        <div class="rule-body"><code>/troubleshoot-adapters</code>'s Device Simulation Option 2 (Containerlab + Cisco XRd) simulates a managed device; <code>/nso-server</code> installs the orchestrator that manages devices like it. An NSO-adapter ticket may need either, or both together.</div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
 
   <!-- ── /sync-vendor-skills ─────────────────────────────── -->
   <div class="section">
