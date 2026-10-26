@@ -374,6 +374,7 @@ For `adapter-nso` or Cisco NSO–related adapters, also check:
 ```
 WebSearch("{symptom or config key} site:docs.itential.com/cisco-nso")
 ```
+If reproducing the ticket needs a real NSO instance to test against (not just documentation), `/nso-server` installs one and wires `adapter-nso` to it — gathering the install package, any NED packages, and the adapter's actual connection protocol (NETCONF/RESTCONF/JSON-RPC) interactively rather than assuming any of them.
 
 Append any new findings to `{project_path}/data/{TIMESTAMP}/{TICKET_KEY}/docs_references.md` under the appropriate section. Use the live documentation to validate expected authentication configuration, required properties, and known adapter-specific behaviors before comparing settings in Step 1d.
 
@@ -839,6 +840,8 @@ For IAG5: deploy as a Gateway service; it will appear in the service catalogue a
 ### Option 2 — Containerlab + Cisco XRd (IOS-XR only, near-real OS)
 
 Cisco XRd containers run a real IOS-XR control plane in Docker. Requires a Cisco XRd license (request via Cisco DevNet).
+
+> **Not the same thing as `/nso-server`:** this option simulates a managed *device* (XRd runs an IOS-XR control plane). `/nso-server` installs the NSO *orchestrator* that manages devices like this one — they're complementary, not alternatives. An NSO-adapter ticket may need either, or both together (NSO orchestrating an XRd device).
 
 ```yaml
 # topology.yaml for containerlab
