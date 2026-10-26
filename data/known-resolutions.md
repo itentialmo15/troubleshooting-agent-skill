@@ -992,3 +992,54 @@ Raise the timeout on the proxy or application gateway in front of NetBox above t
 3. Raise the timeout, rerun the delete workflow, and confirm the task returns success with no 502/504.
 4. Confirm a repeated DELETE now returns 404 only when the object is genuinely gone.
 5. If adapter debug logging was enabled, disable `auth_logging` and reset `console_level` to `error`.
+
+---
+
+### [ISD-9661] CyberArk reference works in an Integration, but a static prefix ("Token ") can't be combined with it — target API rejects the auth header
+
+| Field | Value |
+|-------|-------|
+| **Ticket** | ISD-9661 (converted to New Feature 2026-10-08) |
+| **ENG Bug** | N/A — tracked as a feature request (IPSO-10072); related fix ENG-16734 (Platform 6.3.0) |
+| **Component** | Platform — Integrations (OpenAPI-based, secret references in authentication properties) + CyberArk CCP secrets provider |
+| **Platform Version** | 6.5.1 reported; lab-reproduced on 6.5.2 |
+| **Severity** | S4 — Labs; authentication to a third-party API failed; workaround available |
+
+**Symptom:**
+A CyberArk reference (`$SAFE_<safe> $NAME_<object>`) worked in an adapter's token field but the
+same credential failed in an Integration (NetBox API 4.5 model, `authentication.Bearer.value`).
+The target API rejected calls with: `Invalid authorization header: Must be in the form
+"Bearer <key>.<token>" or "Token <token>"`. `/health/status` showed the CCP service running.
+The saved Integration JSON held an `$ENC…` value in `Bearer.value` instead of the reference.
+
+**Root Cause:**
+Integrations send the property value to the target API as-is; the adapter adds the scheme prefix
+("Token ") itself, which is why the adapter worked. On save, the Platform leaves a value
+unencrypted only if it starts with `$SAFE`, `$SECRET` or `$ENC` (rule from ENG-16734, 6.3.0).
+Entered as `$SAFE_x $NAME_y` → stored unchanged, resolves to the raw token, no prefix → target
+rejects it. Entered as `Token $SAFE_x $NAME_y` → does not start with a reference, so the whole
+string is encrypted as literal text (`$ENC…`) and CyberArk is never called.
+Confirmed by: lab reproduction on 6.5.2 (internal engineer) with a mock CyberArk CCP and an
+Integration using the same `Bearer.value` shape. Not tested against a real CyberArk/NetBox or on
+6.5.1; the same rule is assumed to affect `$SECRET_` (Vault) references — untested.
+
+**Detection Hints:**
+- Integration auth fails against a target that needs a scheme prefix, while the adapter for the
+  same system works with the same vault reference.
+- The Integration's JSON (Advanced View) shows `$ENC…` where the customer says they entered a
+  vault reference with text before it → the encrypted-as-literal case. A secrets provider showing
+  "running" in `/health/status` does not prove this value resolved.
+- The target's error text names the expected scheme (e.g. "Bearer <key>.<token>" or "Token <token>").
+- Negative hint: if the property starts exactly with the reference and the target still rejects
+  it, check the secret's content/format (missing prefix), not the provider connection.
+
+**Workaround (immediate):**
+Store the full header value (e.g. `Token <token>`) as the vault object's content, then set the
+Integration property to exactly `$SAFE_<safe> $NAME_<object>` with nothing before or after it.
+After saving, reopen Advanced View and confirm it did not turn into `$ENC…`. Permanent fix =
+feature request to allow static text combined with a secret reference (IPSO-10072).
+
+**Verification:**
+1. Advanced View still shows `$SAFE_… $NAME_…`, not `$ENC…`.
+2. Run a task through the Integration; the target returns data instead of an auth error.
+3. Confirm the vault object's content includes the prefix the target expects.
