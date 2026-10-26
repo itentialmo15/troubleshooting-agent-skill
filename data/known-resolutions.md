@@ -1043,3 +1043,39 @@ feature request to allow static text combined with a secret reference (IPSO-1007
 1. Advanced View still shows `$SAFE_… $NAME_…`, not `$ENC…`.
 2. Run a task through the Integration; the target returns data instead of an auth error.
 3. Confirm the vault object's content includes the prefix the target expects.
+
+---
+
+### [ISD-9672] Gateway Cluster dropdown and Gateway Manager list empty for non-admin users: group is missing the built-in `gateway:read` role
+
+| Field | Value |
+|-------|-------|
+| **Ticket** | ISD-9672 |
+| **ENG Bug** | N/A (RBAC configuration, not a platform defect) |
+| **Component** | Gateway Manager (RBAC) / Run Code and Run Service tasks |
+| **Platform Version** | Reproduced on Platform 6.5.2 with Gateway 5.5.2; customer versions not stated |
+| **Severity** | S4 - Labs environment, developer onboarding to Gateway 5 |
+
+**Symptom:**
+Developers cannot see any gateway cluster in the `Gateway Cluster` dropdown of the `runCode` / `runService` tasks, and the Gateway Manager gateway list is empty for them. There is no error message. The customer had built a custom role with all `GatewayManager` API methods checked (including `getGateways`, `runCode`, `runService`), enabled the Gateway Manager UI view, and added the user group to the cluster Access list.
+
+**Root Cause:**
+Gateway Manager filters the cluster list by the built-in `gateway:read` role (source `GatewayManager`) held through the user's group, in addition to the group being on the cluster Access list. A custom role listing the same API methods passes method authorization (the call returns 200) but the list comes back empty. Reproduced in the lab with a non-admin user, fresh login after every change:
+- Custom role (all 15 GatewayManager methods, no `gateway:read`): empty list. Adding `service:run` did not change this.
+- `service:run` only: 403 on the gateway list.
+- `gateway:read` (with or without `service:run`) and group on cluster Access: cluster listed.
+- `gateway:read` held but group NOT on cluster Access: empty list.
+
+**Resolution:**
+Assign the built-in roles to the user's group in Admin Essentials > Authorization > Groups > Roles (filter Source to `GatewayManager`): `gateway:read` always, `gateway:code` for the Run Code task, `service:run` for Run Service. Confirm the group is on the cluster's Access list in Gateway Manager. Have the user log out and back in. The customer added `gateway:read` and `gateway:code` directly to the group and confirmed it worked.
+
+**Detection Hints:**
+- Empty Gateway Cluster dropdown or empty Gateway Manager table with no error, for a user who can open the page
+- `GET /gateway_manager/v1/gateways` returns 200 with `results: []` (missing `gateway:read` or group not on Access) versus 403 (missing method access entirely)
+- Role editor shows the methods checked but no built-in `gateway:read` under the group's roles
+- In dev-stack labs, the built-in `admin` can lose its group membership after login or platform restart; re-add it to the `gateway` group and log in again before concluding no gateway is registered
+
+**Verification:**
+1. Log in as the affected user (fresh session) and confirm the cluster appears in Gateway Manager.
+2. Open a `runCode` or `runService` task and confirm the cluster is selectable in the `Gateway Cluster` dropdown.
+3. If the cluster is still missing, check group membership of the user, the roles on that group, and the cluster Access list.
