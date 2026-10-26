@@ -1079,3 +1079,57 @@ Assign the built-in roles to the user's group in Admin Essentials > Authorizatio
 1. Log in as the affected user (fresh session) and confirm the cluster appears in Gateway Manager.
 2. Open a `runCode` or `runService` task and confirm the cluster is selectable in the `Gateway Cluster` dropdown.
 3. If the cluster is still missing, check group membership of the user, the roles on that group, and the cluster Access list.
+
+---
+
+### [ISD-9675] JSON Form dynamic dropdown empty for a lower-privilege group — missing Jst (transformation) permission
+
+| Field | Value |
+|-------|-------|
+| **Ticket** | ISD-9675 |
+| **ENG Bug** | N/A — RBAC configuration, not a platform bug |
+| **Component** | JSON Forms (dynamic dropdown + JSON Transformation) / Authorization (RBAC) / NetBox adapter |
+| **Platform Version** | 6.5.0 (customer-reported); reproduced on 6.5.1 |
+| **Severity** | Priority Major (severity not set) — non-production environment, one user group affected, workaround = use a full-privilege group |
+
+**Symptom:**
+A JSON form has two adapter-backed dynamic dropdowns. The first (adapter call only, e.g. "Site") populates
+for every user. The second (adapter call **plus** a JSON Transformation data mapping, e.g. "Select the
+switches", filtered by the first) shows no options — or a single option labelled `undefined` — for a
+lower-privilege group (project **Operator**), while a full-privilege group sees the options.
+
+**Root Cause:**
+Platform authorization is per method. The second dropdown makes two calls: the adapter method and
+`POST /transformations/:id`. The lower-privilege group's roles allowed the adapter methods but not the
+**Jst** methods (`runTransformation`, `getTransformation`), so the transformation call returns
+HTTP 403 `"You are not authorized to access this method"` and the dropdown has nothing to map. The
+project Operator role is not the cause — with full platform roles an Operator runs the transformation
+fine. Confirmed by: lab reproduction on 6.5.1 (same adapter calls 200 for both groups; transformation GET/POST
+403 without Jst, 200 with Jst; a negative-control method outside the role returned 403 to prove the scoping
+applied), and the customer confirmed the dropdown works after being granted a transformation-read role
+(`transformations:read`). Not reproduced: the exact `undefined` rendering in the UI; the method list of the
+customer's `transformations:read` role was not inspected.
+
+**Resolution:**
+1. Add a role containing Jst `runTransformation` and `getTransformation` to the affected group. Prefer a
+   custom run/read-only role — the built-in `admin | Jst` role also allows create/update/delete.
+2. Have the affected user log out and back in, reopen the form, select a site.
+3. Confirm the group's users are members of the project that owns the transformation (non-members get a
+   different error — see below).
+
+**Detection Hints:**
+- A dropdown with no transformation (adapter only) works for the group while the transformation-backed
+  dropdown is empty/`undefined` → suspect the Jst methods, not the adapter.
+- Browser DevTools → Network as the affected user: `/transformations/<id>` returns **403** (works for an
+  admin). If instead the adapter call itself fails (403/empty), the gap is the adapter's method permission.
+- `401 "Insufficient project permissions to run transformation"` → the account is **not a member of the
+  project** (a project Operator gets read+execute and passes this check).
+- Form editor shows `Assigned JST (<id>) does not exist: please select a new JST` → different cause: the
+  dropdown references a transformation in another project / a deleted one; re-select the in-project one.
+- Loading a new adapter creates a new `admin | <Adapter>` role that is assigned to nobody — even `admin`
+  gets 403 on the adapter until a group is given it.
+
+**Verification:**
+1. As the affected user: `POST /transformations/<id>` (or the form) returns 200 instead of 403.
+2. Open the form, pick a site, and confirm the device options list appears.
+3. Negative check: a method not granted to the role still returns 403 (the fix did not over-grant).
