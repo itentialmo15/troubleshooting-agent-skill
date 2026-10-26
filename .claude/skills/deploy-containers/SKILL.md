@@ -1888,6 +1888,15 @@ Determine replica count from cluster grade:
 - Minimum (dev/test): `replicaCount=1`
 - Production: `replicaCount=2` (one pod per node, separate AZs — StatefulSet distributes automatically)
 
+**Retained values files (all EKS/Helm products):** every Helm values file built in this skill — IAP, IAG5, IAG4, and any future product chart — is written to a persisted per-cluster directory, never only to `/tmp`. `/tmp` is wiped on reboot and is never a record of what was actually deployed; retaining the real file is what makes redeploys, upgrades, and audits (and reading back Mongo/Redis connection strings months later) possible without re-deriving them from `helm get values`.
+
+```bash
+K8S_VALUES_DIR="environments/eks/${EKS_CLUSTER_NAME}/values"
+mkdir -p "${K8S_VALUES_DIR}"
+```
+
+`environments/eks/` is already gitignored in this repo — these files routinely embed plaintext Mongo/Redis credentials via the interpolated `env:` block below, so they must stay local-only, never committed. If deploying outside this repo, replicate that gitignore rule before writing here.
+
 ```bash
 # Add Helm repo
 helm repo add iap https://itential.github.io/iap-helm 2>/dev/null || true
@@ -1901,8 +1910,9 @@ REPLICA_COUNT=1
 # Determine ingress type
 INGRESS_TYPE="${K8S_INGRESS_TYPE:-alb}"   # alb | nginx
 
-# Build Helm values file (avoids long --set chains, easier to review)
-cat > /tmp/iap-values.yaml <<EOF
+# Build Helm values file (avoids long --set chains, easier to review) — written to the
+# persisted per-cluster directory, not /tmp, so it survives this session
+cat > "${K8S_VALUES_DIR}/iap-values.yaml" <<EOF
 image:
   repository: 497639811223.dkr.ecr.us-east-2.amazonaws.com/automation-platform-config-lcm
   tag: "${IAP_VERSION}"
@@ -2010,15 +2020,15 @@ fi)
           pathType: Prefix
 EOF
 
-echo "=== Helm values written to /tmp/iap-values.yaml — review before applying ==="
-cat /tmp/iap-values.yaml
+echo "=== Helm values written to ${K8S_VALUES_DIR}/iap-values.yaml — review before applying ==="
+cat "${K8S_VALUES_DIR}/iap-values.yaml"
 
 # Show dry-run
 echo ""
 echo "=== Helm dry-run (review before applying) ==="
 helm upgrade --install iap iap/iap \
     --namespace="${NAMESPACE}" \
-    --values /tmp/iap-values.yaml \
+    --values "${K8S_VALUES_DIR}/iap-values.yaml" \
     --dry-run 2>&1 | head -100
 echo ""
 echo "Apply this Helm release? [yes / abort]:"
@@ -2028,8 +2038,8 @@ On approval, run without `--dry-run`:
 ```bash
 helm upgrade --install iap iap/iap \
     --namespace="${NAMESPACE}" \
-    --values /tmp/iap-values.yaml
-echo "✅ IAP Helm release deployed"
+    --values "${K8S_VALUES_DIR}/iap-values.yaml"
+echo "✅ IAP Helm release deployed — values retained at ${K8S_VALUES_DIR}/iap-values.yaml"
 ```
 
 **ACM certificate (if ALB ingress):** If `ACM_CERT_ARN` is not set and `K8S_HOSTNAME` is provided, ask the engineer for the ARN:
@@ -2056,7 +2066,8 @@ Bare `--set` flags for image/pull-secret alone are not sufficient — IAG5 also 
 helm repo add iag5 https://itential.github.io/iag5-helm 2>/dev/null || true
 helm repo update iag5
 
-cat > /tmp/iag5-values.yaml <<EOF
+# Written to the persisted per-cluster directory (K8S_VALUES_DIR, set in Step 5d), not /tmp
+cat > "${K8S_VALUES_DIR}/iag5-values.yaml" <<EOF
 hostname: ${IAG5_HOSTNAME:-iag5.itential.local}
 port: 50051
 useTLS: true
@@ -2113,12 +2124,12 @@ applicationSettings:
   storeBackend: memory
 EOF
 
-echo "=== Helm values written to /tmp/iag5-values.yaml — review before applying ==="
-cat /tmp/iag5-values.yaml
+echo "=== Helm values written to ${K8S_VALUES_DIR}/iag5-values.yaml — review before applying ==="
+cat "${K8S_VALUES_DIR}/iag5-values.yaml"
 
 helm upgrade --install iag5 iag5/iag5 \
     --namespace="${NAMESPACE}" \
-    --values /tmp/iag5-values.yaml \
+    --values "${K8S_VALUES_DIR}/iag5-values.yaml" \
     --dry-run 2>&1 | head -100
 echo "Apply IAG5 Helm release? [yes / skip]:"
 ```
@@ -2127,8 +2138,8 @@ On approval, run without `--dry-run`:
 ```bash
 helm upgrade --install iag5 iag5/iag5 \
     --namespace="${NAMESPACE}" \
-    --values /tmp/iag5-values.yaml
-echo "✅ IAG5 Helm release deployed"
+    --values "${K8S_VALUES_DIR}/iag5-values.yaml"
+echo "✅ IAG5 Helm release deployed — values retained at ${K8S_VALUES_DIR}/iag5-values.yaml"
 ```
 
 **Post-install pairing (required before the IAG5-to-IAP WebSocket handshake succeeds):** IAG5 connecting to IAP's Gateway Manager is not just a network/TLS matter — IAP validates the incoming client certificate against a `GATEWAYS` collection record in MongoDB, looked up by `clusterId`. Until this gateway is registered in IAP (via the IAP UI's Gateway Manager section, or its API), the connection will fail with a WebSocket close `1002 (protocol error): Uncaught error while executing validateCertificate` — this is expected for a freshly deployed, unregistered gateway, not a values.yaml or networking defect. Register the gateway (matching `applicationSettings.clusterId` above) before expecting IAG5 to show as connected.
@@ -2147,13 +2158,33 @@ kubectl taint node "${NODE_NAME}" itential.io/role=iag:NoSchedule --overwrite
 helm repo add iag4 https://itential.github.io/iag4-helm 2>/dev/null || true
 helm repo update iag4
 
+# Written to the persisted per-cluster directory (K8S_VALUES_DIR, set in Step 5d) — a
+# values file, not a --set chain, so this release's config is retained the same as IAP/IAG5
+cat > "${K8S_VALUES_DIR}/iag4-values.yaml" <<EOF
+image:
+  repository: 497639811223.dkr.ecr.us-east-2.amazonaws.com/automation-gateway
+  tag: "${GATEWAY4_VERSION}"
+
+imagePullSecrets:
+  - name: ecr-pull-secret
+EOF
+
+echo "=== Helm values written to ${K8S_VALUES_DIR}/iag4-values.yaml — review before applying ==="
+cat "${K8S_VALUES_DIR}/iag4-values.yaml"
+
 helm upgrade --install iag4 iag4/iag4 \
     --namespace="${NAMESPACE}" \
-    --set "image.repository=497639811223.dkr.ecr.us-east-2.amazonaws.com/automation-gateway" \
-    --set "image.tag=${GATEWAY4_VERSION}" \
-    --set "imagePullSecrets[0].name=ecr-pull-secret" \
+    --values "${K8S_VALUES_DIR}/iag4-values.yaml" \
     --dry-run
 echo "Apply IAG4 Helm release? [yes / skip]:"
+```
+
+On approval, run without `--dry-run`:
+```bash
+helm upgrade --install iag4 iag4/iag4 \
+    --namespace="${NAMESPACE}" \
+    --values "${K8S_VALUES_DIR}/iag4-values.yaml"
+echo "✅ IAG4 Helm release deployed — values retained at ${K8S_VALUES_DIR}/iag4-values.yaml"
 ```
 
 ### Step 5f — Post-Install Verification
