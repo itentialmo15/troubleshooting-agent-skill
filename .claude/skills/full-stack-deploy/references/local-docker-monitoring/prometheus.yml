@@ -1,0 +1,61 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Job names match the official "Itential Platform Monitoring" Grafana dashboard
+# (iap_exporter / node_exporter / process_exporter / mongodb_exporter / redis_exporter).
+# The dashboard's $node variable and every `instance=~"$node(:.*)?"` filter join
+# platform, node and process series on the instance host part, so on this single-host
+# dev stack all host-level targets are relabeled to one host name (HOST_LABEL below).
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Itential Platform: /prometheus_metrics over HTTPS (self-signed dev-stack cert).
+  - job_name: iap_exporter
+    scheme: https
+    metrics_path: /prometheus_metrics
+    tls_config:
+      insecure_skip_verify: true
+    static_configs:
+      - targets: ['platform:3443']
+    relabel_configs:
+      - target_label: instance
+        replacement: 'iap-local:3443'
+
+  - job_name: node_exporter
+    static_configs:
+      - targets: ['node-exporter:9100']
+    relabel_configs:
+      - target_label: instance
+        replacement: 'iap-local:9100'
+
+  - job_name: process_exporter
+    static_configs:
+      - targets: ['process-exporter:9256']
+    relabel_configs:
+      - target_label: instance
+        replacement: 'iap-local:9256'
+
+  - job_name: mongodb_exporter
+    static_configs:
+      - targets: ['mongodb-exporter:9216']
+    relabel_configs:
+      - target_label: instance
+        replacement: 'mongodb:27017'
+
+  - job_name: redis_exporter
+    static_configs:
+      - targets: ['redis-exporter:9121']
+    relabel_configs:
+      - target_label: instance
+        replacement: 'redis:6379'
+
+  # Itential job-metrics-exporter (github.com/itential/job-metrics-exporter): itential_* metrics.
+  - job_name: job_metrics_exporter
+    static_configs:
+      - targets: ['job-metrics-exporter:9477']
+    relabel_configs:
+      - target_label: instance
+        replacement: 'iap-local:9477'

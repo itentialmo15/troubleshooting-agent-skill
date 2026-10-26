@@ -64,13 +64,45 @@ Ask the engineer where Prometheus and Grafana should run — the Platform node i
 | Exporter | Port | Runs on | Notes |
 |---|---|---|---|
 | `node_exporter` | 9100 | Every Linux host (Platform, Gateway/NSO, MongoDB, Redis, Sentinel) | |
-| `process_exporter` | 9256 | Each host | Tracks `mongod`, `redis-server`, `itential-platform` — confirm the Gateway/NSO process name against live docs, not given in the fetched pages |
+| `process_exporter` | 9256 | Each host | Tracks `mongod`, `redis-server`, and the `Pronghorn …` platform process groups (see Step 4a) — confirm the Gateway/NSO process name against live docs, not given in the fetched pages |
 | `mongodb_exporter` | 9216 | Connects to the MongoDB replica set | Dedicated read-only monitoring user — never admin credentials |
 | `redis_exporter` (data) | 9121 | Each Redis data instance | |
 | `redis_exporter` (Sentinel) | 9122 | Redis Sentinel nodes | |
 | `job-metrics-exporter` | Unconfirmed | Reads job/task data from MongoDB | Verify port against live docs at execution time |
 
 Install Prometheus (scrape interval 15-30s per docs) targeting every exporter above, and Grafana with Itential's pre-built Platform/Gateway/MongoDB/Redis dashboards — fetch the live docs page during execution to confirm the exact dashboard source rather than guessing at a dashboard ID.
+
+### Step 4a — Dashboard install is mandatory, and data must actually render
+
+Installing Grafana without the **Itential Platform Monitoring** dashboard (uid `iap-platform-monitoring`, tabs Overview / Workflow Engine / Platform Process / Redis / MongoDB) is not a complete Step 4. Provision it as code — Grafana file provisioning for the Prometheus datasource *and* the dashboard — never a manual console import. The dashboard JSON is bundled at `references/local-docker-monitoring/dashboards/iap-platform-monitoring.json`; a ready local-Docker compose/Prometheus/process-exporter/Grafana set is in `references/local-docker-monitoring/` (copy to `~/itential-dev-stack/monitoring/`, then `docker compose -f docker-compose.yml -f monitoring/docker-compose.monitoring.yml --profile monitoring up -d --no-deps <services>`).
+
+**Variables this step configures automatically** (the engineer is not asked to hand-edit config; show the resolved values in the Step 5 confirmation):
+
+| Variable | Where it lands | How it is chosen |
+|---|---|---|
+| Host label per node (`HOST_LABEL`) | `relabel_configs` `instance` replacement for `iap_exporter`, `node_exporter`, `process_exporter` (`<label>:<port>`) | Single-host Docker: `iap-local`. VMs/K8s: each node's real hostname — one label shared by that node's platform, node and process targets. MongoDB/Redis targets get their own host labels |
+| Platform scrape target + scheme/path | `iap_exporter` job (`https`, `/prometheus_metrics`, `insecure_skip_verify` only for the self-signed dev-stack cert; add `basic_auth` on secured endpoints) | From the provisioned platform host/port |
+| Exporter targets | `node_exporter` 9100, `process_exporter` 9256, `mongodb_exporter` 9216, `redis_exporter` 9121, `job_metrics_exporter` 9477 | From the provisioned topology (one target per node) |
+| Mongo replica set name + job-metrics URI | mongod `--replSet rs0`, `ITENTIAL_JOB_METRIC_MONGO_URI=…?replicaSet=rs0` | `rs0` default; reuse the existing name on a Themis/HA replica set |
+| `MONGO_PORT` | dev-stack `.env` | Default 27017; auto-bumped to 27018 if the host port is taken (check with `lsof -nP -iTCP:27017 -sTCP:LISTEN`) |
+| Grafana datasource + dashboard providers | `grafana-datasource.yml`, `grafana-dashboards.yml`, `dashboards/*.json` mounted under `/etc/grafana/provisioning/` and `/var/lib/grafana/dashboards` | Fixed; datasource is the default Prometheus |
+
+Treat every `reference` file as a template: substitute these values rather than copying the local-Docker values verbatim onto another topology.
+
+The dashboard's PromQL is hardcoded, so the Prometheus/exporter config must match it or every tab reads "No data":
+
+| Dashboard expects | Config requirement |
+|---|---|
+| `job="iap_exporter"` / `node_exporter` / `redis_exporter` (and `process_exporter`, `mongodb_exporter` by convention) | Name the Prometheus scrape jobs exactly these — not `itential-platform`, `node`, `redis` |
+| `instance=~"$node(:.*)?"` where `$node` comes from `node_cpu_seconds_total`'s instance (port stripped) | Every target on one host (platform `/prometheus_metrics`, node_exporter, process_exporter) must share the same host part of `instance`. On single-host Docker, relabel `instance` to one name (e.g. `iap-local:<port>`); on multi-node VMs use the node's real hostname for all three exporters |
+| `namedprocess_namegroup_*{groupname=~"Pronghorn.* Application"}`, `"Pronghorn.* Adapter"`, `"Pronghorn.*"` | process_exporter groups named `Pronghorn Core`, `Pronghorn <name> Application`, `Pronghorn <name> Adapter` (adapters = `@itential/adapter-*` ServiceBootstrap workers, listed *before* the application rule; Core matched by `comm: Pronghorn core`, not cmdline, because cmdline matching does not match argv[0] and would also catch the tini PID 1) |
+| `itential_up`, `itential_job_*`, `itential_task_*`, `itential_watcher_reconnects_total`, `itential_job_status_total` (Overview WFE/Job Error Rate/Task Throughput tiles and the Workflow Engine tab) | Itential's public **job-metrics-exporter** (`github.com/itential/job-metrics-exporter`, image `ghcr.io/itential/job-metrics-exporter:v1.0.1`, multi-arch, port **9477**, path `/metrics`; GPL-3.0). Run it with `ITENTIAL_JOB_METRIC_MONGO_URI=mongodb://<mongo>/itential?replicaSet=rs0` and `ITENTIAL_JOB_METRIC_CHANGE_STREAM_ENABLED=true`, scrape it as job `job_metrics_exporter`. Change streams need a replica set. On VMs use a dedicated read-only Mongo user (`read` on `itential`), never admin. It also needs index `{status:1,"metrics.server_id":1}` named `itential_job_metrics_exporter_task_status_server` on `tasks` (a one-time DB write — state it to the engineer) |
+| `mongodb_rs_members_*` (MongoDB Overview tile, Cluster Members, Replica Set Status, Replication Lag) | MongoDB running as a replica set. On the dev-stack, override the `mongodb` service with `--replSet rs0 --bind_ip_all` and run `rs.initiate({_id:"rs0",members:[{_id:0,host:"mongodb:27017"}]})` — this restarts Mongo, so get engineer approval for an already-running stack. Data in the bind mount is preserved. A single node has no SECONDARY, so **Replication Lag stays empty by design** |
+| Host port 27017 already taken (e.g. a Homebrew `mongod`) | Never kill the host process; set `MONGO_PORT=27018` in the dev-stack `.env` (container-to-container traffic is unaffected) |
+
+**Expected-empty panels until events occur:** the `itential_task_*` counters (Task Start vs Complete, Task Distribution by Server, Total Tasks, Task Error Rate, Total Task Throughput) have no series until the first task runs after the exporter starts. Run (with engineer approval) any workflow job, or say these will populate on first job — do not report them as broken.
+
+**Verification gate (required before Step 6):** extract every panel `expr` from the provisioned dashboard JSON, substitute `$node` with the instance host, evaluate each against Prometheus, and list any panel returning no series with its cause from the table above. Classify each remaining empty panel as *fixable*, *needs a first job event*, or *topology limit* (e.g. Replication Lag on a single node) and report plainly; do not declare the dashboard working while panels are silently empty.
 
 **Continuity with the existing `/prometheus` query skill:** once installed, write `PROMETHEUS_HOST`/`PROMETHEUS_PORT`/`PROMETHEUS_AUTH` into `environments/<env>/CLAUDE.md` — the same location that skill already reads — so it can query the freshly-installed instance immediately with no further setup.
 

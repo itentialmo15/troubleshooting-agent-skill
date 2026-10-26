@@ -1,0 +1,18 @@
+# Group names follow the Itential Platform Monitoring dashboard's regexes:
+#   "Pronghorn Core", "Pronghorn <name> Application", "Pronghorn <name> Adapter".
+# Platform runs as `node server.js` (core) plus ServiceBootstrap.js workers whose last
+# arg-before-flag is the package (@itential/adapter-* = adapter, everything else = app).
+# First match wins, so adapters are listed before applications.
+process_names:
+  - name: mongod
+    cmdline: ['mongod']
+  - name: redis-server
+    cmdline: ['redis-server']
+  - name: iag5
+    cmdline: ['iagctl']
+  - name: "Pronghorn Core"
+    comm: ['Pronghorn core']
+  - name: "Pronghorn {{.Matches.name}} Adapter"
+    cmdline: ['ServiceBootstrap\.js\s+(?P<name>\S+)\s+\S+\s+@itential/adapter-\S+']
+  - name: "Pronghorn {{.Matches.name}} Application"
+    cmdline: ['ServiceBootstrap\.js\s+(?P<name>\S+)\s+\S+\s+@itential/\S+']

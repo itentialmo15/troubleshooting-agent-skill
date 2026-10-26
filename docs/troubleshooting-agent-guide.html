@@ -5515,7 +5515,7 @@ tofu destroy \
       <div class="card t-orange">
         <div class="icon">S4</div>
         <h3>Monitoring Install</h3>
-        <p>Installs node_exporter, process_exporter, mongodb_exporter, redis_exporter, and job-metrics-exporter on every component, plus Prometheus and Grafana with Itential's pre-built dashboards.</p>
+        <p>Installs node_exporter, process_exporter, mongodb_exporter, redis_exporter, and job-metrics-exporter on every component, plus Prometheus and Grafana with the Itential Platform Monitoring dashboard provisioned as code (Step 4a) and all host/instance, job-name, process-group and Mongo replica-set variables configured so the panels show data.</p>
       </div>
       <div class="card t-olive">
         <div class="icon">S6</div>
@@ -5535,7 +5535,15 @@ tofu destroy \
       </div>
       <div class="rule-item">
         <div class="rule-label">Exporter ports grounded in live docs, not assumed</div>
-        <div class="rule-body">Fetched directly from <code>docs.itential.com/itential-platform/monitor</code>: <code>node_exporter</code>:9100, <code>process_exporter</code>:9256, <code>mongodb_exporter</code>:9216, <code>redis_exporter</code>:9121 (data) / 9122 (Sentinel). Install-level specifics those pages don't cover (Gateway/NSO process name, the job-metrics-exporter's port, exact Grafana dashboard source) are verified against live docs at execution time, never hardcoded as certain.</div>
+        <div class="rule-body">Fetched directly from <code>docs.itential.com/itential-platform/monitor</code>: <code>node_exporter</code>:9100, <code>process_exporter</code>:9256, <code>mongodb_exporter</code>:9216, <code>redis_exporter</code>:9121 (data) / 9122 (Sentinel). Install-level specifics those pages don't cover (Gateway/NSO process name, exact Grafana dashboard source) are verified against live docs at execution time, never hardcoded as certain.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Dashboard installed and wired so data renders (Step 4a)</div>
+        <div class="rule-body">The <strong>Itential Platform Monitoring</strong> dashboard (Overview, Workflow Engine, Platform Process, Redis, MongoDB) is file-provisioned into Grafana, never imported by hand. Its PromQL is hardcoded, so the skill configures: Prometheus job names <code>iap_exporter</code>/<code>node_exporter</code>/<code>process_exporter</code>/<code>mongodb_exporter</code>/<code>redis_exporter</code>/<code>job_metrics_exporter</code>; one shared host <code>instance</code> label per node so <code>$node</code> filters match platform, node and process series; process_exporter groups <code>Pronghorn Core</code> / <code>Pronghorn &lt;name&gt; Application</code> / <code>Pronghorn &lt;name&gt; Adapter</code>; MongoDB as a replica set (<code>rs0</code>); and Itential's public <code>job-metrics-exporter</code> (port 9477) for the Workflow Engine metrics. Bundled templates live in <code>.claude/skills/full-stack-deploy/references/local-docker-monitoring/</code>.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Verification gate &mdash; no silent "No data" panels</div>
+        <div class="rule-body">Before the post-build summary, every dashboard panel query is evaluated against Prometheus. Remaining empty panels are classified and reported: <em>fixable</em>, <em>needs a first job event</em> (the <code>itential_task_*</code> counters fill after the first workflow runs), or <em>topology limit</em> (Replication Lag has no data on a single-node replica set). Converting a running Mongo to a replica set restarts it and needs engineer approval; a host process already on port 27017 is never killed &mdash; <code>MONGO_PORT=27018</code> is used instead.</div>
       </div>
       <div class="rule-item">
         <div class="rule-label">Dedicated monitoring credentials, never admin</div>

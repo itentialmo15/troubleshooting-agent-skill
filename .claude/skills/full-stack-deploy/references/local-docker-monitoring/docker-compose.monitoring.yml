@@ -1,0 +1,132 @@
+# Monitoring add-on for itential-dev-stack (Prometheus + Grafana + exporters).
+# Kept separate from docker-compose.yml so upstream pulls don't conflict.
+# Usage (from ~/itential-dev-stack):
+#   docker compose -f docker-compose.yml -f monitoring/docker-compose.monitoring.yml --profile monitoring up -d
+# Versions follow Itential's documented minimums (docs.itential.com/itential-platform/monitor/monitor-itential).
+
+services:
+  # The Itential job-metrics-exporter (and the dashboard's MongoDB replica-set panels) need
+  # MongoDB running as a replica set. Single-node rs0 is enough; after the first start run:
+  #   docker exec mongodb mongosh --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"mongodb:27017"}]})'
+  mongodb:
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus:v3.8.0
+    profiles: ["monitoring"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    cpus: 1.0
+    mem_limit: 1g
+    restart: unless-stopped
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:13.1.0
+    profiles: ["monitoring"]
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./monitoring/grafana-datasource.yml:/etc/grafana/provisioning/datasources/prometheus.yml:ro
+      - ./monitoring/grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/itential.yml:ro
+      - ./monitoring/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    cpus: 1.0
+    mem_limit: 512m
+    restart: unless-stopped
+
+  node-exporter:
+    container_name: node-exporter
+    image: prom/node-exporter:v1.9.0
+    profiles: ["monitoring"]
+    command:
+      - --path.rootfs=/host
+    pid: host
+    ports:
+      - "127.0.0.1:9100:9100"
+    volumes:
+      - /:/host:ro
+    cpus: 0.25
+    mem_limit: 128m
+    restart: unless-stopped
+
+  process-exporter:
+    container_name: process-exporter
+    image: ncabatoff/process-exporter:0.8.7
+    profiles: ["monitoring"]
+    command:
+      - --procfs=/host/proc
+      - --config.path=/config/process-exporter.yml
+    pid: host
+    ports:
+      - "127.0.0.1:9256:9256"
+    volumes:
+      - /proc:/host/proc:ro
+      - ./monitoring/process-exporter.yml:/config/process-exporter.yml:ro
+    cpus: 0.25
+    mem_limit: 128m
+    restart: unless-stopped
+
+  mongodb-exporter:
+    container_name: mongodb-exporter
+    image: percona/mongodb_exporter:0.50.0
+    profiles: ["monitoring"]
+    # Mongo auth is disabled in the dev-stack, so no credentials. If auth is ever enabled,
+    # switch to a dedicated read-only clusterMonitor user (never admin).
+    command:
+      - --mongodb.uri=mongodb://mongodb:27017
+      - --collect-all
+      - --compatible-mode
+    ports:
+      - "127.0.0.1:9216:9216"
+    cpus: 0.25
+    mem_limit: 128m
+    restart: unless-stopped
+
+  redis-exporter:
+    container_name: redis-exporter
+    image: oliver006/redis_exporter:v1.82.0
+    profiles: ["monitoring"]
+    command:
+      - --redis.addr=redis://redis:6379
+    ports:
+      - "127.0.0.1:9121:9121"
+    cpus: 0.25
+    mem_limit: 128m
+    restart: unless-stopped
+
+  job-metrics-exporter:
+    container_name: job-metrics-exporter
+    image: ghcr.io/itential/job-metrics-exporter:v1.0.1
+    profiles: ["monitoring"]
+    environment:
+      # Dev-stack Mongo has no auth. With auth enabled use a dedicated read-only user
+      # (role `read` on the itential db), never admin.
+      ITENTIAL_JOB_METRIC_MONGO_URI: mongodb://mongodb:27017/itential?replicaSet=rs0
+      ITENTIAL_JOB_METRIC_MONGO_DATABASE: itential
+      ITENTIAL_JOB_METRIC_CHANGE_STREAM_ENABLED: "true"
+      ITENTIAL_JOB_METRIC_LISTEN_ADDRESS: ":9477"
+      ITENTIAL_JOB_METRIC_LOG_FORMAT: text
+    ports:
+      - "127.0.0.1:9477:9477"
+    cpus: 0.25
+    mem_limit: 128m
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+  grafana-data:
