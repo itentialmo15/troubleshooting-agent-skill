@@ -19,3 +19,35 @@
   - helpers/assets/vendor-juniper-junos.json
   - helpers/assets/vendor-servicenow.json
   - helpers/create/create-workflow.json
+
+## 2026-09-30T21:43:42Z — synced from 2967eb2a6d2c (main)
+- 12 helper file(s) changed:
+  - /AGENTS.md
+  - /helpers/update/update-json-form.json
+  - /helpers/update/update-command-template.json
+  - /helpers/update/update-node-config.json
+  - /helpers/operations/run-compliance-plan.json
+  - /helpers/operations/add-components-to-project.json
+  - /helpers/create/import-project.json
+  - /helpers/create/create-json-form.json
+  - /helpers/create/create-template-jinja2.json
+  - /helpers/create/create-lcm-resource-model.json
+  - /helpers/create/create-template-textfsm.json
+  - /helpers/create/create-command-template.json
+- 16 skill file(s) changed (.claude/skills/):
+  - itential-json-forms/SKILL.md
+  - flowagent/SKILL.md
+  - itential-golden-config/SKILL.md
+  - documentation/SKILL.md
+  - iag/SKILL.md
+  - itential-inventory/SKILL.md
+  - itential-mop/SKILL.md
+  - builder-agent/SKILL.md
+  - solution-arch-agent/SKILL.md
+  - itential-devices/SKILL.md
+  - qa-agent/SKILL.md
+  - itential-lcm/SKILL.md
+  - explore/SKILL.md
+  - flowagent-to-spec/SKILL.md
+  - spec-agent/SKILL.md
+  - project-to-spec/SKILL.md
