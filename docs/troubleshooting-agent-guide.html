@@ -1607,6 +1607,12 @@ flowchart TD
         <p>Installs a real Cisco NSO instance and connects <span class="inline-code">adapter-nso</span> to it. Install package location, NED packages, and the adapter's connection protocol (NETCONF/RESTCONF/JSON-RPC) are always gathered interactively, never assumed.</p>
         <span class="tag">Cisco NSO</span><span class="tag">adapter-nso</span>
       </div>
+      <div class="card t-blue">
+        <div class="icon">&#x1F4E6;</div>
+        <h3>/full-stack-deploy</h3>
+        <p>Provisions a complete stack on request — IAP + gateway/orchestrator (IAG4/IAG5/NSO, customer's choice) + infrastructure substrate (engineer's choice) + Prometheus/Grafana monitoring. Composes <span class="inline-code">/themis-aws-deploy</span>, <span class="inline-code">/deploy-containers</span>, and <span class="inline-code">/nso-server</span> rather than reimplementing them.</p>
+        <span class="tag">Full stack</span><span class="tag">Monitoring</span>
+      </div>
     </div>
   </div>
 
@@ -3833,6 +3839,7 @@ K8S_ADAPTER_PV_SIZE=10Gi</pre></div>
       <div class="rule"><div class="rule-text"><strong>Read-only UI interaction</strong> — <code>/troubleshoot-ui</code> may navigate, search, and click to reproduce a browser bug freely; any action that would create, modify, save, or delete a platform asset through the UI requires the same explicit engineer approval as a direct API POST/PUT/DELETE. Browser backend selection (the isolated built-in Browser pane vs. the engineer's own Chrome via Claude-in-Chrome) is always an explicit engineer choice — never a silent default, since one option operates on the engineer's real browser profile. Automated login only ever runs against a local/sandboxed target host (<code>localhost</code>/<code>127.0.0.1</code>/<code>.localhost</code>/<code>.test</code>, including a team repro environment tunneled to localhost) — never against a live customer environment, and this gate cannot be waived by engineer authorization. Against any non-local target, the sub-skill only verifies an existing session and hands off to the engineer to log in themselves.</div></div>
       <div class="rule"><div class="rule-text"><strong>Mock server is offered, never auto-invoked, and proxy+record masking is mandatory</strong> — <code>/mock-server</code> is always presented as an option with explicit fit criteria (its own Decision Guidance); no skill invokes it based on ticket signals alone. Before any mock_server recording or auto-generated config touches disk, is displayed, or is committed via <code>/contribute</code>, credential-bearing header/body values are masked (first 6 + last 4 chars). This is a write-time gate, not display-time — unlike live log tailing, mock_server persists the capture as a real file.</div></div>
       <div class="rule"><div class="rule-text"><strong>ENG ticket attachments require their own explicit approval, separate from filing the ticket itself</strong> — every candidate artifact (existing investigation files, freshly-fetched workflow/template JSON, an optional GIF recording) is masked using the same convention as <code>/troubleshoot-logs</code> before it is ever eligible for upload, and the full file list is shown to the engineer for an explicit "yes" before any attachment is uploaded via Jira's <code>/attachments</code> endpoint. A GIF recording (via <code>/troubleshoot-ui</code>, Engineer's Chrome backend only) never covers login/credential entry — only post-login reproduction actions.</div></div>
+      <div class="rule"><div class="rule-text"><strong>/full-stack-deploy never guesses around a real compatibility gap, and never reuses admin credentials for monitoring</strong> — IAG5 + AWS VMs stops cleanly with a clear message (Themis has no IAG5 role) rather than silently substituting IAG4. Every invoked skill's own approval gates (<code>/themis-aws-deploy</code>, <code>/deploy-containers</code>, <code>/nso-server</code>) run unmodified. <code>mongodb_exporter</code>/<code>redis_exporter</code> always connect via a fresh, minimal-privilege monitoring user, never the platform's admin credentials. Monitoring install-level specifics not confirmed in the fetched Itential docs are verified against live <code>docs.itential.com</code> content at execution time, never hardcoded as certain.</div></div>
     </div>
   </div>
 
@@ -5483,6 +5490,60 @@ tofu destroy \
       <div class="rule-item">
         <div class="rule-label">Complementary to Cisco XRd, not a replacement</div>
         <div class="rule-body"><code>/troubleshoot-adapters</code>'s Device Simulation Option 2 (Containerlab + Cisco XRd) simulates a managed device; <code>/nso-server</code> installs the orchestrator that manages devices like it. An NSO-adapter ticket may need either, or both together.</div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="section-divider" />
+
+  <!-- ── /full-stack-deploy ─────────────────────────────── -->
+  <div class="section">
+    <h2 id="sk-full-stack-deploy">&#9632; /full-stack-deploy — Full Stack Provisioning with Monitoring</h2>
+    <p class="desc">Provisions a complete stack on request — Itential Platform + a gateway/orchestrator component (IAG4, IAG5, or NSO — customer's choice) + an infrastructure substrate (AWS VMs, Docker-on-VM, local Docker, or Kubernetes — engineer's choice) + Prometheus/Grafana monitoring with exporters on every component. Composes <code>/themis-aws-deploy</code>, <code>/deploy-containers</code>, and <code>/nso-server</code> rather than reimplementing their provisioning logic.</p>
+
+    <div class="cards" style="margin-bottom:24px;">
+      <div class="card t-purple">
+        <div class="icon">S0</div>
+        <h3>Gateway &amp; Infra Choice</h3>
+        <p>Step 0 asks the customer which gateway/orchestrator they need (IAG4, IAG5, NSO); Step 1 asks the engineer which infrastructure substrate. Both are always explicit — never assumed.</p>
+      </div>
+      <div class="card t-magenta">
+        <div class="icon">S2</div>
+        <h3>Compatibility-Matrix Routing</h3>
+        <p>Routes to the right existing skill(s) via a fixed matrix — <code>/themis-aws-deploy</code> for AWS VMs, <code>/deploy-containers</code> for Docker/K8s, <code>/nso-server</code> chained in for NSO. IAG5 + AWS VMs stops cleanly — Themis has no IAG5 role.</p>
+      </div>
+      <div class="card t-orange">
+        <div class="icon">S4</div>
+        <h3>Monitoring Install</h3>
+        <p>Installs node_exporter, process_exporter, mongodb_exporter, redis_exporter, and job-metrics-exporter on every component, plus Prometheus and Grafana with Itential's pre-built dashboards.</p>
+      </div>
+      <div class="card t-olive">
+        <div class="icon">S6</div>
+        <h3>Post-Build Summary</h3>
+        <p>Reuses <code>/deploy-containers</code>'s actual-versions-not-requested-tags convention, extended to cover every exporter's version, Prometheus/Grafana versions, and the Grafana dashboard URL(s).</p>
+      </div>
+    </div>
+
+    <div class="rule-list">
+      <div class="rule-item">
+        <div class="rule-label">Composition, not reimplementation</div>
+        <div class="rule-body">This skill never reimplements provisioning logic — it invokes <code>/themis-aws-deploy</code>, <code>/deploy-containers</code>, or <code>/nso-server</code> and lets each run its own flow (including its own approval gates) in full, the same handoff pattern <code>/deploy-containers</code>'s own "VMs on AWS" menu option already uses.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">A real, confirmed gap — not guessed around</div>
+        <div class="rule-body"><code>/themis-aws-deploy</code> has no IAG5 role (confirmed: zero "IAG5" references in its SKILL.md or LOCAL-EXTENSIONS.md). IAG5 + AWS VMs stops at Step 1 with a clear message rather than silently substituting IAG4.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Exporter ports grounded in live docs, not assumed</div>
+        <div class="rule-body">Fetched directly from <code>docs.itential.com/itential-platform/monitor</code>: <code>node_exporter</code>:9100, <code>process_exporter</code>:9256, <code>mongodb_exporter</code>:9216, <code>redis_exporter</code>:9121 (data) / 9122 (Sentinel). Install-level specifics those pages don't cover (Gateway/NSO process name, the job-metrics-exporter's port, exact Grafana dashboard source) are verified against live docs at execution time, never hardcoded as certain.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Dedicated monitoring credentials, never admin</div>
+        <div class="rule-body"><code>mongodb_exporter</code> and <code>redis_exporter</code> always connect via a fresh, minimal-privilege monitoring user created as part of Step 4 — never the admin credentials already in <code>.env</code>.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-label">Wires into the existing query-only /prometheus skill</div>
+        <div class="rule-body">Once installed, writes <code>PROMETHEUS_HOST</code>/<code>PORT</code>/<code>AUTH</code> into <code>environments/&lt;env&gt;/CLAUDE.md</code> — the same location the vendored, query-only <code>/prometheus</code> skill already reads — so it works against the new instance immediately.</div>
       </div>
     </div>
   </div>
